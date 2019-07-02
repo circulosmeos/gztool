@@ -62,6 +62,7 @@
 #define SPAN 1048576L       /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
 #define CHUNK 16384         /* file input buffer size */
+#define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 
 /* access point entry */
 struct point {
@@ -349,11 +350,7 @@ local int extract(FILE *in, struct access *index, off_t offset,
 }
 
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
-    int ret, skip;
-    z_stream strm;
     struct point *here;
-    unsigned char input[CHUNK];
-    unsigned char discard[WINSIZE];
     int i, temp;
 
     ///* access point entry */
@@ -381,11 +378,12 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     temp = 0;
     fwrite(&temp, sizeof(temp), 1, output_file);
     /* a 64 bits readable identifier */
-    fprintf(output_file, "gzipindx");
+    fprintf(output_file, GZIP_INDEX_IDENTIFIER_STRING);
 
     /* and now the raw data: the access struct "index" */
     fwrite(&index->have, sizeof(index->have), 1, output_file);
-    fwrite(&index->size, sizeof(index->size), 1, output_file);
+    /* index->size is not written, as only filled, not allocatable, entries are usable */
+    fwrite(&index->have, sizeof(index->have), 1, output_file);
     here = index->list;
     for (i = 0; i < index->have; i++) {
         fwrite(&here[i].out,  sizeof(here[i].out),  1, output_file);
@@ -394,6 +392,65 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
         temp = WINSIZE;
         fwrite(&temp,         sizeof(temp),         1, output_file);
         fwrite(&here[i].window, temp,               1, output_file);
+    }
+
+    return 1;
+}
+
+
+int deserialize_index_from_file( FILE *input_file, struct access **index_pointer ) {
+    struct point *here;
+    struct access index;
+    int i, window_size;
+    char header[4*3];
+
+
+    ///* access point entry */
+    //struct point {
+    //    off_t out;          /* corresponding offset in uncompressed data */
+    //    off_t in;           /* offset in input file of first full byte */
+    //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
+    //    unsigned char window[WINSIZE];  /* preceding 32K of uncompressed data */
+    //};
+    //
+    ///* access point list */
+    //struct access {
+    //    int have;           /* number of list entries filled in */
+    //    int size;           /* number of list entries allocated */
+    //    struct point *list; /* allocated list */
+    //};
+
+    fread(header, 1, 4*3, input_file);
+    if (header[0] != '\0' || header[1] != '\0' || header[2] != '\0' || header[3] != '\0' || 
+        strncmp(&header[4], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
+        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[4]);
+        fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
+        fprintf(stderr, "File is not a valid gzip index file.\n");
+        return 0;
+    }
+
+    fread(&index.have, sizeof(index.have), 1, input_file);
+    if (index.have <= 0) {
+        fprintf(stderr, "Index file contains no indexes\n");
+        return 0;
+    }
+
+    // index->size should be equal to index->have, but this isn't checked
+    fread(&index.size, sizeof(index.size), 1, input_file);
+
+    // create the list of points
+    index.list = malloc(sizeof(struct point) * index.size);
+
+    for (i = 0; i < index.size; i++) {
+        here = &(index.list[i]);
+        fread(&(here->out),  sizeof(here->out),  1, input_file);
+        fread(&(here->in),   sizeof(here->in),   1, input_file);
+        fread(&(here->bits), sizeof(here->bits), 1, input_file);
+        fread(&window_size, sizeof(window_size), 1, input_file);
+        if ( !fread(&(here->window), window_size, 1, input_file) ) {
+            fprintf(stderr, "Error while reading index file\n");
+            return 0;
+        }
     }
 
     return 1;
@@ -411,9 +468,11 @@ int main(int argc, char **argv)
     struct access *index = NULL;
     unsigned char buf[CHUNK];
     // output:
-    FILE *out;
+    FILE *index_file;
     int MAX_PATH_LENGTH = 265;
     char output_file[MAX_PATH_LENGTH];
+
+    struct access *index2 = NULL; // temp
 
     /* open input file */
     if (argc != 2) {
@@ -447,24 +506,48 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "create_index: built index with %d access points\n", len);
 
+    //.................................................
     /* write index to appropriate index-file */
     if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
         fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
         return 1;
     }
     sprintf(output_file, "%s.gzi", argv[1]);
-    out = fopen( output_file, "w" );
-    if (out == NULL) {
+    index_file = fopen( output_file, "w" );
+    if (index_file == NULL) {
         fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
         return 1;
     }
     /* write index to index-file */
-    if ( ! serialize_index_to_file(out, index) ) {
+    if ( ! serialize_index_to_file(index_file, index) ) {
+        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
+        return 1;
+    }
+
+    fclose(index_file);
+    index_file = fopen( output_file, "rb" );
+
+    // .................................................
+    /* read index from index-file */
+    if ( ! deserialize_index_from_file(index_file, &index2) ) {
+        fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
+        return 1;
+    }
+
+    /* test: write the read index to another file, for comparison */
+    sprintf(output_file, "%s.gzi2", argv[1]);
+    index_file = fopen( output_file, "w" );
+    if (index_file == NULL) {
+        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
+        return 1;
+    }    
+    if ( ! serialize_index_to_file(index_file, index) ) {
         fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
         return 1;
     }
 
     return 0;
+
 
     // .................................................
 
