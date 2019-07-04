@@ -69,7 +69,8 @@ struct point {
     off_t out;          /* corresponding offset in uncompressed data */
     off_t in;           /* offset in input file of first full byte */
     int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    unsigned char window[WINSIZE];  /* preceding 32K of uncompressed data */
+    char *window;       /* preceding 32K of uncompressed data, compressed */
+    int window_size;    /* size of window */
 };
 
 /* access point list */
@@ -82,7 +83,11 @@ struct access {
 /* Deallocate an index built by build_index() */
 local void free_index(struct access *index)
 {
+    int i;
     if (index != NULL) {
+        for(i=0; i < index->have; i++) {
+            free(index->list[i].window);
+        }
         free(index->list);
         free(index);
     }
@@ -91,7 +96,7 @@ local void free_index(struct access *index)
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
 local struct access *addpoint(struct access *index, int bits,
-    off_t in, off_t out, unsigned left, unsigned char *window)
+    off_t in, off_t out, unsigned left, unsigned char *window, int window_size)
 {
     struct point *next;
 
@@ -124,10 +129,12 @@ local struct access *addpoint(struct access *index, int bits,
     next->bits = bits;
     next->in = in;
     next->out = out;
+    next->window_size = window_size;
+    next->window = malloc(window_size);
     if (left)
-        memcpy(next->window, window + WINSIZE - left, left);
-    if (left < WINSIZE)
-        memcpy(next->window + left, window, WINSIZE - left);
+        memcpy(next->window, window + window_size - left, left);
+    if (left < window_size)
+        memcpy(next->window + left, window, window_size - left);
     index->have++;
 
     /* return list, possibly reallocated */
@@ -215,7 +222,7 @@ local int build_index(FILE *in, off_t span, struct access **built)
             if ((strm.data_type & 128) && !(strm.data_type & 64) &&
                 (totout == 0 || totout - last > span)) {
                 index = addpoint(index, strm.data_type & 7, totin,
-                                 totout, strm.avail_out, window);
+                                 totout, strm.avail_out, window, WINSIZE);
                 if (index == NULL) {
                     ret = Z_MEM_ERROR;
                     goto build_index_error;
@@ -349,6 +356,63 @@ local int extract(FILE *in, struct access *index, off_t offset,
     return ret;
 }
 
+// compression function, based on def() from examples/zpipe.c
+/* Compress from file source to file dest until EOF on source.
+   def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+   allocated for processing, Z_STREAM_ERROR if an invalid compression
+   level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
+   version of the library linked do not match, or Z_ERRNO if there is
+   an error reading or writing the files. */
+//int compress_chunk(char *source, int chunk_size, char *dest, int level)
+//{
+//    int ret, flush;
+//    unsigned have;
+//    z_stream strm;
+//    unsigned char in[CHUNK];
+//    unsigned char out[CHUNK];
+//
+//    /* allocate deflate state */
+//    strm.zalloc = Z_NULL;
+//    strm.zfree = Z_NULL;
+//    strm.opaque = Z_NULL;
+//    ret = deflateInit(&strm, level);
+//    if (ret != Z_OK)
+//        return ret;
+//
+//    /* compress until end of file */
+//    do {
+//        strm.avail_in = fread(in, 1, CHUNK, source);
+//        if (ferror(source)) {
+//            (void)deflateEnd(&strm);
+//            return Z_ERRNO;
+//        }
+//        flush = feof(source) ? Z_FINISH : Z_NO_FLUSH;
+//        strm.next_in = in;
+//
+//        /* run deflate() on input until output buffer not full, finish
+//           compression if all of source has been read in */
+//        do {
+//            strm.avail_out = CHUNK;
+//            strm.next_out = out;
+//            ret = deflate(&strm, flush);    /* no bad return value */
+//            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+//            have = CHUNK - strm.avail_out;
+//            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+//                (void)deflateEnd(&strm);
+//                return Z_ERRNO;
+//            }
+//        } while (strm.avail_out == 0);
+//        assert(strm.avail_in == 0);     /* all input will be used */
+//
+//        /* done when last data in file processed */
+//    } while (flush != Z_FINISH);
+//    assert(ret == Z_STREAM_END);        /* stream will be complete */
+//
+//    /* clean up and return */
+//    (void)deflateEnd(&strm);
+//    return Z_OK;
+//}
+
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
     struct point *here;
     int i, temp;
@@ -358,7 +422,8 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     //    off_t out;          /* corresponding offset in uncompressed data */
     //    off_t in;           /* offset in input file of first full byte */
     //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    //    unsigned char window[WINSIZE];  /* preceding 32K of uncompressed data */
+    //    char *window;       /* preceding 32K of uncompressed data, compressed */
+    //    int window_size;    /* size of window */
     //};
     //
     ///* access point list */
@@ -382,28 +447,26 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
 
     /* and now the raw data: the access struct "index" */
     fwrite(&index->have, sizeof(index->have), 1, output_file);
-    /* index->size is not written, as only filled, not allocatable, entries are usable */
+    /* index->size is not written as only filled entries are usable */
     fwrite(&index->have, sizeof(index->have), 1, output_file);
     here = index->list;
     for (i = 0; i < index->have; i++) {
         fwrite(&here[i].out,  sizeof(here[i].out),  1, output_file);
         fwrite(&here[i].in,   sizeof(here[i].in),   1, output_file);
         fwrite(&here[i].bits, sizeof(here[i].bits), 1, output_file);
-        temp = WINSIZE;
-        fwrite(&temp,         sizeof(temp),         1, output_file);
-        fwrite(&here[i].window, temp,               1, output_file);
+        fwrite(&here[i].window_size, sizeof(here[i].window_size), 1, output_file);
+        fwrite(here[i]->window, here[i].window_size, 1, output_file);
     }
 
     return 1;
 }
 
 
-int deserialize_index_from_file( FILE *input_file, struct access **index_pointer ) {
+struct access *deserialize_index_from_file( FILE *input_file ) {
     struct point *here;
-    struct access index;
-    int i, window_size;
+    struct access *index;
+    int i;
     char header[4*3];
-
 
     ///* access point entry */
     //struct point {
@@ -411,6 +474,7 @@ int deserialize_index_from_file( FILE *input_file, struct access **index_pointer
     //    off_t in;           /* offset in input file of first full byte */
     //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
     //    unsigned char window[WINSIZE];  /* preceding 32K of uncompressed data */
+    //    int window_size;    /* size of window */
     //};
     //
     ///* access point list */
@@ -420,40 +484,47 @@ int deserialize_index_from_file( FILE *input_file, struct access **index_pointer
     //    struct point *list; /* allocated list */
     //};
 
+    index = malloc(sizeof(struct access));
+
     fread(header, 1, 4*3, input_file);
-    if (header[0] != '\0' || header[1] != '\0' || header[2] != '\0' || header[3] != '\0' || 
+    if (*((int *)header) != 0 || 
         strncmp(&header[4], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
         fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[4]);
         fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
         fprintf(stderr, "File is not a valid gzip index file.\n");
-        return 0;
+        return NULL;
     }
 
-    fread(&index.have, sizeof(index.have), 1, input_file);
-    if (index.have <= 0) {
-        fprintf(stderr, "Index file contains no indexes\n");
-        return 0;
+    fread(&index->have, sizeof(index->have), 1, input_file);
+    if (index->have <= 0) {
+        fprintf(stderr, "Index file contains no indexes.\n");
+        return NULL;
     }
 
     // index->size should be equal to index->have, but this isn't checked
-    fread(&index.size, sizeof(index.size), 1, input_file);
+    fread(&index->size, sizeof(index->size), 1, input_file);
 
     // create the list of points
-    index.list = malloc(sizeof(struct point) * index.size);
+    index->list = malloc(sizeof(struct point) * index->size);
 
-    for (i = 0; i < index.size; i++) {
-        here = &(index.list[i]);
+    for (i = 0; i < index->size; i++) {
+        here = &(index->list[i]);
         fread(&(here->out),  sizeof(here->out),  1, input_file);
         fread(&(here->in),   sizeof(here->in),   1, input_file);
         fread(&(here->bits), sizeof(here->bits), 1, input_file);
-        fread(&window_size, sizeof(window_size), 1, input_file);
-        if ( !fread(&(here->window), window_size, 1, input_file) ) {
-            fprintf(stderr, "Error while reading index file\n");
-            return 0;
+        fread(&(here->window_size), sizeof(here->window_size), 1, input_file);
+        here->window = malloc(here->window_size);
+        if (here->window == NULL) {
+            fprintf(stderr, "Not enough memory to load index from file.\n");
+            return NULL;
+        }        
+        if ( !fread(here->window, here->window_size, 1, input_file) ) {
+            fprintf(stderr, "Error while reading index file.\n");
+            return NULL;
         }
     }
 
-    return 1;
+    return index;
 }
 
 
@@ -523,28 +594,33 @@ int main(int argc, char **argv)
         fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
         return 1;
     }
-
     fclose(index_file);
-    index_file = fopen( output_file, "rb" );
 
     // .................................................
     /* read index from index-file */
-    if ( ! deserialize_index_from_file(index_file, &index2) ) {
+    fprintf(stderr, "Reading index from file %s\n", output_file);
+    index_file = fopen( output_file, "rb" );
+    index2 = deserialize_index_from_file(index_file);
+    if ( ! index2 ) {
         fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
         return 1;
     }
+    fclose(index_file);
+    fprintf(stderr, "Reading index finished.\n");
 
     /* test: write the read index to another file, for comparison */
+    fprintf(stderr, "Writing second index to file %s.gzi2\n", output_file);
     sprintf(output_file, "%s.gzi2", argv[1]);
     index_file = fopen( output_file, "w" );
     if (index_file == NULL) {
         fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
         return 1;
-    }    
-    if ( ! serialize_index_to_file(index_file, index) ) {
+    }
+    if ( ! serialize_index_to_file(index_file, index2) ) {
         fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
         return 1;
     }
+    fprintf(stderr, "Writing second index finished.\n");
 
     return 0;
 
