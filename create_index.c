@@ -69,8 +69,8 @@ struct point {
     off_t out;          /* corresponding offset in uncompressed data */
     off_t in;           /* offset in input file of first full byte */
     int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    char *window;       /* preceding 32K of uncompressed data, compressed */
     int window_size;    /* size of window */
+    unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
 
 /* access point list */
@@ -422,7 +422,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     //    off_t out;          /* corresponding offset in uncompressed data */
     //    off_t in;           /* offset in input file of first full byte */
     //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    //    char *window;       /* preceding 32K of uncompressed data, compressed */
+    //    unsigned char *window; /* preceding 32K of uncompressed data, compressed */
     //    int window_size;    /* size of window */
     //};
     //
@@ -449,13 +449,19 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     fwrite(&index->have, sizeof(index->have), 1, output_file);
     /* index->size is not written as only filled entries are usable */
     fwrite(&index->have, sizeof(index->have), 1, output_file);
-    here = index->list;
+
     for (i = 0; i < index->have; i++) {
-        fwrite(&here[i].out,  sizeof(here[i].out),  1, output_file);
-        fwrite(&here[i].in,   sizeof(here[i].in),   1, output_file);
-        fwrite(&here[i].bits, sizeof(here[i].bits), 1, output_file);
-        fwrite(&here[i].window_size, sizeof(here[i].window_size), 1, output_file);
-        fwrite(here[i]->window, here[i].window_size, 1, output_file);
+        here = &(index->list[i]);
+        fwrite(&(here->out),  sizeof(here->out),  1, output_file);
+        fwrite(&(here->in),   sizeof(here->in),   1, output_file);
+        fwrite(&(here->bits), sizeof(here->bits), 1, output_file);
+        fwrite(&(here->window_size), sizeof(here->window_size), 1, output_file);
+        fwrite(here->window, here->window_size, 1, output_file);
+
+        fprintf(stderr, "%d >\n", here->out);
+        fprintf(stderr, "%d >\n", here->in);
+        fprintf(stderr, "%d >\n", here->bits);
+        fprintf(stderr, "%d >\n", here->window_size);
     }
 
     return 1;
@@ -487,7 +493,7 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
     index = malloc(sizeof(struct access));
 
     fread(header, 1, 4*3, input_file);
-    if (*((int *)header) != 0 || 
+    if (*((int *)header) != 0 ||
         strncmp(&header[4], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
         fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[4]);
         fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
@@ -517,11 +523,16 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         if (here->window == NULL) {
             fprintf(stderr, "Not enough memory to load index from file.\n");
             return NULL;
-        }        
+        }
         if ( !fread(here->window, here->window_size, 1, input_file) ) {
             fprintf(stderr, "Error while reading index file.\n");
             return NULL;
         }
+
+        fprintf(stderr, "%d <\n", here->out);
+        fprintf(stderr, "%d <\n", here->in);
+        fprintf(stderr, "%d <\n", here->bits);
+        fprintf(stderr, "%d <\n", here->window_size);
     }
 
     return index;
@@ -584,7 +595,7 @@ int main(int argc, char **argv)
         return 1;
     }
     sprintf(output_file, "%s.gzi", argv[1]);
-    index_file = fopen( output_file, "w" );
+    index_file = fopen( output_file, "wb" );
     if (index_file == NULL) {
         fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
         return 1;
@@ -608,10 +619,12 @@ int main(int argc, char **argv)
     fclose(index_file);
     fprintf(stderr, "Reading index finished.\n");
 
+    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
+
     /* test: write the read index to another file, for comparison */
-    fprintf(stderr, "Writing second index to file %s.gzi2\n", output_file);
+    fprintf(stderr, "Writing second index to file %s2\n", output_file);
     sprintf(output_file, "%s.gzi2", argv[1]);
-    index_file = fopen( output_file, "w" );
+    index_file = fopen( output_file, "wb" );
     if (index_file == NULL) {
         fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
         return 1;
@@ -621,6 +634,7 @@ int main(int argc, char **argv)
         return 1;
     }
     fprintf(stderr, "Writing second index finished.\n");
+    fclose(index_file);
 
     return 0;
 
