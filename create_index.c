@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "zlib.h"
 
 #define local static
@@ -356,6 +357,7 @@ local int extract(FILE *in, struct access *index, off_t offset,
     return ret;
 }
 
+
 // compression function, based on def() from examples/zpipe.c
 /* Compress from file source to file dest until EOF on source.
    def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
@@ -363,55 +365,158 @@ local int extract(FILE *in, struct access *index, off_t offset,
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-//int compress_chunk(char *source, int chunk_size, char *dest, int level)
-//{
-//    int ret, flush;
-//    unsigned have;
-//    z_stream strm;
-//    unsigned char in[CHUNK];
-//    unsigned char out[CHUNK];
-//
-//    /* allocate deflate state */
-//    strm.zalloc = Z_NULL;
-//    strm.zfree = Z_NULL;
-//    strm.opaque = Z_NULL;
-//    ret = deflateInit(&strm, level);
-//    if (ret != Z_OK)
-//        return ret;
-//
-//    /* compress until end of file */
-//    do {
-//        strm.avail_in = fread(in, 1, CHUNK, source);
-//        if (ferror(source)) {
-//            (void)deflateEnd(&strm);
-//            return Z_ERRNO;
-//        }
-//        flush = feof(source) ? Z_FINISH : Z_NO_FLUSH;
-//        strm.next_in = in;
-//
-//        /* run deflate() on input until output buffer not full, finish
-//           compression if all of source has been read in */
-//        do {
-//            strm.avail_out = CHUNK;
-//            strm.next_out = out;
-//            ret = deflate(&strm, flush);    /* no bad return value */
-//            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
-//            have = CHUNK - strm.avail_out;
-//            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
-//                (void)deflateEnd(&strm);
-//                return Z_ERRNO;
-//            }
-//        } while (strm.avail_out == 0);
-//        assert(strm.avail_in == 0);     /* all input will be used */
-//
-//        /* done when last data in file processed */
-//    } while (flush != Z_FINISH);
-//    assert(ret == Z_STREAM_END);        /* stream will be complete */
-//
-//    /* clean up and return */
-//    (void)deflateEnd(&strm);
-//    return Z_OK;
-//}
+unsigned char *compress_chunk(unsigned char *source, int input_size, int level)
+{
+    int ret, flush;
+    unsigned have;
+    z_stream strm;
+    int i = 0;
+    int completed_size = 0;
+    unsigned char *in, *out, *out_complete;
+
+    /* allocate deflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    ret = deflateInit(&strm, level);
+    if (ret != Z_OK)
+        return NULL;
+
+    in = malloc(CHUNK);
+    out = malloc(CHUNK);
+    out_complete = malloc(CHUNK);
+
+    /* compress until end of input */
+    do {
+        strm.avail_in = (i + CHUNK < input_size) ? CHUNK : (input_size - i);
+        if ( memcpy(in, source + i, strm.avail_in) == NULL ) {
+            (void)deflateEnd(&strm);
+            goto compress_chunk_error;
+        }
+        flush = (i + CHUNK >= input_size) ? Z_FINISH : Z_NO_FLUSH;
+        strm.next_in = in;
+
+        /* run deflate() on input until output buffer not full, finish
+           compression if all of source has been read in */
+        do {
+            strm.avail_out = CHUNK;
+            strm.next_out = out;
+            ret = deflate(&strm, flush);    /* no bad return value */
+            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+            have = CHUNK - strm.avail_out;
+            if ( NULL == (out_complete = realloc(out_complete, completed_size + have)) ||
+                 NULL == memcpy(out_complete + completed_size, out, have) ) {
+                (void)deflateEnd(&strm);
+                goto compress_chunk_error;
+            }
+            completed_size += have;
+        } while (strm.avail_out == 0);
+        i += have;
+        assert(strm.avail_in == 0);     /* all input will be used */
+
+        /* done when last data in source processed */
+    } while (flush != Z_FINISH);
+    assert(ret == Z_STREAM_END);        /* stream will be complete */
+
+    /* clean up and return */
+    (void)deflateEnd(&strm);
+    free(in);
+    free(out);
+    return out_complete;
+
+  compress_chunk_error:
+    free(in);
+    free(out);
+    free(out_complete);
+    return NULL;
+
+}
+
+
+// decompression function, based on inf() from examples/zpipe.c
+/* Decompress from file source to file dest until stream ends or EOF.
+   inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+   allocated for processing, Z_DATA_ERROR if the deflate data is
+   invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
+   the version of the library linked do not match, or Z_ERRNO if there
+   is an error reading or writing the files. */
+unsigned char *decompress_chunk(unsigned char *source, int input_size)
+{
+    int ret;
+    unsigned have;
+    z_stream strm;
+    int i = 0;
+    int completed_size = 0;
+    unsigned char *in, *out, *out_complete;
+
+    /* allocate inflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+    ret = inflateInit(&strm);
+    if (ret != Z_OK)
+        return NULL;
+
+    in = malloc(CHUNK);
+    out = malloc(CHUNK);
+    out_complete = malloc(CHUNK);
+
+    /* decompress until deflate stream ends or end of file */
+    do {
+        strm.avail_in = (i + CHUNK < input_size) ? CHUNK : (input_size - i);
+        if ( memcpy(in, source + i, strm.avail_in) == NULL ) {
+            (void)inflateEnd(&strm);
+            goto decompress_chunk_error;
+        }
+        if (strm.avail_in == 0)
+            break;
+        strm.next_in = in;
+
+        /* run inflate() on input until output buffer not full */
+        do {
+            strm.avail_out = CHUNK;
+            strm.next_out = out;
+            ret = inflate(&strm, Z_NO_FLUSH);
+            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+            switch (ret) {
+            case Z_NEED_DICT:
+                ret = Z_DATA_ERROR;     /* and fall through */
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+                (void)inflateEnd(&strm);
+                goto decompress_chunk_error;
+            }
+            have = CHUNK - strm.avail_out;
+            if ( NULL == (out_complete = realloc(out_complete, completed_size + have)) ||
+                 NULL == memcpy(out_complete + completed_size, out, have) ) {
+                (void)deflateEnd(&strm);
+                goto decompress_chunk_error;
+            }
+            completed_size += have;
+        } while (strm.avail_out == 0);
+        i += have;
+
+        /* done when inflate() says it's done */
+    } while (ret != Z_STREAM_END);
+
+    /* clean up and return */
+    (void)inflateEnd(&strm);
+    free(in);
+    free(out);
+    if (ret != Z_STREAM_END) {
+        fprintf(stderr, "Decompression of index' chunk terminated with error.\n");
+    }
+    return out_complete;
+
+  decompress_chunk_error:
+    free(in);
+    free(out);
+    free(out_complete);
+    return NULL;
+}
+
 
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
     struct point *here;
@@ -458,8 +563,8 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
         fwrite(&(here->window_size), sizeof(here->window_size), 1, output_file);
         fwrite(here->window, here->window_size, 1, output_file);
 
-        fprintf(stderr, "%d >\n", here->out);
-        fprintf(stderr, "%d >\n", here->in);
+        fprintf(stderr, "%ld >\n", here->out);
+        fprintf(stderr, "%ld >\n", here->in);
         fprintf(stderr, "%d >\n", here->bits);
         fprintf(stderr, "%d >\n", here->window_size);
     }
@@ -529,8 +634,8 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
             return NULL;
         }
 
-        fprintf(stderr, "%d <\n", here->out);
-        fprintf(stderr, "%d <\n", here->in);
+        fprintf(stderr, "%ld <\n", here->out);
+        fprintf(stderr, "%ld <\n", here->in);
         fprintf(stderr, "%d <\n", here->bits);
         fprintf(stderr, "%d <\n", here->window_size);
     }
@@ -651,7 +756,7 @@ int main(int argc, char **argv)
                 len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
     else {
         fwrite(buf, 1, len, stdout);
-        fprintf(stderr, "create_index: extracted %d bytes at %llu\n", len, offset);
+        fprintf(stderr, "create_index: extracted %d bytes at %ld\n", len, offset);
     }
 
     /* clean up and exit */
