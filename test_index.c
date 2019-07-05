@@ -698,8 +698,6 @@ int main(int argc, char **argv)
     int MAX_PATH_LENGTH = 265;
     char output_file[MAX_PATH_LENGTH];
 
-    struct access *index2 = NULL; // temp
-
     /* open input file */
     if (argc != 2) {
         fprintf(stderr, "usage: zran file.gz\n");
@@ -711,76 +709,19 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* build index */
-    len = build_index(in, SPAN, &index);
-    if (len < 0) {
-        fclose(in);
-        switch (len) {
-        case Z_MEM_ERROR:
-            fprintf(stderr, "create_index: out of memory\n");
-            break;
-        case Z_DATA_ERROR:
-            fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
-            break;
-        case Z_ERRNO:
-            fprintf(stderr, "create_index: read error on %s\n", argv[1]);
-            break;
-        default:
-            fprintf(stderr, "create_index: error %d while building index\n", len);
-        }
-        return 1;
-    }
-    fprintf(stderr, "create_index: built index with %d access points\n", len);
-
-    //.................................................
-    /* write index to appropriate index-file */
-    if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
-        fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
-        return 1;
-    }
     sprintf(output_file, "%s.gzi", argv[1]);
-    index_file = fopen( output_file, "wb" );
-    if (index_file == NULL) {
-        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-        return 1;
-    }
-    /* write index to index-file */
-    if ( ! serialize_index_to_file(index_file, index) ) {
-        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-        return 1;
-    }
-    fclose(index_file);
 
     // .................................................
     /* read index from index-file */
     fprintf(stderr, "Reading index from file %s\n", output_file);
     index_file = fopen( output_file, "rb" );
-    index2 = deserialize_index_from_file(index_file);
-    if ( ! index2 ) {
+    index = deserialize_index_from_file(index_file);
+    if ( ! index ) {
         fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
         return 1;
     }
     fclose(index_file);
     fprintf(stderr, "Reading index finished.\n");
-
-    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
-
-    /* test: write the read index to another file, for comparison */
-    fprintf(stderr, "Writing second index to file %s2\n", output_file);
-    sprintf(output_file, "%s.gzi2", argv[1]);
-    index_file = fopen( output_file, "wb" );
-    if (index_file == NULL) {
-        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-        return 1;
-    }
-    if ( ! serialize_index_to_file(index_file, index2) ) {
-        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-        return 1;
-    }
-    fprintf(stderr, "Writing second index finished.\n");
-    fclose(index_file);
-
-    return 0;
 
     // .................................................
 
