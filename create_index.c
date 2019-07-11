@@ -612,10 +612,10 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         }
         (void)inflatePrime(&strm, here->bits, ret >> (8 - here->bits));
     }
-    //(void)inflateSetDictionary(&strm, here->window, WINSIZE);
-    /* decompress window */
+
 /* #ifdef INDEX_WINDOWS_ON_DISK */
-    if (here->window == NULL) {
+fprintf(stderr, "\n\n>>>>>>>>>\n\n");
+    if (here->window == NULL && here->window_beginning != 0) {
         /* window data is not on memory, 
         but we have position and size on index file, so we load it now */
         FILE *index_file;
@@ -623,6 +623,7 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         if (NULL == fopen(index->file_name, "rb") ||
             0 != fseeko(index_file, here->window_beginning, SEEK_SET)
             ) {
+            fclose(index_file);
             ret = Z_ERRNO;
             goto extract_ret;
         }
@@ -630,15 +631,22 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         here->window_beginning = 0;
         if ( !fread(here->window, here->window_size, 1, index_file) ) {
             fprintf(stderr, "Error while reading index file.\n");
+            fclose(index_file);
             ret = Z_ERRNO;
             goto extract_ret;
         }
+        fclose(index_file);
     }
 /* #endif */
-    decompressed_window = decompress_chunk(here->window, &(here->window_size));
-    free(here->window);
-    here->window = decompressed_window;
-    here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
+    if (here->window_size != UNCOMPRESSED_WINDOW) {
+fprintf(stderr, "\n\n<<<<<<<<<\n\n");
+        /* window is compressed on memory, so decompress it */
+        decompressed_window = decompress_chunk(here->window, &(here->window_size));
+        free(here->window);
+        here->window = decompressed_window;
+        here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
+    }
+
     (void)inflateSetDictionary(&strm, here->window, WINSIZE);
 
     /* skip uncompressed bytes until offset reached, then satisfy request */
@@ -880,7 +888,7 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         here->window = NULL;
         here->window_beginning = ftello(input_file);
 #else
-        here->window = malloc(here->window_size);
+        /*here->window = malloc(here->window_size);
         here->window_beginning = 0;
         if (here->window == NULL) {
             fprintf(stderr, "Not enough memory to load index from file.\n");
@@ -889,7 +897,7 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         if ( !fread(here->window, here->window_size, 1, input_file) ) {
             fprintf(stderr, "Error while reading index file.\n");
             return NULL;
-        }
+        }*/
 #endif
         /*fprintf(stderr, "%ld <\n", here->out);
         fprintf(stderr, "%ld <\n", here->in);
@@ -1020,7 +1028,10 @@ int main(int argc, char **argv)
     fprintf(stderr, "inflating from byte: %ld\n", offset);
     //len = extract(in, index, offset, buf, CHUNK); // TODO: pasar a 64
     len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
+    fprintf(stderr, "create_index: test finished.\n");
+    fprintf(stderr, "create_index: test start.\n");
     len = extract(in, index, offset, NULL, 0); // TODO: pasar a 64
+    fprintf(stderr, "create_index: test finished.\n");
     if (len < 0)
         fprintf(stderr, "create_index: extraction failed: %s error\n",
                 len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
