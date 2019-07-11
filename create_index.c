@@ -88,6 +88,7 @@ struct point {
 struct access {
     uint64_t have;      /* number of list entries filled in */
     uint64_t size;      /* number of list entries allocated */
+    uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
 };
 
@@ -105,12 +106,82 @@ static inline uint32_t endiannes_swap_4(uint32_t v)
     v = ((v & 0x0000FFFFU) << 16) | (v >> 16);
     return ((v & 0x00FF00FFU) << 8) | ((v & 0xFF00FF00U) >> 8);
 }
+static inline void *endiannes_swap_4p(void *x)
+{
+    *(uint32_t*)x = endiannes_swap_4(*(uint32_t*)x);
+    return x;
+}
 static inline uint64_t endiannes_swap_8(uint64_t v)
 {
     v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
     v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
     return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
+static inline void *endiannes_swap_8p(void *x)
+{
+    *(uint64_t*)x = endiannes_swap_8(*(uint64_t*)x);
+    return x;
+}
+
+// fread substitute for endianness management of 4 and 8 bytes words
+size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+
+    size_t output = fread(ptr, size, count, stream);
+    
+    if (endiannes_is_big()) {
+        ;
+    } else {
+        // machine is little endian: flip bytes
+        switch (size) {
+            case 4:
+                endiannes_swap_4p(ptr);
+                break;
+            case 8:
+                endiannes_swap_8p(ptr);
+                break;
+            default:
+                assert(0);
+        }
+    }
+
+    return output;
+
+}
+
+// fread substitute for endianness management of 4 and 8 bytes words
+size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+
+    size_t output;
+    void *endian_ptr;
+
+    if (endiannes_is_big()) {
+        ;
+    } else {
+        // machine is little endian: flip bytes
+        endian_ptr = malloc(size);
+        switch (size) {
+            case 4:
+                *(uint32_t *)endian_ptr = *(uint32_t *)ptr;
+                endiannes_swap_4p(endian_ptr);
+                break;
+            case 8:
+                *(uint64_t *)endian_ptr = *(uint64_t *)ptr;
+                endiannes_swap_8p(endian_ptr);
+                break;
+            default:
+                assert(0);
+        }
+    }
+
+    output = fwrite(endian_ptr, size, count, stream);
+
+    free(endian_ptr);
+    return output;
+
+}
+/*******************
+ * end: Endianness *
+ *******************/
 
 
 // compression function, based on def() from examples/zpipe.c
@@ -459,6 +530,7 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
     (void)inflateEnd(&strm);
     index->list = realloc(index->list, sizeof(struct point) * index->have);
     index->size = index->have;
+    index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
     *built = index;
     return index->size;
 
@@ -699,21 +771,21 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
     /* the initial uint32_t is the number of bgzip-idx registers) */
     temp = 0;
-    fwrite(&temp, sizeof(temp), 1, output_file);
+    fwrite_endian(&temp, sizeof(temp), 1, output_file);
     /* a 64 bits readable identifier */
     fprintf(output_file, GZIP_INDEX_IDENTIFIER_STRING);
 
     /* and now the raw data: the access struct "index" */
-    fwrite(&index->have, sizeof(index->have), 1, output_file);
+    fwrite_endian(&index->have, sizeof(index->have), 1, output_file);
     /* index->size is not written as only filled entries are usable */
-    fwrite(&index->have, sizeof(index->have), 1, output_file);
+    fwrite_endian(&index->have, sizeof(index->have), 1, output_file);
 
     for (i = 0; i < index->have; i++) {
         here = &(index->list[i]);
-        fwrite(&(here->out),  sizeof(here->out),  1, output_file);
-        fwrite(&(here->in),   sizeof(here->in),   1, output_file);
-        fwrite(&(here->bits), sizeof(here->bits), 1, output_file);
-        fwrite(&(here->window_size), sizeof(here->window_size), 1, output_file);
+        fwrite_endian(&(here->out),  sizeof(here->out),  1, output_file);
+        fwrite_endian(&(here->in),   sizeof(here->in),   1, output_file);
+        fwrite_endian(&(here->bits), sizeof(here->bits), 1, output_file);
+        fwrite_endian(&(here->window_size), sizeof(here->window_size), 1, output_file);
         fwrite(here->window, here->window_size, 1, output_file);
 
         /*fprintf(stderr, "%ld >\n", here->out);
@@ -721,6 +793,9 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
         fprintf(stderr, "%d >\n", here->bits);
         fprintf(stderr, "%d >\n", here->window_size);*/
     }
+
+    /* write size of uncompressed file (useful for bgzip files) */
+    fwrite_endian(&index->file_size, sizeof(index->file_size), 1, output_file);
 
     return 1;
 }
@@ -759,24 +834,24 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         return NULL;
     }
 
-    fread(&index->have, sizeof(index->have), 1, input_file);
+    fread_endian(&index->have, sizeof(index->have), 1, input_file);
     if (index->have <= 0) {
         fprintf(stderr, "Index file contains no indexes.\n");
         return NULL;
     }
 
     // index->size should be equal to index->have, but this isn't checked
-    fread(&index->size, sizeof(index->size), 1, input_file);
+    fread_endian(&index->size, sizeof(index->size), 1, input_file);
 
     // create the list of points
     index->list = malloc(sizeof(struct point) * index->size);
 
     for (i = 0; i < index->size; i++) {
         here = &(index->list[i]);
-        fread(&(here->out),  sizeof(here->out),  1, input_file);
-        fread(&(here->in),   sizeof(here->in),   1, input_file);
-        fread(&(here->bits), sizeof(here->bits), 1, input_file);
-        fread(&(here->window_size), sizeof(here->window_size), 1, input_file);
+        fread_endian(&(here->out),  sizeof(here->out),  1, input_file);
+        fread_endian(&(here->in),   sizeof(here->in),   1, input_file);
+        fread_endian(&(here->bits), sizeof(here->bits), 1, input_file);
+        fread_endian(&(here->window_size), sizeof(here->window_size), 1, input_file);
         here->window = malloc(here->window_size);
         if (here->window == NULL) {
             fprintf(stderr, "Not enough memory to load index from file.\n");
@@ -792,6 +867,11 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         fprintf(stderr, "%d <\n", here->bits);
         fprintf(stderr, "%d <\n", here->window_size);*/
     }
+
+    /* read size of uncompressed file (useful for bgzip files) */
+    /* this field could not exist (maybe useful for growing gzip files?) */
+    index->file_size = 0;
+    fread_endian(&index->file_size, sizeof(index->file_size), 1, input_file);
 
     return index;
 }
@@ -825,76 +905,76 @@ int main(int argc, char **argv)
         return 1;
     }
 
-//    /* build index */
-//    len = build_index(in, SPAN, &index);
-//    if (len < 0) {
-//        fclose(in);
-//        switch (len) {
-//        case Z_MEM_ERROR:
-//            fprintf(stderr, "create_index: out of memory\n");
-//            break;
-//        case Z_DATA_ERROR:
-//            fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
-//            break;
-//        case Z_ERRNO:
-//            fprintf(stderr, "create_index: read error on %s\n", argv[1]);
-//            break;
-//        default:
-//            fprintf(stderr, "create_index: error %d while building index\n", len);
-//        }
-//        return 1;
-//    }
-//    fprintf(stderr, "create_index: built index with %d access points\n", len);
-//
-//    //.................................................
-//    /* write index to appropriate index-file */
-//    if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
-//        fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
-//        return 1;
-//    }
+    /* build index */
+    len = build_index(in, SPAN, &index);
+    if (len < 0) {
+        fclose(in);
+        switch (len) {
+        case Z_MEM_ERROR:
+            fprintf(stderr, "create_index: out of memory\n");
+            break;
+        case Z_DATA_ERROR:
+            fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
+            break;
+        case Z_ERRNO:
+            fprintf(stderr, "create_index: read error on %s\n", argv[1]);
+            break;
+        default:
+            fprintf(stderr, "create_index: error %d while building index\n", len);
+        }
+        return 1;
+    }
+    fprintf(stderr, "create_index: built index with %d access points\n", len);
+
+    //.................................................
+    /* write index to appropriate index-file */
+    if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
+        fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
+        return 1;
+    }
     sprintf(output_file, "%s.gzi", argv[1]);
-//    index_file = fopen( output_file, "wb" );
-//    if (index_file == NULL) {
-//        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-//        return 1;
-//    }
-//    /* write index to index-file */
-//    if ( ! serialize_index_to_file(index_file, index) ) {
-//        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-//        return 1;
-//    }
-//    fclose(index_file);
-//
+    index_file = fopen( output_file, "wb" );
+    if (index_file == NULL) {
+        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
+        return 1;
+    }
+    /* write index to index-file */
+    if ( ! serialize_index_to_file(index_file, index) ) {
+        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
+        return 1;
+    }
+    fclose(index_file);
+
     // .................................................
     /* read index from index-file */
     fprintf(stderr, "Reading index from file %s\n", output_file);
     index_file = fopen( output_file, "rb" );
-    //index2 = deserialize_index_from_file(index_file);
-    index = deserialize_index_from_file(index_file);
-    //if ( ! index2 ) {
-    if ( ! index ) {
+    index2 = deserialize_index_from_file(index_file);
+    //index = deserialize_index_from_file(index_file);
+    if ( ! index2 ) {
+    //if ( ! index ) {
         fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
         return 1;
     }
     fclose(index_file);
     fprintf(stderr, "Reading index finished.\n");
-//
-//    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
-//
-//    /* test: write the read index to another file, for comparison */
-//    fprintf(stderr, "Writing second index to file %s2\n", output_file);
-//    sprintf(output_file, "%s.gzi2", argv[1]);
-//    index_file = fopen( output_file, "wb" );
-//    if (index_file == NULL) {
-//        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-//        return 1;
-//    }
-//    if ( ! serialize_index_to_file(index_file, index2) ) {
-//        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-//        return 1;
-//    }
-//    fprintf(stderr, "Writing second index finished.\n");
-//    fclose(index_file);
+
+    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
+
+    /* test: write the read index to another file, for comparison */
+    fprintf(stderr, "Writing second index to file %s2\n", output_file);
+    sprintf(output_file, "%s.gzi2", argv[1]);
+    index_file = fopen( output_file, "wb" );
+    if (index_file == NULL) {
+        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
+        return 1;
+    }
+    if ( ! serialize_index_to_file(index_file, index2) ) {
+        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
+        return 1;
+    }
+    fprintf(stderr, "Writing second index finished.\n");
+    fclose(index_file);
 
     //return 0;
 
@@ -906,7 +986,8 @@ int main(int argc, char **argv)
     offset = (index->list[index->have - 1].out << 1) / 3;
     fprintf(stderr, "inflating from byte: %ld\n", offset);
     //len = extract(in, index, offset, buf, CHUNK); // TODO: pasar a 64
-    len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
+    //len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
+    len = extract(in, index, offset, NULL, 0); // TODO: pasar a 64
     if (len < 0)
         fprintf(stderr, "create_index: extraction failed: %s error\n",
                 len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
