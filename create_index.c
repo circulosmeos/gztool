@@ -52,6 +52,15 @@
    index in a file.
  */
 
+// .................................................
+// large file support (LFS) (files with size >2^31 (2 GiB) in linux, and >4 GiB in Windows)
+#define _FILE_OFFSET_BITS 64    // defining _FILE_OFFSET_BITS with the value 64 (before including
+                                // any header files) will turn off_t into a 64-bit type
+#define _LARGEFILE_SOURCE
+#define _LARGEFILE64_SOURCE     // off64_t for fseek64
+// .................................................
+
+#include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,23 +72,45 @@
 #define SPAN 1048576L       /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
 #define CHUNK 16384         /* file input buffer size */
+#define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 
 /* access point entry */
 struct point {
-    off_t out;          /* corresponding offset in uncompressed data */
-    off_t in;           /* offset in input file of first full byte */
-    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    int window_size;    /* size of window */
+    off_t out;             /* corresponding offset in uncompressed data */
+    off_t in;              /* offset in input file of first full byte */
+    uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
+    uint32_t window_size;  /* size of window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
 
 /* access point list */
 struct access {
-    int have;           /* number of list entries filled in */
-    int size;           /* number of list entries allocated */
+    uint64_t have;      /* number of list entries filled in */
+    uint64_t size;      /* number of list entries allocated */
     struct point *list; /* allocated list */
 };
+
+
+/**************
+ * Endianness *
+ **************/
+static inline int endiannes_is_big(void)
+{
+    long one= 1;
+    return !(*((char *)(&one)));
+}
+static inline uint32_t endiannes_swap_4(uint32_t v)
+{
+    v = ((v & 0x0000FFFFU) << 16) | (v >> 16);
+    return ((v & 0x00FF00FFU) << 8) | ((v & 0xFF00FF00U) >> 8);
+}
+static inline uint64_t endiannes_swap_8(uint64_t v)
+{
+    v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
+    v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
+    return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
+}
 
 
 // compression function, based on def() from examples/zpipe.c
@@ -89,14 +120,14 @@ struct access {
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-unsigned char *compress_chunk(unsigned char *source, int *size, int level)
+unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
 {
     int ret, flush;
     unsigned have;
     z_stream strm;
     int i = 0;
-    int output_size = 0;
-    int input_size = *size;
+    uint32_t output_size = 0;
+    uint32_t input_size = *size;
     unsigned char *in, *out, *out_complete;
 
     /* allocate deflate state */
@@ -261,7 +292,7 @@ unsigned char *decompress_chunk(unsigned char *source, int *size)
 /* Deallocate an index built by build_index() */
 local void free_index(struct access *index)
 {
-    int i;
+    uint64_t i;
     if (index != NULL) {
         for(i=0; i < index->have; i++) {
             free(index->list[i].window);
@@ -274,11 +305,11 @@ local void free_index(struct access *index)
 
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
-local struct access *addpoint(struct access *index, int bits,
+local struct access *addpoint(struct access *index, uint32_t bits,
     off_t in, off_t out, unsigned left, unsigned char *window)
 {
     struct point *next;
-    int size = WINSIZE;
+    uint32_t size = WINSIZE;
     unsigned char *compressed_chunk;
 
     /* if list is empty, create it (start with eight points) */
@@ -310,7 +341,7 @@ local struct access *addpoint(struct access *index, int bits,
     next->bits = bits;
     next->in = in;
     next->out = out;
-    next->window_size = -1; // uncompressed WINSIZE next->window
+    next->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
     next->window = malloc(WINSIZE);
     if (left)
         memcpy(next->window, window + WINSIZE - left, left);
@@ -341,9 +372,9 @@ local struct access *addpoint(struct access *index, int bits,
    returns the number of access points on success (>= 1), Z_MEM_ERROR for out
    of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
    file read error.  On success, *built points to the resulting index. */
-local int build_index(FILE *in, off_t span, struct access **built)
+local uint64_t build_index(FILE *in, off_t span, struct access **built)
 {
-    int ret;
+    uint64_t ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     struct access *index;       /* access points being generated */
@@ -447,19 +478,38 @@ local int build_index(FILE *in, off_t span, struct access **built)
    should not return a data error unless the file was modified since the index
    was generated.  extract() may also return Z_ERRNO if there is an error on
    reading or seeking the input file. */
-local int extract(FILE *in, struct access *index, off_t offset,
-                  unsigned char *buf, int len)
+local uint64_t extract(FILE *in, struct access *index, off_t offset,
+                  unsigned char *buf, uint64_t len)  // TODO: cambiar a uint64_t, y escribir en stdout, no buf si buf==NULL
 {
-    int ret, skip;
+    uint64_t ret;
+    int skip;
+    int output_to_stdout = 0;
+    int extract_all_input = 0;
+    unsigned have;
     z_stream strm;
     struct point *here;
     unsigned char input[CHUNK];
     unsigned char discard[WINSIZE];
     unsigned char *decompressed_window;
+    uint64_t initial_len = len;
 
     /* proceed only if something reasonable to do */
     if (len < 0)
         return 0;
+    if (len == 0 && buf != NULL)
+        return 0;
+
+    /* print decompression to stdout if buf == NULL */
+    if (buf == NULL) {
+        // buf of size WINSIZE > CHUNK so probably
+        // each CHUNK is totally deflated on each step
+        if (NULL == (buf = malloc(WINSIZE)))
+            return Z_ERRNO;
+        output_to_stdout = 1;
+        if (len == 0) {
+            extract_all_input = 1;
+        }
+    }
 
     /* find where in stream to start */
     here = index->list;
@@ -475,7 +525,7 @@ local int extract(FILE *in, struct access *index, off_t offset,
     strm.next_in = Z_NULL;
     ret = inflateInit2(&strm, -15);         /* raw inflate */
     if (ret != Z_OK)
-        return ret;
+        goto extract_ret;
     ret = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
     if (ret == -1)
         goto extract_ret;
@@ -492,7 +542,7 @@ local int extract(FILE *in, struct access *index, off_t offset,
     decompressed_window = decompress_chunk(here->window, &(here->window_size));
     free(here->window);
     here->window = decompressed_window;
-    here->window_size = -1; // uncompressed WINSIZE next->window
+    here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
     (void)inflateSetDictionary(&strm, here->window, WINSIZE);
 
     /* skip uncompressed bytes until offset reached, then satisfy request */
@@ -517,8 +567,28 @@ local int extract(FILE *in, struct access *index, off_t offset,
             offset = 0;
         }
 
+        if (offset == 0 && skip == 0) {         /* deflating */
+            if (output_to_stdout == 1){
+                if (extract_all_input == 0) {
+                    strm.avail_out = (len <= WINSIZE) ? len : WINSIZE;
+                } else {
+                    strm.avail_out = WINSIZE;
+                }
+            }
+        }
+
         /* uncompress until avail_out filled, or end of stream */
         do {
+            fprintf(stderr, " > ");
+            if (skip == 0 && output_to_stdout == 1) {
+                strm.next_out = buf;
+                if (extract_all_input == 0) {
+                    strm.avail_out = (len <= WINSIZE) ? len : WINSIZE;
+                } else {
+                    strm.avail_out = WINSIZE;
+                }
+            }
+            fprintf(stderr, " 2 ");
             if (strm.avail_in == 0) {
                 strm.avail_in = fread(input, 1, CHUNK, in);
                 if (ferror(in)) {
@@ -531,14 +601,45 @@ local int extract(FILE *in, struct access *index, off_t offset,
                 }
                 strm.next_in = input;
             }
+            fprintf(stderr, " 3 ");
             ret = inflate(&strm, Z_NO_FLUSH);       /* normal inflate */
             if (ret == Z_NEED_DICT)
                 ret = Z_DATA_ERROR;
             if (ret == Z_MEM_ERROR || ret == Z_DATA_ERROR)
                 goto extract_ret;
+            fprintf(stderr, "RET = %d ;", ret);
+            if (skip == 0 && output_to_stdout == 1) {
+                /* print decompression to stdout */
+                have = WINSIZE - strm.avail_out;
+                if (have > len && extract_all_input == 0) {
+                    have = len;
+                }
+                fprintf(stderr, "\noutput_to_stdout = %d, extract_all_input = %d, len = %ld; ", output_to_stdout, extract_all_input, len);
+                fprintf(stderr, "HAVE = %d ;", have);
+                if (fwrite(buf, 1, have, stdout) != have || ferror(stdout)) {
+                    (void)inflateEnd(&strm);
+                    ret = Z_ERRNO;
+                    goto extract_ret;
+                }
+                if (skip == 0) {
+                    if (extract_all_input == 0) {
+                        len -= have;
+                    } else {
+                        len += have;
+                    }
+                }
+                fprintf(stderr, "LEN = %d, SKIP = %d ;", len, skip);
+            }
             if (ret == Z_STREAM_END)
                 break;
-        } while (strm.avail_out != 0);
+        } while (
+            // skipping output, but window not completely filled
+            ( fprintf(stderr, "...while..."),strm.avail_out != 0) ||
+            // extracting to stdout and specified length not reached:
+            (skip == 0 && output_to_stdout == 1 && len > 0) ||
+            // extract the whole input (until break on Z_STREAM_END)
+            (skip == 0 && extract_all_input == 1)
+            );
 
         /* if reach end of stream, then don't keep trying to get more */
         if (ret == Z_STREAM_END)
@@ -547,19 +648,31 @@ local int extract(FILE *in, struct access *index, off_t offset,
         /* do until offset reached and requested data read, or stream ends */
     } while (skip);
 
+    fprintf(stderr, "RET FINAL= %d ;", ret);
     /* compute number of uncompressed bytes read after offset */
     ret = skip ? 0 : len - strm.avail_out;
+    if (output_to_stdout == 1) {
+        ret = initial_len - len;
+    }
+    if (extract_all_input == 1) {
+        ret = len;
+    }
+    // TODO: extract len bytes with output_to_stdout, and also set len at the end: 20190710 DONE
 
     /* clean up and return bytes read or error */
   extract_ret:
+    fprintf(stderr, "!!! RET = %d ;", ret);
     (void)inflateEnd(&strm);
+    if (output_to_stdout == 1)
+        free(buf);
     return ret;
 }
 
 
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
     struct point *here;
-    int i, temp;
+    uint64_t temp;
+    int i;
 
     ///* access point entry */
     //struct point {
@@ -578,12 +691,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     //};
 
     /* proceed only if something reasonable to do */
-    if (index->have <= 0)
-        return 0;
+    /*if (index->have <= 0)
+        return 0;*/
+    /* writing and empy index is allowed (of size 4*8 = 32 bytes) */
 
     /* write header */
-    /* 0x0 4 bytes to be compatible with .gzi for bgzip format: */
-    /* the initial counter is the number og bgzip-index registers */
+    /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
+    /* the initial uint32_t is the number of bgzip-idx registers) */
     temp = 0;
     fwrite(&temp, sizeof(temp), 1, output_file);
     /* a 64 bits readable identifier */
@@ -602,10 +716,10 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
         fwrite(&(here->window_size), sizeof(here->window_size), 1, output_file);
         fwrite(here->window, here->window_size, 1, output_file);
 
-        fprintf(stderr, "%ld >\n", here->out);
+        /*fprintf(stderr, "%ld >\n", here->out);
         fprintf(stderr, "%ld >\n", here->in);
         fprintf(stderr, "%d >\n", here->bits);
-        fprintf(stderr, "%d >\n", here->window_size);
+        fprintf(stderr, "%d >\n", here->window_size);*/
     }
 
     return 1;
@@ -615,7 +729,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
 struct access *deserialize_index_from_file( FILE *input_file ) {
     struct point *here;
     struct access *index;
-    int i;
+    uint32_t i;
     char header[4*3];
 
     ///* access point entry */
@@ -636,10 +750,10 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
 
     index = malloc(sizeof(struct access));
 
-    fread(header, 1, 4*3, input_file);
-    if (*((int *)header) != 0 ||
-        strncmp(&header[4], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
-        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[4]);
+    fread(header, 1, 4*4, input_file);
+    if (*((uint64_t *)header) != 0 ||
+        strncmp(&header[8], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
+        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[8]);
         fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
         fprintf(stderr, "File is not a valid gzip index file.\n");
         return NULL;
@@ -673,10 +787,10 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
             return NULL;
         }
 
-        fprintf(stderr, "%ld <\n", here->out);
+        /*fprintf(stderr, "%ld <\n", here->out);
         fprintf(stderr, "%ld <\n", here->in);
         fprintf(stderr, "%d <\n", here->bits);
-        fprintf(stderr, "%d <\n", here->window_size);
+        fprintf(stderr, "%d <\n", here->window_size);*/
     }
 
     return index;
@@ -688,7 +802,7 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
    the way through the uncompressed output, and writing that to stdout. */
 int main(int argc, char **argv)
 {
-    int len;
+    uint64_t len;
     off_t offset;
     FILE *in;
     struct access *index = NULL;
@@ -711,76 +825,78 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* build index */
-    len = build_index(in, SPAN, &index);
-    if (len < 0) {
-        fclose(in);
-        switch (len) {
-        case Z_MEM_ERROR:
-            fprintf(stderr, "create_index: out of memory\n");
-            break;
-        case Z_DATA_ERROR:
-            fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
-            break;
-        case Z_ERRNO:
-            fprintf(stderr, "create_index: read error on %s\n", argv[1]);
-            break;
-        default:
-            fprintf(stderr, "create_index: error %d while building index\n", len);
-        }
-        return 1;
-    }
-    fprintf(stderr, "create_index: built index with %d access points\n", len);
-
-    //.................................................
-    /* write index to appropriate index-file */
-    if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
-        fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
-        return 1;
-    }
+//    /* build index */
+//    len = build_index(in, SPAN, &index);
+//    if (len < 0) {
+//        fclose(in);
+//        switch (len) {
+//        case Z_MEM_ERROR:
+//            fprintf(stderr, "create_index: out of memory\n");
+//            break;
+//        case Z_DATA_ERROR:
+//            fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
+//            break;
+//        case Z_ERRNO:
+//            fprintf(stderr, "create_index: read error on %s\n", argv[1]);
+//            break;
+//        default:
+//            fprintf(stderr, "create_index: error %d while building index\n", len);
+//        }
+//        return 1;
+//    }
+//    fprintf(stderr, "create_index: built index with %d access points\n", len);
+//
+//    //.................................................
+//    /* write index to appropriate index-file */
+//    if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
+//        fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
+//        return 1;
+//    }
     sprintf(output_file, "%s.gzi", argv[1]);
-    index_file = fopen( output_file, "wb" );
-    if (index_file == NULL) {
-        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-        return 1;
-    }
-    /* write index to index-file */
-    if ( ! serialize_index_to_file(index_file, index) ) {
-        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-        return 1;
-    }
-    fclose(index_file);
-
+//    index_file = fopen( output_file, "wb" );
+//    if (index_file == NULL) {
+//        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
+//        return 1;
+//    }
+//    /* write index to index-file */
+//    if ( ! serialize_index_to_file(index_file, index) ) {
+//        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
+//        return 1;
+//    }
+//    fclose(index_file);
+//
     // .................................................
     /* read index from index-file */
     fprintf(stderr, "Reading index from file %s\n", output_file);
     index_file = fopen( output_file, "rb" );
-    index2 = deserialize_index_from_file(index_file);
-    if ( ! index2 ) {
+    //index2 = deserialize_index_from_file(index_file);
+    index = deserialize_index_from_file(index_file);
+    //if ( ! index2 ) {
+    if ( ! index ) {
         fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
         return 1;
     }
     fclose(index_file);
     fprintf(stderr, "Reading index finished.\n");
+//
+//    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
+//
+//    /* test: write the read index to another file, for comparison */
+//    fprintf(stderr, "Writing second index to file %s2\n", output_file);
+//    sprintf(output_file, "%s.gzi2", argv[1]);
+//    index_file = fopen( output_file, "wb" );
+//    if (index_file == NULL) {
+//        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
+//        return 1;
+//    }
+//    if ( ! serialize_index_to_file(index_file, index2) ) {
+//        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
+//        return 1;
+//    }
+//    fprintf(stderr, "Writing second index finished.\n");
+//    fclose(index_file);
 
-    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
-
-    /* test: write the read index to another file, for comparison */
-    fprintf(stderr, "Writing second index to file %s2\n", output_file);
-    sprintf(output_file, "%s.gzi2", argv[1]);
-    index_file = fopen( output_file, "wb" );
-    if (index_file == NULL) {
-        fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-        return 1;
-    }
-    if ( ! serialize_index_to_file(index_file, index2) ) {
-        fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-        return 1;
-    }
-    fprintf(stderr, "Writing second index finished.\n");
-    fclose(index_file);
-
-    return 0;
+    //return 0;
 
     // .................................................
 
@@ -788,12 +904,14 @@ int main(int argc, char **argv)
     fprintf(stderr, "points : %d\n", index->have);
     fprintf(stderr, "offset of last point : %ld\n", index->list[index->have - 1].out);
     offset = (index->list[index->have - 1].out << 1) / 3;
-    len = extract(in, index, offset, buf, CHUNK);
+    fprintf(stderr, "inflating from byte: %ld\n", offset);
+    //len = extract(in, index, offset, buf, CHUNK); // TODO: pasar a 64
+    len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
     if (len < 0)
         fprintf(stderr, "create_index: extraction failed: %s error\n",
                 len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
     else {
-        fwrite(buf, 1, len, stdout);
+        //fwrite(buf, 1, len, stdout); // TODO: pasar a 64
         fprintf(stderr, "create_index: extracted %d bytes at %ld\n", len, offset);
     }
 
