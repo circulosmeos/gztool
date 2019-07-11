@@ -74,12 +74,14 @@
 #define CHUNK 16384         /* file input buffer size */
 #define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
+#define INDEX_WINDOWS_ON_DISK
 
 /* access point entry */
 struct point {
     off_t out;             /* corresponding offset in uncompressed data */
     off_t in;              /* offset in input file of first full byte */
     uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
+    off_t window_beginning;/* offset at index file where this compressed window is stored (used #ifdef INDEX_WINDOWS_ON_DISK)*/
     uint32_t window_size;  /* size of window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
@@ -90,6 +92,7 @@ struct access {
     uint64_t size;      /* number of list entries allocated */
     uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
+    unsigned char *file_name; /* path to index file (used #ifdef INDEX_WINDOWS_ON_DISK) */
 };
 
 
@@ -127,7 +130,7 @@ static inline void *endiannes_swap_8p(void *x)
 size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
 
     size_t output = fread(ptr, size, count, stream);
-    
+
     if (endiannes_is_big()) {
         ;
     } else {
@@ -610,7 +613,28 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         (void)inflatePrime(&strm, here->bits, ret >> (8 - here->bits));
     }
     //(void)inflateSetDictionary(&strm, here->window, WINSIZE);
-    // decompress window
+    /* decompress window */
+/* #ifdef INDEX_WINDOWS_ON_DISK */
+    if (here->window == NULL) {
+        /* window data is not on memory, 
+        but we have position and size on index file, so we load it now */
+        FILE *index_file;
+        /* index not in memory: it must be read from disk */
+        if (NULL == fopen(index->file_name, "rb") ||
+            0 != fseeko(index_file, here->window_beginning, SEEK_SET)
+            ) {
+            ret = Z_ERRNO;
+            goto extract_ret;
+        }
+        here->window = malloc(here->window_size);
+        here->window_beginning = 0;
+        if ( !fread(here->window, here->window_size, 1, index_file) ) {
+            fprintf(stderr, "Error while reading index file.\n");
+            ret = Z_ERRNO;
+            goto extract_ret;
+        }
+    }
+/* #endif */
     decompressed_window = decompress_chunk(here->window, &(here->window_size));
     free(here->window);
     here->window = decompressed_window;
@@ -852,7 +876,12 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
         fread_endian(&(here->in),   sizeof(here->in),   1, input_file);
         fread_endian(&(here->bits), sizeof(here->bits), 1, input_file);
         fread_endian(&(here->window_size), sizeof(here->window_size), 1, input_file);
+#ifdef INDEX_WINDOWS_ON_DISK
+        here->window = NULL;
+        here->window_beginning = ftello(input_file);
+#else
         here->window = malloc(here->window_size);
+        here->window_beginning = 0;
         if (here->window == NULL) {
             fprintf(stderr, "Not enough memory to load index from file.\n");
             return NULL;
@@ -861,7 +890,7 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
             fprintf(stderr, "Error while reading index file.\n");
             return NULL;
         }
-
+#endif
         /*fprintf(stderr, "%ld <\n", here->out);
         fprintf(stderr, "%ld <\n", here->in);
         fprintf(stderr, "%d <\n", here->bits);
@@ -872,6 +901,9 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
     /* this field could not exist (maybe useful for growing gzip files?) */
     index->file_size = 0;
     fread_endian(&index->file_size, sizeof(index->file_size), 1, input_file);
+
+    // index->file_name will be set on caller #ifdef INDEX_WINDOWS_ON_DISK
+    index->file_name = NULL;
 
     return index;
 }
@@ -951,6 +983,7 @@ int main(int argc, char **argv)
     index_file = fopen( output_file, "rb" );
     index2 = deserialize_index_from_file(index_file);
     //index = deserialize_index_from_file(index_file);
+    index2->file_name = output_file;
     if ( ! index2 ) {
     //if ( ! index ) {
         fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
@@ -959,7 +992,7 @@ int main(int argc, char **argv)
     fclose(index_file);
     fprintf(stderr, "Reading index finished.\n");
 
-    fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
+    //fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
 
     /* test: write the read index to another file, for comparison */
     fprintf(stderr, "Writing second index to file %s2\n", output_file);
@@ -986,7 +1019,7 @@ int main(int argc, char **argv)
     offset = (index->list[index->have - 1].out << 1) / 3;
     fprintf(stderr, "inflating from byte: %ld\n", offset);
     //len = extract(in, index, offset, buf, CHUNK); // TODO: pasar a 64
-    //len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
+    len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
     len = extract(in, index, offset, NULL, 0); // TODO: pasar a 64
     if (len < 0)
         fprintf(stderr, "create_index: extraction failed: %s error\n",
@@ -998,6 +1031,7 @@ int main(int argc, char **argv)
 
     /* clean up and exit */
     free_index(index);
+    free_index(index2);
     fclose(in);
     return 0;
 }
