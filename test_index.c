@@ -52,6 +52,15 @@
    index in a file.
  */
 
+// .................................................
+// large file support (LFS) (files with size >2^31 (2 GiB) in linux, and >4 GiB in Windows)
+#define _FILE_OFFSET_BITS 64    // defining _FILE_OFFSET_BITS with the value 64 (before including
+                                // any header files) will turn off_t into a 64-bit type
+#define _LARGEFILE_SOURCE
+//#define _LARGEFILE64_SOURCE     // off64_t for fseek64
+// .................................................
+
+#include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,21 +72,22 @@
 #define SPAN 1048576L       /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
 #define CHUNK 16384         /* file input buffer size */
+#define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 
 /* access point entry */
 struct point {
-    off_t out;          /* corresponding offset in uncompressed data */
-    off_t in;           /* offset in input file of first full byte */
-    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    int window_size;    /* size of window */
+    off_t out;             /* corresponding offset in uncompressed data */
+    off_t in;              /* offset in input file of first full byte */
+    uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
+    uint32_t window_size;  /* size of window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
 
 /* access point list */
 struct access {
-    int have;           /* number of list entries filled in */
-    int size;           /* number of list entries allocated */
+    uint64_t have;      /* number of list entries filled in */
+    uint64_t size;      /* number of list entries allocated */
     struct point *list; /* allocated list */
 };
 
@@ -89,14 +99,14 @@ struct access {
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-unsigned char *compress_chunk(unsigned char *source, int *size, int level)
+unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
 {
     int ret, flush;
     unsigned have;
     z_stream strm;
     int i = 0;
-    int output_size = 0;
-    int input_size = *size;
+    uint32_t output_size = 0;
+    uint32_t input_size = *size;
     unsigned char *in, *out, *out_complete;
 
     /* allocate deflate state */
@@ -261,7 +271,7 @@ unsigned char *decompress_chunk(unsigned char *source, int *size)
 /* Deallocate an index built by build_index() */
 local void free_index(struct access *index)
 {
-    int i;
+    uint64_t i;
     if (index != NULL) {
         for(i=0; i < index->have; i++) {
             free(index->list[i].window);
@@ -274,11 +284,11 @@ local void free_index(struct access *index)
 
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
-local struct access *addpoint(struct access *index, int bits,
+local struct access *addpoint(struct access *index, uint32_t bits,
     off_t in, off_t out, unsigned left, unsigned char *window)
 {
     struct point *next;
-    int size = WINSIZE;
+    uint32_t size = WINSIZE;
     unsigned char *compressed_chunk;
 
     /* if list is empty, create it (start with eight points) */
@@ -310,7 +320,7 @@ local struct access *addpoint(struct access *index, int bits,
     next->bits = bits;
     next->in = in;
     next->out = out;
-    next->window_size = -1; // uncompressed WINSIZE next->window
+    next->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
     next->window = malloc(WINSIZE);
     if (left)
         memcpy(next->window, window + WINSIZE - left, left);
@@ -341,9 +351,9 @@ local struct access *addpoint(struct access *index, int bits,
    returns the number of access points on success (>= 1), Z_MEM_ERROR for out
    of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
    file read error.  On success, *built points to the resulting index. */
-local int build_index(FILE *in, off_t span, struct access **built)
+local uint64_t build_index(FILE *in, off_t span, struct access **built)
 {
-    int ret;
+    uint64_t ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     struct access *index;       /* access points being generated */
@@ -492,7 +502,7 @@ local int extract(FILE *in, struct access *index, off_t offset,
     decompressed_window = decompress_chunk(here->window, &(here->window_size));
     free(here->window);
     here->window = decompressed_window;
-    here->window_size = -1; // uncompressed WINSIZE next->window
+    here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
     (void)inflateSetDictionary(&strm, here->window, WINSIZE);
 
     /* skip uncompressed bytes until offset reached, then satisfy request */
@@ -559,7 +569,8 @@ local int extract(FILE *in, struct access *index, off_t offset,
 
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
     struct point *here;
-    int i, temp;
+    uint64_t temp;
+    int i;
 
     ///* access point entry */
     //struct point {
@@ -578,12 +589,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     //};
 
     /* proceed only if something reasonable to do */
-    if (index->have <= 0)
-        return 0;
+    /*if (index->have <= 0)
+        return 0;*/
+    /* writing and empy index is allowed (of size 4*8 = 32 bytes) */
 
     /* write header */
-    /* 0x0 4 bytes to be compatible with .gzi for bgzip format: */
-    /* the initial counter is the number og bgzip-index registers */
+    /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
+    /* the initial uint32_t is the number of bgzip-idx registers) */
     temp = 0;
     fwrite(&temp, sizeof(temp), 1, output_file);
     /* a 64 bits readable identifier */
@@ -615,7 +627,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
 struct access *deserialize_index_from_file( FILE *input_file ) {
     struct point *here;
     struct access *index;
-    int i;
+    uint32_t i;
     char header[4*3];
 
     ///* access point entry */
@@ -636,10 +648,10 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
 
     index = malloc(sizeof(struct access));
 
-    fread(header, 1, 4*3, input_file);
-    if (*((int *)header) != 0 ||
-        strncmp(&header[4], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
-        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[4]);
+    fread(header, 1, 4*4, input_file);
+    if (*((uint64_t *)header) != 0 ||
+        strncmp(&header[8], GZIP_INDEX_IDENTIFIER_STRING, 4*2) != 0) {
+        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[8]);
         fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
         fprintf(stderr, "File is not a valid gzip index file.\n");
         return NULL;
@@ -681,7 +693,6 @@ struct access *deserialize_index_from_file( FILE *input_file ) {
 
     return index;
 }
-
 
 /* Demonstrate the use of build_index() and extract() by processing the file
    provided on the command line, and the extracting 16K from about 2/3rds of
