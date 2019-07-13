@@ -75,14 +75,13 @@
 #define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 #define GZIP_INDEX_HEADER_SIZE 16
-#define INDEX_WINDOWS_ON_DISK
 
 /* access point entry */
 struct point {
     off_t out;             /* corresponding offset in uncompressed data */
     off_t in;              /* offset in input file of first full byte */
     uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
-    off_t window_beginning;/* offset at index file where this compressed window is stored (used #ifdef INDEX_WINDOWS_ON_DISK)*/
+    off_t window_beginning;/* offset at index file where this compressed window is stored */
     uint32_t window_size;  /* size of window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
@@ -93,7 +92,7 @@ struct access {
     uint64_t size;      /* number of list entries allocated */
     uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
-    unsigned char *file_name; /* path to index file (used #ifdef INDEX_WINDOWS_ON_DISK) */
+    unsigned char *file_name; /* path to index file */
 };
 
 
@@ -195,14 +194,14 @@ size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
+unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int level)
 {
     int ret, flush;
     unsigned have;
     z_stream strm;
-    int i = 0;
-    uint32_t output_size = 0;
-    uint32_t input_size = *size;
+    uint64_t i = 0;
+    uint64_t output_size = 0;
+    uint64_t input_size = *size;
     unsigned char *in, *out, *out_complete;
 
     /* allocate deflate state */
@@ -220,7 +219,7 @@ unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
     /* compress until end of input */
     do {
         strm.avail_in = ((i + CHUNK) < input_size) ? CHUNK : (input_size - i);
-        fprintf(stderr, "strm.avail_in = %d (i=%d) (input_size=%d)\n", strm.avail_in, i, input_size);
+        fprintf(stderr, "strm.avail_in = %d (i=%ld) (input_size=%ld)\n", strm.avail_in, i, input_size);
         if ( memcpy(in, source + i, strm.avail_in) == NULL ) {
             (void)deflateEnd(&strm);
             goto compress_chunk_error;
@@ -247,7 +246,7 @@ unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
             }
             output_size += have;
         } while (strm.avail_out == 0);
-        fprintf(stderr, "output_size = %d\n", output_size);
+        fprintf(stderr, "output_size = %ld\n", output_size);
         assert(strm.avail_in == 0);     /* all input will be used */
 
         /* done when last data in source processed */
@@ -278,14 +277,14 @@ unsigned char *compress_chunk(unsigned char *source, uint32_t *size, int level)
    invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
    the version of the library linked do not match, or Z_ERRNO if there
    is an error reading or writing the files. */
-unsigned char *decompress_chunk(unsigned char *source, int *size)
+unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 {
     int ret;
     unsigned have;
     z_stream strm;
-    int i = 0;
-    int output_size = 0;
-    int input_size = *size;
+    uint64_t i = 0;
+    uint64_t output_size = 0;
+    uint64_t input_size = *size;
     unsigned char *in, *out, *out_complete;
 
     /* allocate inflate state */
@@ -309,7 +308,7 @@ unsigned char *decompress_chunk(unsigned char *source, int *size)
             (void)inflateEnd(&strm);
             goto decompress_chunk_error;
         }
-        fprintf(stderr, "strm.avail_in = %d (i=%d) (input_size=%d)\n", strm.avail_in, i, input_size);
+        fprintf(stderr, "strm.avail_in = %d (i=%ld) (input_size=%ld)\n", strm.avail_in, i, input_size);
         if (strm.avail_in == 0)
             break;
         strm.next_in = in;
@@ -340,7 +339,7 @@ unsigned char *decompress_chunk(unsigned char *source, int *size)
             }
             output_size += have;
         } while (strm.avail_out == 0);
-        fprintf(stderr, "output_size = %d\n", output_size);
+        fprintf(stderr, "output_size = %ld\n", output_size);
 
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);
@@ -385,7 +384,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     off_t in, off_t out, unsigned left, unsigned char *window)
 {
     struct point *next;
-    uint32_t size = WINSIZE;
+    uint64_t size = WINSIZE;
     unsigned char *compressed_chunk;
 
     /* if list is empty, create it (start with eight points) */
@@ -433,6 +432,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     } 
     free(next->window);
     next->window = compressed_chunk;
+    /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
     next->window_size = size;
 
     /* return list, possibly reallocated */
@@ -618,7 +618,6 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         (void)inflatePrime(&strm, here->bits, ret >> (8 - here->bits));
     }
 
-/* #ifdef INDEX_WINDOWS_ON_DISK */
 fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here->window_beginning);
     if (here->window == NULL && here->window_beginning != 0) {
         /* index' window data is not on memory, 
@@ -643,11 +642,12 @@ fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here-
         }
         fclose(index_file);
     }
-/* #endif */
 fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
     if (here->window_size != UNCOMPRESSED_WINDOW) {
+        /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+        uint64_t window_size = here->window_size;
         /* window is compressed on memory, so decompress it */
-        decompressed_window = decompress_chunk(here->window, &(here->window_size));
+        decompressed_window = decompress_chunk(here->window, &window_size);
         free(here->window);
         here->window = decompressed_window;
         here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
