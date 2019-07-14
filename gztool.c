@@ -66,6 +66,9 @@
 #include <string.h>
 #include <assert.h>
 #include "zlib.h"
+#include <unistd.h> // getopt(), access()
+#include <ctype.h>  // isprint()
+
 
 #define local static
 
@@ -363,6 +366,22 @@ unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 }
 
 
+/* Allocate an index and fill with empty values */
+local struct access *create_empty_index()
+{
+    struct access *index;
+    if ( NULL == ( index = malloc(sizeof(struct access)) ) ) {
+        return NULL;
+    }
+    index->have = 0;
+    index->size = 0;
+    index->file_size = 0;
+    index->list = NULL;
+    index->file_name = NULL;
+    return index;
+}
+
+
 /* Deallocate an index built by build_index() */
 local void free_index(struct access *index)
 {
@@ -378,6 +397,19 @@ local void free_index(struct access *index)
 }
 
 
+/* fill pointers of and index->list with NULL
+   so that free_index() can proceed on any contingency */
+local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
+{
+    uint64_t i;
+    for (i=from; i++; i<to) {
+        index->list[i].window = NULL;
+        index->list[i].window_size = 0;
+    }
+    return;
+}
+
+
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
 local struct access *addpoint(struct access *index, uint32_t bits,
@@ -389,9 +421,10 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 
     /* if list is empty, create it (start with eight points) */
     if (index == NULL) {
-        index = malloc(sizeof(struct access));
+        index = create_empty_index();
         if (index == NULL) return NULL;
         index->list = malloc(sizeof(struct point) << 3);
+        empty_index_list( index, 0, 8 );
         if (index->list == NULL) {
             free(index);
             return NULL;
@@ -409,6 +442,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
             return NULL;
         }
         index->list = next;
+        empty_index_list( index, index->have + 1, index->size );
     }
 
     /* fill in entry and increment how many we have */
@@ -545,6 +579,7 @@ fprintf(stderr, "index->file_size = %ld\n", totout);
     (void)inflateEnd(&strm);
     if (index != NULL)
         free_index(index);
+    *built = NULL;
     return ret;
 }
 
@@ -843,7 +878,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     }
 
     /* write size of uncompressed file (useful for bgzip files) */
-    fwrite_endian(&index->file_size, sizeof(index->file_size), 1, output_file);
+    fwrite_endian(&(index->file_size), sizeof(index->file_size), 1, output_file);
 
     return 1;
 }
@@ -871,28 +906,31 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     //    struct point *list; /* allocated list */
     //};
 
-    index = malloc(sizeof(struct access));
+    index = create_empty_index();
 
     fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file);
     if (*((uint64_t *)header) != 0 ||
         strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
-        fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[8]);
-        fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
+        //fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[8]);
+        //fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
         fprintf(stderr, "File is not a valid gzip index file.\n");
+        free_index(index);
         return NULL;
     }
 
-    fread_endian(&index->have, sizeof(index->have), 1, input_file);
+    fread_endian(&(index->have), sizeof(index->have), 1, input_file);
     if (index->have <= 0) {
         fprintf(stderr, "Index file contains no indexes.\n");
+        free_index(index);
         return NULL;
     }
 
     // index->size should be equal to index->have, but this isn't checked
-    fread_endian(&index->size, sizeof(index->size), 1, input_file);
+    fread_endian(&(index->size), sizeof(index->size), 1, input_file);
 
     // create the list of points
     index->list = malloc(sizeof(struct point) * index->size);
+    empty_index_list( index, 0, index->size );
 
     for (i = 0; i < index->size; i++) {
         here = &(index->list[i]);
@@ -903,6 +941,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         if ( load_windows == 0 ) {
             here->window = NULL;
             here->window_beginning = ftello(input_file);
+            // and position into file as if read had occur
+            fseeko(input_file, here->window_size, SEEK_CUR);
         } else {
             here->window = malloc(here->window_size);
             here->window_beginning = 0;
@@ -924,7 +964,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     /* read size of uncompressed file (useful for bgzip files) */
     /* this field may not exist (maybe useful for growing gzip files?) */
     index->file_size = 0;
-    fread_endian(&index->file_size, sizeof(index->file_size), 1, input_file);
+    fread_endian(&(index->file_size), sizeof(index->file_size), 1, input_file);
 
 
     index->file_name = malloc( strlen(file_name) + 1 );
@@ -947,192 +987,241 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
    the way through the uncompressed output, and writing that to stdout. */
 int main(int argc, char **argv)
 {
+
+
+    // variables for used for the different actions:
     uint64_t len;
     off_t offset;
     FILE *in;
     struct access *index = NULL;
     unsigned char buf[CHUNK];
-    // output:
+    unsigned char *file_name = NULL;
     FILE *index_file = NULL;
-    int MAX_PATH_LENGTH = 265;
-    char output_file[MAX_PATH_LENGTH];
-    //char *output_file="TEST.gz.gzi";
-    sprintf(output_file, "%s.gzi", argv[1]);
 
-    //struct access *index2 = NULL; // temp
-    int TEST, TEST_OUT;
+    // variables for grabbing the options:
+    uint64_t extract_from_byte = 0;
+    unsigned char *index_filename = NULL;
+    int continue_on_error = 0;
+    int index_filename_indicated = 0;
+    int force_overwriting = 0;
 
-    /* open input file */
-    if (argc != 2) {
-        fprintf(stderr, "usage: zran file.gz\n");
-        return 1;
+    enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 }
+        ret_value;
+    enum ACTION
+        { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
+          ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP }
+        action;
+
+    int opt = 0;
+    int i;
+    int actions_set = 0;
+
+    action = ACT_NOT_SET;
+    ret_value = EXIT_OK;
+    while ((opt = getopt(argc, argv, "b:cdefhiI:l")) != -1)
+        switch(opt) {
+            // help
+            case 'h':
+                // TODO
+                //print_help();
+                return EXIT_OK;
+            // `-b` extracts data from indicated position byte in uncompressed stream of <FILE>
+            case 'b':
+                // TODO: pass to strtoll() checking 0 and 0x
+                extract_from_byte = atoll(optarg);
+                // read from stdin and output to stdout
+                action = ACT_EXTRACT_FROM_BYTE;
+                actions_set++;
+                // TODO
+                break;
+            // `-c` compress <FILE> (or stdin if none) to stdout
+            case 'c':
+                // TODO: check that compress_chunk() can be called in CHUNK sizes and decompress_chunk() inflates that
+                action = ACT_COMPRESS_CHUNK;
+                actions_set++;
+                // TODO
+                break;
+            // `-d` decompress <FILE> (or stdin if none) to stdout
+            case 'd':
+                // TODO: check that decompress_chunk() can be called in CHUNK sizes and complete inflation is correct
+                action = ACT_DECOMPRESS_CHUNK;
+                actions_set++;
+                // TODO
+                break;
+            // `-e` continues on error if multiple input files indicated
+            case 'e':
+                continue_on_error = 1;
+                break;
+            // do not overwrite files unless `-f` is indicated
+            case 'f':
+                force_overwriting = 1;
+                break;
+            // `-i` creates index for <FILE>
+            case 'i':
+                action = ACT_CREATE_INDEX;
+                actions_set++;
+                // TODO
+                break;
+            // list number of bytes, but not 0 valued
+            // `-I` creates index for <FILE> with name <INDEX_FILE>
+            case 'I':
+                // TODO: do not overwrite files unless `-f` is indicated
+                index_filename_indicated = 1;
+                index_filename = malloc( strlen(optarg) + 1 );
+                memcpy( index_filename, optarg, strlen(optarg) + 1 );
+                // action = ACT_CREATE_INDEX but only if no other option indicated
+                // TODO
+                break;
+            // `-l` list info of index <FILE>
+            case 'l':
+                action = ACT_LIST_INFO;
+                actions_set++;
+                // TODO
+                break;
+            case '?':
+                if (isprint (optopt)) {
+                    fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                    // TODO
+                    //print_help();
+                } else
+                    fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+                return EXIT_INVALID_OPTION;
+            default:
+                abort ();
+        }
+
+    // Checking parameter merging and absence
+    if ( actions_set > 1 ) {
+        fprintf(stderr, "Please, do not merge parameters `-bcdil`.\nAborted.\n" );
+        return EXIT_INVALID_OPTION;
     }
-    in = fopen(argv[1], "rb");
-    if (in == NULL) {
-        fprintf(stderr, "create_index: could not open %s for reading\n", argv[1]);
-        return 1;
-    }
-
-    TEST = 4+16;
-    TEST_OUT = 0;
-// -------------------------------------------------------------------------------
-    if (TEST & 1) {
-        fprintf(stderr, "\t[ 1 ]\a\n");
-        /* build index */
-        len = build_index(in, SPAN, &index);
-        if (len < 0) {
-           fclose(in);
-           switch (len) {
-           case Z_MEM_ERROR:
-               fprintf(stderr, "create_index: out of memory\n");
-               break;
-           case Z_DATA_ERROR:
-               fprintf(stderr, "create_index: compressed data error in %s\n", argv[1]);
-               break;
-           case Z_ERRNO:
-               fprintf(stderr, "create_index: read error on %s\n", argv[1]);
-               break;
-           default:
-               fprintf(stderr, "create_index: error %ld while building index\n", len);
-           }
-           return 1;
-        }
-        fprintf(stderr, "create_index: built index with %ld access points\n", len);
-
-        if (TEST_OUT & 1) {
-            fclose(in);
-            free_index(index);
-            return 0;
-        }
-    }
-
-// -------------------------------------------------------------------------------
-    if (TEST & 2) {
-        fprintf(stderr, "\t[ 2 ]\a\a\n");
-        /* write index to appropriate index-file */
-        if (strlen(argv[1]) > (MAX_PATH_LENGTH - 5)) {
-           fprintf(stderr, "create_index: cannot write %s.gzi: PATH too large\n", argv[1]);
-           return 1;
-        }
-        index_file = fopen( output_file, "wb" );
-        if (index_file == NULL) {
-           fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-           return 1;
-        }
-        /* write index to index-file */
-        if ( ! serialize_index_to_file(index_file, index) ) {
-           fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-           return 1;
-        }
-        //fclose(index_file);
-
-        if (TEST_OUT & 2) {
-            fclose(in);
-            fclose(index_file);
-            free_index(index);
-            return 0;
-        }
-    }
-
-// -------------------------------------------------------------------------------
-    if (TEST & 4) {
-        fprintf(stderr, "\t[ 4 ]\a\a\a\a\n");
-        /* read index from index-file */
-        if (NULL != index)
-            free_index( index );
-        fprintf(stderr, "Reading index from file %s\n", output_file);
-        if (NULL != index_file)
-            fclose(index_file);
-        index_file = fopen( output_file, "rb" );
-        //index2 = deserialize_index_from_file(index_file, 1, output_file);
-        /*
-        if deserialize_index_from_file(, 0,) then TEST & 8 cannot be called!
-        because index is incomplete on memory. It'll be completed when used
-        on calling to extract().
-        */
-        index = deserialize_index_from_file(index_file, 0, output_file);
-        //if ( ! index2 ) {
-        if ( ! index ) {
-            fprintf(stderr, "create_index: could not read index from file %s\n", output_file);
-            return 1;
-        }
-        fprintf(stderr, "Reading index finished.\n");
-
-        if (TEST_OUT & 4) {
-            fclose(in);
-            fclose(index_file);
-            free_index(index);
-            return 0;
-        }
-
-        //fprintf(stderr, "index == index2 : %d\n", memcmp(index->list[0].window, index2->list[0].window, index->list[0].window_size));
-    }
-
-// -------------------------------------------------------------------------------
-    if (TEST & 8) {
-        fprintf(stderr, "\t[ 8 ]\a\a\a\a\a\a\a\a\n");
-        /* test: write the read index to another file, for comparison */
-        fprintf(stderr, "Writing second index to file %s2\n", output_file);
-        if (NULL != index_file)
-            fclose(index_file);
-        sprintf(output_file, "%s.gzi2", argv[1]);
-        index_file = fopen( output_file, "wb" );
-        //index_file = fopen( "TEST.gz.gzi2", "wb" );
-        if (index_file == NULL) {
-            fprintf(stderr, "create_index: could not open %s for writing\n", output_file);
-            return 1;
-        }
-        if ( ! serialize_index_to_file(index_file, index) ) {
-            fprintf(stderr, "create_index: could not write index to file %s\n", output_file);
-            return 1;
-        }
-        fprintf(stderr, "Writing second index finished.\n");
-        fclose(index_file);
-
-        if (TEST_OUT & 8) {
-            fclose(in);
-            fclose(index_file);
-            free_index(index);
-            return 0;
+    if ( actions_set == 0 ) {
+        // `-I <FILE>` is equivalent to `-i -I <FILE>`
+        if ( action == ACT_NOT_SET && index_filename_indicated  == 1 ) {
+            action = ACT_CREATE_INDEX;
+            if ( (optind + 1) < argc ) {
+                // too much files indicated to use `-I`
+                fprintf(stderr, "`-I` is incompatible with multiple input files.\nAborted.\n" );
+                return EXIT_INVALID_OPTION;
+            }
+        } else {
+            fprintf(stderr, "Please, indicate one parameter of `-bcdil`.\nAborted.\n" );
+            return EXIT_INVALID_OPTION;
         }
     }
 
-// -------------------------------------------------------------------------------
-    if (TEST & 16) {
-        fprintf(stderr, "\t[ 16 ]\a\a\a\a\a\a\a\a\a\a\a\a\a\a\a\a\n");
-        /* use index by reading some bytes from an arbitrary offset */
-        if (NULL != index_file)
-            fclose(index_file);
-        fprintf(stderr, "points : %ld\n", index->have);
-        fprintf(stderr, "offset of last point : %ld\n", index->list[index->have - 1].out);
-        offset = (index->list[index->have - 1].out << 1) / 3;
-        fprintf(stderr, "inflating from byte: %ld\n", offset);
-        len = extract(in, index, offset, buf, CHUNK); // TODO: pasar a 64
-        //len = extract(in, index, offset, NULL, CHUNK*100); // TODO: pasar a 64
-        fprintf(stderr, "create_index: test finished.\n");
-        if (len < 0)
-            fprintf(stderr, "create_index: extraction failed: %s error\n",
-                    len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
-        else {
-            //fwrite(buf, 1, len, stdout); // TODO: pasar a 64
-            fprintf(stderr, "create_index: extracted %ld bytes at %ld\n", len, offset);
-        }
-        fprintf(stderr, "create_index: test start.\n");
-        len = extract(in, index, offset, NULL, 0); // TODO: pasar a 64
-        fprintf(stderr, "create_index: test finished.\n");
-        if (len < 0)
-            fprintf(stderr, "create_index: extraction failed: %s error\n",
-                    len == Z_MEM_ERROR ? "out of memory" : "input corrupted");
-        else {
-            //fwrite(buf, 1, len, stdout); // TODO: pasar a 64
-            fprintf(stderr, "create_index: extracted %ld bytes at %ld\n", len, offset);
+    if (optind == argc || argc == 1) {
+        // file input is stdin
+        // TODO: actions
+fprintf(stderr, "> > > > >\n");
+        switch ( action ) {
+            case ACT_EXTRACT_FROM_BYTE:
+                fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n" );
+                return EXIT_INVALID_OPTION;
+            // TODO ...
         }
 
-        /* clean up and exit */
-        fclose(in);
-        free_index(index);
-        //free_index(index2);
-        return 0;
+    } else {
+
+        for (i = optind; i < argc; i++) {
+
+            file_name = argv[i];
+
+            // if no index filename is set, it is derived from each <FILE> parameter
+            if ( 0 == index_filename_indicated ) {
+                if ( NULL != index_filename ) {
+                    free(index_filename);
+                }
+                index_filename = malloc( strlen(argv[i]) + 4 + 1 );
+                sprintf(index_filename, "%s.gzi", argv[i]);
+            }
+
+            if ( force_overwriting == 0 &&
+                 access( index_filename, F_OK ) != -1 ) {
+                // index file already exists
+                fprintf( stderr, "Index file %s already exists.\nAborted.\n", index_filename );
+                return EXIT_GENERIC_ERROR;
+            }
+
+            // "-bil" options can accept multiple files
+            switch ( action ) {
+                case ACT_EXTRACT_FROM_BYTE:
+                    break;
+                    // TODO
+                    // ...
+
+                case ACT_CREATE_INDEX:
+                    // open <FILE>:
+                    fprintf( stderr, "Processing '%s' ...\n", file_name );
+                    in = fopen( file_name, "rb" );
+                    if ( in == NULL ) {
+                        fprintf( stderr, "Could not open %s for reading.\nAborted\n", file_name );
+                        return EXIT_GENERIC_ERROR;
+                    }
+                    // compute index:
+                    len = build_index( in, SPAN, &index );
+                    fclose(in);
+                    if ( len < 0 ) {
+                       fclose( in );
+                       switch ( len ) {
+                       case Z_MEM_ERROR:
+                           fprintf( stderr, "ERROR: Out of memory.\n" );
+                           break;
+                       case Z_DATA_ERROR:
+                           fprintf( stderr, "ERROR: Compressed data error in %s.\n", file_name );
+                           break;
+                       case Z_ERRNO:
+                           fprintf( stderr, "ERROR: Read error on %s.\n", file_name );
+                           break;
+                       default:
+                           fprintf( stderr, "ERROR: Error %ld while building index.\n", len );
+                       }
+                       return EXIT_GENERIC_ERROR;
+                    }
+                    fprintf(stderr, "Built index with %ld access points.\n", len);
+                    // write index to index file:
+                    index_file = fopen( index_filename, "wb" );
+                    if ( NULL == index_file || 
+                         ! serialize_index_to_file( index_file, index ) ) {
+                        fprintf( stderr, "Could not write index to file '%s'.\n", index_filename );
+                        if ( continue_on_error == 0 )
+                            ret_value = EXIT_GENERIC_ERROR;
+                    }
+                    // free resources:
+                    if ( NULL != index )
+                        free_index( index );
+                    if ( ret_value != EXIT_OK )
+                        return ret_value;
+
+                case ACT_LIST_INFO:
+                    // open index file:
+                    fprintf( stderr, "Checking index file '%s' ...\n", file_name );
+                    in = fopen( file_name, "rb" );
+                    if ( in == NULL ) {
+                        fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
+                        return EXIT_GENERIC_ERROR;
+                    }
+                    index = deserialize_index_from_file( in, 0, file_name );
+                    if ( ! index ) {
+                        fprintf(stderr, "Could not read index from file '%s'.\n", file_name);
+                        if ( continue_on_error == 0 )
+                            ret_value = EXIT_GENERIC_ERROR;
+                    } else {
+                        fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
+                        if (index->file_size != 0)
+                            fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
+                    }
+                    // free resources:
+                    if ( NULL != index )
+                        free_index( index );
+                    if ( ret_value != EXIT_OK )
+                        return ret_value;
+
+                // TODO: actions
+                // ACTION( argv[i] );
+            }
+        }
+
     }
 
 }
