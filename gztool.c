@@ -85,7 +85,7 @@ struct point {
     off_t in;              /* offset in input file of first full byte */
     uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
     off_t window_beginning;/* offset at index file where this compressed window is stored */
-    uint32_t window_size;  /* size of window */
+    uint32_t window_size;  /* size of (compressed) window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
 
@@ -1013,7 +1013,7 @@ int main(int argc, char **argv)
         action;
 
     int opt = 0;
-    int i;
+    int i, j;
     int actions_set = 0;
 
     action = ACT_NOT_SET;
@@ -1192,6 +1192,7 @@ fprintf(stderr, "> > > > >\n");
                         free_index( index );
                     if ( ret_value != EXIT_OK )
                         return ret_value;
+                    break;
 
                 case ACT_LIST_INFO:
                     // open index file:
@@ -1210,12 +1211,18 @@ fprintf(stderr, "> > > > >\n");
                         fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
                         if (index->file_size != 0)
                             fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
+                        fprintf( stderr, "List of points:\n" );
+                        for (j=0; j<index->have; j++) {
+                            fprintf( stderr, "@%ld (%dB), ", index->list[j].out, index->list[j].window_size );
+                        }
+                        fprintf( stderr, "\n" );
                     }
                     // free resources:
                     if ( NULL != index )
                         free_index( index );
                     if ( ret_value != EXIT_OK )
                         return ret_value;
+                    break;
 
                 // TODO: actions
                 // ACTION( argv[i] );
