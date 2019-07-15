@@ -69,6 +69,15 @@
 #include <unistd.h> // getopt(), access()
 #include <ctype.h>  // isprint()
 
+// sets binary mode for stdin in Windows
+#define STDOUT 1
+#ifdef _WIN32
+# include <io.h>
+# include <fcntl.h>
+# define SET_BINARY_MODE(handle) setmode(handle, O_BINARY)
+#else
+# define SET_BINARY_MODE(handle) ((void)0)
+#endif
 
 #define local static
 
@@ -594,7 +603,7 @@ fprintf(stderr, "index->file_size = %ld\n", totout);
 local uint64_t extract(FILE *in, struct access *index, off_t offset,
                   unsigned char *buf, uint64_t len)  // TODO: cambiar a uint64_t, y escribir en stdout, no buf si buf==NULL
 {
-    uint64_t ret;
+    uint64_t ret; // TODO: signed for fseeko ? and signed for zlib returns
     int skip;
     int output_to_stdout = 0;
     int extract_all_input = 0;
@@ -621,6 +630,7 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
         if (NULL == (buf = malloc(WINSIZE)))
             return Z_ERRNO;
         output_to_stdout = 1;
+        SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         if (len == 0) {
             extract_all_input = 1;
         }
@@ -629,7 +639,7 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
     /* find where in stream to start */
     here = index->list;
     ret = index->have;
-    while (--ret && here[1].out <= offset)
+    while (--ret && ret!=0 && here[1].out <= offset)
         here++;
 
     /* initialize file and inflate state to start there */
@@ -639,8 +649,12 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
     ret = inflateInit2(&strm, -15);         /* raw inflate */
-    if (ret != Z_OK)
-        goto extract_ret;
+fprintf(stderr, "\n\n>>>>>>>>>%ld\n\n",here->out);
+    if (ret != Z_OK) {
+        if (output_to_stdout == 1)
+            free(buf);
+        return ret;
+    }
     ret = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
     if (ret == -1)
         goto extract_ret;
@@ -990,7 +1004,7 @@ int main(int argc, char **argv)
 
 
     // variables for used for the different actions:
-    uint64_t len;
+    int long long len; // TODO: make uint64_t again: extract() SHOULD NOT return negative values, and neither build_index() PATCH!
     off_t offset;
     FILE *in;
     struct access *index = NULL;
@@ -1113,7 +1127,7 @@ int main(int argc, char **argv)
     if (optind == argc || argc == 1) {
         // file input is stdin
         // TODO: actions
-fprintf(stderr, "> > > > >\n");
+fprintf(stderr, "ERROR: lack of file operand > > > > >\n");
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
                 fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n" );
@@ -1127,7 +1141,7 @@ fprintf(stderr, "> > > > >\n");
 
             file_name = argv[i];
 
-            // if no index filename is set, it is derived from each <FILE> parameter
+            // if no index filename is set (`-I`), it is derived from each <FILE> parameter
             if ( 0 == index_filename_indicated ) {
                 if ( NULL != index_filename ) {
                     free(index_filename);
@@ -1136,16 +1150,61 @@ fprintf(stderr, "> > > > >\n");
                 sprintf(index_filename, "%s.gzi", argv[i]);
             }
 
+            // free previous loop's resources
+            if ( NULL != index ) {
+                free_index( index );
+            }
+            if ( NULL != index_file ) {
+                fclose( index_file );
+            }
+
             if ( force_overwriting == 0 &&
+                 action == ACT_CREATE_INDEX &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
-                fprintf( stderr, "Index file %s already exists.\nAborted.\n", index_filename );
-                return EXIT_GENERIC_ERROR;
+                fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
+                if ( continue_on_error == 1 ) {
+                    continue;
+                } else {
+                    fprintf( stderr, "Aborted.\n" );
+                    return EXIT_GENERIC_ERROR;
+                }
             }
 
             // "-bil" options can accept multiple files
             switch ( action ) {
                 case ACT_EXTRACT_FROM_BYTE:
+fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_byte);
+                    // open <FILE>:
+                    in = fopen( file_name, "rb" );
+                    if ( NULL == in ) {
+                        fprintf( stderr, "Could not open '%s' for reading.\nAborted\n", file_name );
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
+                    }
+                    // open index file (filename derived from <FILE> unless indicated with `-I`)
+                    index_file = fopen( index_filename, "rb" );
+                    if ( NULL == in ) {
+                        fprintf( stderr, "Could not open '%s' for reading.\nAborted\n", index_filename );
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
+                    }
+                    // deserialize_index_from_file
+                    index = deserialize_index_from_file( index_file, 0, index_filename );
+                    if ( ! index ) {
+                        fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
+                    }
+                    len = extract( in, index, extract_from_byte, NULL, 0 );
+                    if (len < 0) {
+                        fprintf( stderr, "Data extraction failed: %s error\n",
+                                len == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
+                        ret_value = EXIT_GENERIC_ERROR;
+                    } else {
+                        fprintf( stderr, "Extracted %lld bytes from '%s' to stdout.\n", len, file_name );
+                    }
+                    fclose( in );
                     break;
                     // TODO
                     // ...
@@ -1154,9 +1213,10 @@ fprintf(stderr, "> > > > >\n");
                     // open <FILE>:
                     fprintf( stderr, "Processing '%s' ...\n", file_name );
                     in = fopen( file_name, "rb" );
-                    if ( in == NULL ) {
+                    if ( NULL == in ) {
                         fprintf( stderr, "Could not open %s for reading.\nAborted\n", file_name );
-                        return EXIT_GENERIC_ERROR;
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
                     }
                     // compute index:
                     len = build_index( in, SPAN, &index );
@@ -1174,11 +1234,12 @@ fprintf(stderr, "> > > > >\n");
                            fprintf( stderr, "ERROR: Read error on %s.\n", file_name );
                            break;
                        default:
-                           fprintf( stderr, "ERROR: Error %ld while building index.\n", len );
+                           fprintf( stderr, "ERROR: Error %lld while building index.\n", len );
                        }
-                       return EXIT_GENERIC_ERROR;
+                       ret_value = EXIT_GENERIC_ERROR;
+                       break;
                     }
-                    fprintf(stderr, "Built index with %ld access points.\n", len);
+                    fprintf(stderr, "Built index with %lld access points.\n", len);
                     // write index to index file:
                     index_file = fopen( index_filename, "wb" );
                     if ( NULL == index_file || 
@@ -1187,20 +1248,16 @@ fprintf(stderr, "> > > > >\n");
                         if ( continue_on_error == 0 )
                             ret_value = EXIT_GENERIC_ERROR;
                     }
-                    // free resources:
-                    if ( NULL != index )
-                        free_index( index );
-                    if ( ret_value != EXIT_OK )
-                        return ret_value;
                     break;
 
                 case ACT_LIST_INFO:
                     // open index file:
                     fprintf( stderr, "Checking index file '%s' ...\n", file_name );
                     in = fopen( file_name, "rb" );
-                    if ( in == NULL ) {
+                    if ( NULL == in ) {
                         fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
-                        return EXIT_GENERIC_ERROR;
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
                     }
                     index = deserialize_index_from_file( in, 0, file_name );
                     if ( ! index ) {
@@ -1211,23 +1268,38 @@ fprintf(stderr, "> > > > >\n");
                         fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
                         if (index->file_size != 0)
                             fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
-                        fprintf( stderr, "List of points:\n" );
+                        fprintf( stderr, "\tList of points:\n\t" );
                         for (j=0; j<index->have; j++) {
                             fprintf( stderr, "@%ld (%dB), ", index->list[j].out, index->list[j].window_size );
                         }
                         fprintf( stderr, "\n" );
                     }
-                    // free resources:
-                    if ( NULL != index )
-                        free_index( index );
-                    if ( ret_value != EXIT_OK )
-                        return ret_value;
+                    fclose( in );
                     break;
 
                 // TODO: actions
                 // ACTION( argv[i] );
             }
+
+            if ( continue_on_error = 0 &&
+                 ret_value != EXIT_OK ) {
+                // break the for loop
+                break;
+            }
+
         }
+
+        // final freeing of resources
+        if ( NULL != index ) {
+            free_index( index );
+        }
+        if ( NULL != index_filename ) {
+            free( index_filename );
+        }        if ( NULL != index_file ) {
+            fclose( index_file );
+        }
+
+        return ret_value;
 
     }
 
