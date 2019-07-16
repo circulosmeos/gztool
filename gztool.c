@@ -107,6 +107,11 @@ struct access {
     unsigned char *file_name; /* path to index file */
 };
 
+/* generic struct to return a function error code and a value */
+struct returned_output {
+    uint64_t value;
+    int error;
+};
 
 /**************
  * Endianness *
@@ -139,7 +144,7 @@ static inline void *endiannes_swap_8p(void *x)
 }
 
 // fread substitute for endianness management of 4 and 8 bytes words
-size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+local size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
 
     size_t output = fread(ptr, size, count, stream);
 
@@ -164,7 +169,7 @@ size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
 }
 
 // fread substitute for endianness management of 4 and 8 bytes words
-size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+local size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
 
     size_t output;
     void *endian_ptr;
@@ -206,7 +211,7 @@ size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int level)
+local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int level)
 {
     int ret, flush;
     unsigned have;
@@ -289,7 +294,7 @@ unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int level)
    invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
    the version of the library linked do not match, or Z_ERRNO if there
    is an error reading or writing the files. */
-unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
+local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 {
     int ret;
     unsigned have;
@@ -491,9 +496,9 @@ local struct access *addpoint(struct access *index, uint32_t bits,
    returns the number of access points on success (>= 1), Z_MEM_ERROR for out
    of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
    file read error.  On success, *built points to the resulting index. */
-local uint64_t build_index(FILE *in, off_t span, struct access **built)
+local struct returned_output build_index(FILE *in, off_t span, struct access **built)
 {
-    uint64_t ret;
+    struct returned_output ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     struct access *index;       /* access points being generated */
@@ -501,14 +506,17 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
     unsigned char input[CHUNK];
     unsigned char window[WINSIZE];
 
+    ret.value = 0;
+    ret.error = Z_OK;
+
     /* initialize inflate */
     strm.zalloc = Z_NULL;
     strm.zfree = Z_NULL;
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
-    ret = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding */
-    if (ret != Z_OK)
+    ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding */
+    if (ret.error != Z_OK)
         return ret;
 
     /* inflate the input, maintain a sliding window, and build an index -- this
@@ -521,11 +529,11 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
         /* get some compressed data from input file */
         strm.avail_in = fread(input, 1, CHUNK, in);
         if (ferror(in)) {
-            ret = Z_ERRNO;
+            ret.error = Z_ERRNO;
             goto build_index_error;
         }
         if (strm.avail_in == 0) {
-            ret = Z_DATA_ERROR;
+            ret.error = Z_DATA_ERROR;
             goto build_index_error;
         }
         strm.next_in = input;
@@ -542,14 +550,14 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
                update the total input and output counters */
             totin += strm.avail_in;
             totout += strm.avail_out;
-            ret = inflate(&strm, Z_BLOCK);      /* return at end of block */
+            ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
             totin -= strm.avail_in;
             totout -= strm.avail_out;
-            if (ret == Z_NEED_DICT)
-                ret = Z_DATA_ERROR;
-            if (ret == Z_MEM_ERROR || ret == Z_DATA_ERROR)
+            if (ret.error == Z_NEED_DICT)
+                ret.error = Z_DATA_ERROR;
+            if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR)
                 goto build_index_error;
-            if (ret == Z_STREAM_END)
+            if (ret.error == Z_STREAM_END)
                 break;
 
             /* if at end of block, consider adding an index entry (note that if
@@ -566,13 +574,13 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
                 index = addpoint(index, strm.data_type & 7, totin,
                                  totout, strm.avail_out, window);
                 if (index == NULL) {
-                    ret = Z_MEM_ERROR;
+                    ret.error = Z_MEM_ERROR;
                     goto build_index_error;
                 }
                 last = totout;
             }
         } while (strm.avail_in != 0);
-    } while (ret != Z_STREAM_END);
+    } while (ret.error != Z_STREAM_END);
 
     /* clean up and return index (release unused entries in list) */
     (void)inflateEnd(&strm);
@@ -581,7 +589,8 @@ local uint64_t build_index(FILE *in, off_t span, struct access **built)
     index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
 fprintf(stderr, "index->file_size = %ld\n", totout);
     *built = index;
-    return index->size;
+    ret.value = index->size;
+    return ret;
 
     /* return error */
   build_index_error:
@@ -600,11 +609,11 @@ fprintf(stderr, "index->file_size = %ld\n", totout);
    should not return a data error unless the file was modified since the index
    was generated.  extract() may also return Z_ERRNO if there is an error on
    reading or seeking the input file. */
-local uint64_t extract(FILE *in, struct access *index, off_t offset,
+local struct returned_output extract(FILE *in, struct access *index, off_t offset,
                   unsigned char *buf, uint64_t len)  // TODO: cambiar a uint64_t, y escribir en stdout, no buf si buf==NULL
 {
-    uint64_t ret; // TODO: signed for fseeko ? and signed for zlib returns
-    int skip;
+    struct returned_output ret;
+    int i, skip;
     int output_to_stdout = 0;
     int extract_all_input = 0;
     unsigned have;
@@ -615,20 +624,25 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
     unsigned char *decompressed_window;
     uint64_t initial_len = len;
 
+    ret.value = 0;
+    ret.error = Z_OK;
+
     /* proceed only if something reasonable to do */
     if (NULL == in || NULL == index)
-        return 0;
+        return ret;
     if (len < 0)
-        return 0;
+        return ret;
     if (len == 0 && buf != NULL)
-        return 0;
+        return ret;
 
     /* print decompression to stdout if buf == NULL */
     if (buf == NULL) {
         // buf of size WINSIZE > CHUNK so probably
         // each CHUNK is totally deflated on each step
-        if (NULL == (buf = malloc(WINSIZE)))
-            return Z_ERRNO;
+        if (NULL == (buf = malloc(WINSIZE))) {
+            ret.error = Z_ERRNO;
+            return ret;
+        }
         output_to_stdout = 1;
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         if (len == 0) {
@@ -638,8 +652,8 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
 
     /* find where in stream to start */
     here = index->list;
-    ret = index->have;
-    while (--ret && ret!=0 && here[1].out <= offset)
+    i = index->have;
+    while (--i && i!=0 && here[1].out <= offset)
         here++;
 
     /* initialize file and inflate state to start there */
@@ -648,23 +662,23 @@ local uint64_t extract(FILE *in, struct access *index, off_t offset,
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
-    ret = inflateInit2(&strm, -15);         /* raw inflate */
+    ret.error = inflateInit2(&strm, -15);         /* raw inflate */
 fprintf(stderr, "\n\n>>>>>>>>>%ld\n\n",here->out);
-    if (ret != Z_OK) {
+    if (ret.error != Z_OK) {
         if (output_to_stdout == 1)
             free(buf);
         return ret;
     }
-    ret = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
-    if (ret == -1)
+    ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+    if (ret.error == -1)
         goto extract_ret;
     if (here->bits) {
-        ret = getc(in);
-        if (ret == -1) {
-            ret = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
+        i = getc(in);
+        if (i == -1) {
+            ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
             goto extract_ret;
         }
-        (void)inflatePrime(&strm, here->bits, ret >> (8 - here->bits));
+        (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
     }
 
 fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here->window_beginning);
@@ -677,7 +691,7 @@ fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here-
             ) {
             fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
             fclose(index_file);
-            ret = Z_ERRNO;
+            ret.error = Z_ERRNO;
             goto extract_ret;
         }
         here->window_beginning = 0;
@@ -686,7 +700,7 @@ fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here-
             ) {
             fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
             fclose(index_file);
-            ret = Z_ERRNO;
+            ret.error = Z_ERRNO;
             goto extract_ret;
         }
         fclose(index_file);
@@ -751,22 +765,22 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
             if (strm.avail_in == 0) {
                 strm.avail_in = fread(input, 1, CHUNK, in);
                 if (ferror(in)) {
-                    ret = Z_ERRNO;
+                    ret.error = Z_ERRNO;
                     goto extract_ret;
                 }
                 if (strm.avail_in == 0) {
-                    ret = Z_DATA_ERROR;
+                    ret.error = Z_DATA_ERROR;
                     goto extract_ret;
                 }
                 strm.next_in = input;
             }
             fprintf(stderr, " 3 ");
-            ret = inflate(&strm, Z_NO_FLUSH);       /* normal inflate */
-            if (ret == Z_NEED_DICT)
-                ret = Z_DATA_ERROR;
-            if (ret == Z_MEM_ERROR || ret == Z_DATA_ERROR)
+            ret.error = inflate(&strm, Z_NO_FLUSH);       /* normal inflate */
+            if (ret.error == Z_NEED_DICT)
+                ret.error = Z_DATA_ERROR;
+            if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR)
                 goto extract_ret;
-            fprintf(stderr, "RET = %ld ;", ret);
+            fprintf(stderr, "RET = %d ;", ret.error);
             if (skip == 0 && output_to_stdout == 1) {
                 /* print decompression to stdout */
                 have = WINSIZE - strm.avail_out;
@@ -777,7 +791,7 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
                 fprintf(stderr, "HAVE = %d ;", have);
                 if (fwrite(buf, 1, have, stdout) != have || ferror(stdout)) {
                     (void)inflateEnd(&strm);
-                    ret = Z_ERRNO;
+                    ret.error = Z_ERRNO;
                     goto extract_ret;
                 }
                 if (skip == 0) {
@@ -789,7 +803,7 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
                 }
                 fprintf(stderr, "LEN = %ld, SKIP = %d ;", len, skip);
             }
-            if (ret == Z_STREAM_END)
+            if (ret.error == Z_STREAM_END)
                 break;
         } while (
             // skipping output, but window not completely filled
@@ -801,26 +815,26 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
             );
 
         /* if reach end of stream, then don't keep trying to get more */
-        if (ret == Z_STREAM_END)
+        if (ret.error == Z_STREAM_END)
             break;
 
         /* do until offset reached and requested data read, or stream ends */
     } while (skip);
 
-    fprintf(stderr, "RET FINAL= %ld ;", ret);
+    fprintf(stderr, "RET FINAL= %ld ;", ret.value);
     /* compute number of uncompressed bytes read after offset */
-    ret = skip ? 0 : len - strm.avail_out;
+    ret.value = skip ? 0 : len - strm.avail_out;
     if (output_to_stdout == 1) {
-        ret = initial_len - len;
+        ret.value = initial_len - len;
     }
     if (extract_all_input == 1) {
-        ret = len;
+        ret.value = len;
     }
     // TODO: extract len bytes with output_to_stdout, and also set len at the end: 20190710 DONE
 
     /* clean up and return bytes read or error */
   extract_ret:
-    fprintf(stderr, "!!! RET = %ld ;", ret);
+    fprintf(stderr, "!!! RET = %d ;", ret.error);
     (void)inflateEnd(&strm);
     if (output_to_stdout == 1)
         free(buf);
@@ -1004,7 +1018,7 @@ int main(int argc, char **argv)
 
 
     // variables for used for the different actions:
-    int long long len; // TODO: make uint64_t again: extract() SHOULD NOT return negative values, and neither build_index() PATCH!
+    struct returned_output ret; // TODO: make uint64_t again: extract() SHOULD NOT return negative values, and neither build_index() PATCH!
     off_t offset;
     FILE *in;
     struct access *index = NULL;
@@ -1174,6 +1188,9 @@ fprintf(stderr, "ERROR: lack of file operand > > > > >\n");
             // "-bil" options can accept multiple files
             switch ( action ) {
                 case ACT_EXTRACT_FROM_BYTE:
+                    // TODO: if index_filename doesn't exist action will not proceed, unless `-f`
+                    // in which case the index is created, and then the data is extracted.
+                    // TODO: for this, it will be useful to convert the code inside these cases to functions...
 fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_byte);
                     // open <FILE>:
                     in = fopen( file_name, "rb" );
@@ -1196,13 +1213,13 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
-                    len = extract( in, index, extract_from_byte, NULL, 0 );
-                    if (len < 0) {
+                    ret = extract( in, index, extract_from_byte, NULL, 0 );
+                    if ( ret.error < 0 ) {
                         fprintf( stderr, "Data extraction failed: %s error\n",
-                                len == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
+                                ret.error == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
                         ret_value = EXIT_GENERIC_ERROR;
                     } else {
-                        fprintf( stderr, "Extracted %lld bytes from '%s' to stdout.\n", len, file_name );
+                        fprintf( stderr, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
                     }
                     fclose( in );
                     break;
@@ -1219,11 +1236,11 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         break;
                     }
                     // compute index:
-                    len = build_index( in, SPAN, &index );
+                    ret = build_index( in, SPAN, &index );
                     fclose(in);
-                    if ( len < 0 ) {
+                    if ( ret.error < 0 ) {
                        fclose( in );
-                       switch ( len ) {
+                       switch ( ret.error ) {
                        case Z_MEM_ERROR:
                            fprintf( stderr, "ERROR: Out of memory.\n" );
                            break;
@@ -1234,12 +1251,12 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                            fprintf( stderr, "ERROR: Read error on %s.\n", file_name );
                            break;
                        default:
-                           fprintf( stderr, "ERROR: Error %lld while building index.\n", len );
+                           fprintf( stderr, "ERROR: Error %d while building index.\n", ret.error );
                        }
                        ret_value = EXIT_GENERIC_ERROR;
                        break;
                     }
-                    fprintf(stderr, "Built index with %lld access points.\n", len);
+                    fprintf(stderr, "Built index with %ld access points.\n", ret.value);
                     // write index to index file:
                     index_file = fopen( index_filename, "wb" );
                     if ( NULL == index_file || 
