@@ -66,10 +66,11 @@
 #include <string.h>
 #include <assert.h>
 #include "zlib.h"
-#include <unistd.h> // getopt(), access()
+#include <unistd.h> // getopt(), access(), sleep()
 #include <ctype.h>  // isprint()
 
 // sets binary mode for stdin in Windows
+#define STDIN 0
 #define STDOUT 1
 #ifdef _WIN32
 # include <io.h>
@@ -1010,6 +1011,64 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 }
 
 
+local int raw_compress( unsigned char *file_name ) {
+
+    unsigned char buf[CHUNK];
+    unsigned char *compressed_chunk;
+    int bytes, position_in_buf;
+    uint64_t size; // passed to compressed_chunk instead of position_in_buf
+    FILE *in;
+
+    if ( NULL != file_name ) {
+        in = fopen( file_name, "rb" );
+    } else {
+        SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+        in = stdin;
+    }
+    if ( NULL == in ) {
+        if ( NULL != file_name )
+            fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
+        else
+            fprintf( stderr, "Could not open STDIN for reading.\n" );
+        return 0;
+    }
+fprintf(stderr, "A\n" );
+    SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
+    position_in_buf = 0;
+
+    while ( !feof( in ) ) {
+        bytes = fread( buf + position_in_buf, 1, CHUNK - position_in_buf, in );
+        position_in_buf += bytes;
+fprintf(stderr, "%d, %d\n", bytes, position_in_buf );
+        if ( bytes < (CHUNK - position_in_buf) && !feof( in ) ) {
+            sleep( 1 );
+        } else {
+            size = position_in_buf;
+            compressed_chunk = compress_chunk( buf, &size, Z_DEFAULT_COMPRESSION );
+            fwrite( compressed_chunk, 1, size, stdout );
+            free( compressed_chunk );
+            position_in_buf = 0;
+            if ( feof( in ) ) {
+fprintf(stderr, "C\n" );
+                fclose( in );
+                return 1;
+            }
+        }
+    }
+fprintf(stderr, "B\n" );
+    if ( position_in_buf != 0 ) {
+            size = position_in_buf;
+            compressed_chunk = compress_chunk( buf, &size, Z_DEFAULT_COMPRESSION );
+            fwrite( compressed_chunk, 1, position_in_buf, stdout );
+            free( compressed_chunk );
+    }
+    fclose( in );
+    return 1;
+
+}
+
+
+
 /* Demonstrate the use of build_index() and extract() by processing the file
    provided on the command line, and the extracting 16K from about 2/3rds of
    the way through the uncompressed output, and writing that to stdout. */
@@ -1022,7 +1081,8 @@ int main(int argc, char **argv)
     off_t offset;
     FILE *in;
     struct access *index = NULL;
-    unsigned char buf[CHUNK];
+    int bytes, position_in_buf;
+    unsigned char *compressed_chunk = NULL;
     unsigned char *file_name = NULL;
     FILE *index_file = NULL;
 
@@ -1141,11 +1201,21 @@ int main(int argc, char **argv)
     if (optind == argc || argc == 1) {
         // file input is stdin
         // TODO: actions
-fprintf(stderr, "ERROR: lack of file operand > > > > >\n");
+fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
                 fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n" );
                 return EXIT_INVALID_OPTION;
+
+            case ACT_COMPRESS_CHUNK:
+                // compress chunk reads stdin or indicated file, and deflates in raw to stdout
+                // If we're here it's because stdin will be used
+                if ( ! raw_compress( NULL ) ) {
+                    fprintf( stderr, "Error while compressing STDIN.\nAborted.\n" );
+                    return EXIT_GENERIC_ERROR;
+                }
+                return EXIT_OK;
+
             // TODO ...
         }
 
@@ -1195,14 +1265,14 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                     // open <FILE>:
                     in = fopen( file_name, "rb" );
                     if ( NULL == in ) {
-                        fprintf( stderr, "Could not open '%s' for reading.\nAborted\n", file_name );
+                        fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     // open index file (filename derived from <FILE> unless indicated with `-I`)
                     index_file = fopen( index_filename, "rb" );
                     if ( NULL == in ) {
-                        fprintf( stderr, "Could not open '%s' for reading.\nAborted\n", index_filename );
+                        fprintf( stderr, "Could not open '%s' for reading.\n", index_filename );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
@@ -1223,15 +1293,22 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                     }
                     fclose( in );
                     break;
-                    // TODO
-                    // ...
+
+                case ACT_COMPRESS_CHUNK:
+                    // compress chunk reads stdin or indicated file, and deflates in raw to stdout
+                    // If we're here it's because there's an input file_name (at least one)
+                    if ( ! raw_compress( file_name ) ) {
+                        fprintf( stderr, "Error while compressing '%s' ...\n", file_name );
+                        ret_value = EXIT_GENERIC_ERROR;
+                    }
+                    break;
 
                 case ACT_CREATE_INDEX:
                     // open <FILE>:
                     fprintf( stderr, "Processing '%s' ...\n", file_name );
                     in = fopen( file_name, "rb" );
                     if ( NULL == in ) {
-                        fprintf( stderr, "Could not open %s for reading.\nAborted\n", file_name );
+                        fprintf( stderr, "Could not open %s for reading.\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
@@ -1272,7 +1349,7 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                     fprintf( stderr, "Checking index file '%s' ...\n", file_name );
                     in = fopen( file_name, "rb" );
                     if ( NULL == in ) {
-                        fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
+                        fprintf( stderr, "Could not open %s for reading.\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
@@ -1300,6 +1377,7 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
 
             if ( continue_on_error = 0 &&
                  ret_value != EXIT_OK ) {
+                fprintf( stderr, "Aborted.\n" );
                 // break the for loop
                 break;
             }
