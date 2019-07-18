@@ -1011,60 +1011,75 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 }
 
 
-local int raw_compress( unsigned char *file_name ) {
+// based on def from examples/zpipe.c
+/* Compress from file source to file dest until EOF on source.
+   def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+   allocated for processing, Z_STREAM_ERROR if an invalid compression
+   level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
+   version of the library linked do not match, or Z_ERRNO if there is
+   an error reading or writing the files. */
+local int compress_file( FILE *source, FILE *dest, int level )
+{
+    int ret, flush;
+    unsigned have;
+    z_stream strm;
+    unsigned char *in;
+    unsigned char *out;
 
-    unsigned char buf[CHUNK];
-    unsigned char *compressed_chunk;
-    int bytes, position_in_buf;
-    uint64_t size; // passed to compressed_chunk instead of position_in_buf
-    FILE *in;
+    /* allocate deflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    ret = deflateInit(&strm, level);
+    if (ret != Z_OK)
+        return ret;
 
-    if ( NULL != file_name ) {
-        in = fopen( file_name, "rb" );
-    } else {
-        SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
-        in = stdin;
-    }
-    if ( NULL == in ) {
-        if ( NULL != file_name )
-            fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
-        else
-            fprintf( stderr, "Could not open STDIN for reading.\n" );
-        return 0;
-    }
-fprintf(stderr, "A\n" );
-    SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
-    position_in_buf = 0;
+    in = malloc(CHUNK);
+    out = malloc(CHUNK);
 
-    while ( !feof( in ) ) {
-        bytes = fread( buf + position_in_buf, 1, CHUNK - position_in_buf, in );
-        position_in_buf += bytes;
-fprintf(stderr, "%d, %d\n", bytes, position_in_buf );
-        if ( bytes < (CHUNK - position_in_buf) && !feof( in ) ) {
-            sleep( 1 );
-        } else {
-            size = position_in_buf;
-            compressed_chunk = compress_chunk( buf, &size, Z_DEFAULT_COMPRESSION );
-            fwrite( compressed_chunk, 1, size, stdout );
-            free( compressed_chunk );
-            position_in_buf = 0;
-            if ( feof( in ) ) {
-fprintf(stderr, "C\n" );
-                fclose( in );
-                return 1;
-            }
+    /* compress until end of file */
+    do {
+        strm.avail_in = fread(in, 1, CHUNK, source);
+        fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
+        if (ferror(source)) {
+            (void)deflateEnd(&strm);
+            goto compress_file_error;
         }
-    }
-fprintf(stderr, "B\n" );
-    if ( position_in_buf != 0 ) {
-            size = position_in_buf;
-            compressed_chunk = compress_chunk( buf, &size, Z_DEFAULT_COMPRESSION );
-            fwrite( compressed_chunk, 1, position_in_buf, stdout );
-            free( compressed_chunk );
-    }
-    fclose( in );
-    return 1;
+        flush = feof(source) ? Z_FINISH : Z_NO_FLUSH;
+        strm.next_in = in;
 
+        /* run deflate() on input until output buffer not full, finish
+           compression if all of source has been read in */
+        do {
+            strm.avail_out = CHUNK;
+            strm.next_out = out;
+            ret = deflate(&strm, flush);    /* no bad return value */
+            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+            have = CHUNK - strm.avail_out;
+            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
+            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+                (void)deflateEnd(&strm);
+                goto compress_file_error;
+            }
+        } while (strm.avail_out == 0);
+        fprintf(stderr, "have = %ld\n", have);
+        assert(strm.avail_in == 0);     /* all input will be used */
+
+        /* done when last data in file processed */
+    } while (flush != Z_FINISH);
+    assert(ret == Z_STREAM_END);        /* stream will be complete */
+
+    /* clean up and return */
+    (void)deflateEnd(&strm);
+    free(in);
+    free(out);
+fprintf(stderr, "Z_OK (%d)\n", Z_OK);
+    return Z_OK;
+
+  compress_file_error:
+    free(in);
+    free(out);
+    return Z_ERRNO;
 }
 
 
@@ -1210,7 +1225,8 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
             case ACT_COMPRESS_CHUNK:
                 // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                 // If we're here it's because stdin will be used
-                if ( ! raw_compress( NULL ) ) {
+                SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+                if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
                     fprintf( stderr, "Error while compressing STDIN.\nAborted.\n" );
                     return EXIT_GENERIC_ERROR;
                 }
@@ -1274,6 +1290,7 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                     if ( NULL == in ) {
                         fprintf( stderr, "Could not open '%s' for reading.\n", index_filename );
                         ret_value = EXIT_GENERIC_ERROR;
+                        fclose( in );
                         break;
                     }
                     // deserialize_index_from_file
@@ -1281,6 +1298,8 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                     if ( ! index ) {
                         fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
                         ret_value = EXIT_GENERIC_ERROR;
+                        fclose( in );
+                        fclose( index_file );
                         break;
                     }
                     ret = extract( in, index, extract_from_byte, NULL, 0 );
@@ -1292,15 +1311,22 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         fprintf( stderr, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
                     }
                     fclose( in );
+                    fclose( index_file );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
-                    if ( ! raw_compress( file_name ) ) {
-                        fprintf( stderr, "Error while compressing '%s' ...\n", file_name );
+                    if ( NULL == (in = fopen( file_name, "rb" )) ) {
+                        fprintf( stderr, "Error while opening file '%s'\n", file_name );
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
+                    }
+                    if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION ) ) {
+                        fprintf( stderr, "Error while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
+                    fclose( in );
                     break;
 
                 case ACT_CREATE_INDEX:
@@ -1342,6 +1368,7 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         if ( continue_on_error == 0 )
                             ret_value = EXIT_GENERIC_ERROR;
                     }
+                    fclose( index_file );
                     break;
 
                 case ACT_LIST_INFO:
