@@ -504,8 +504,8 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
     off_t last;                 /* totout value of last access point */
     struct access *index;       /* access points being generated */
     z_stream strm;
-    unsigned char input[CHUNK];
-    unsigned char window[WINSIZE];
+    unsigned char input[CHUNK]; // TODO: convert to malloc
+    unsigned char window[WINSIZE]; // TODO: convert to malloc
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -620,8 +620,8 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     unsigned have;
     z_stream strm;
     struct point *here;
-    unsigned char input[CHUNK];
-    unsigned char discard[WINSIZE];
+    unsigned char input[CHUNK]; // TODO: convert to malloc
+    unsigned char discard[WINSIZE]; // TODO: convert to malloc
     unsigned char *decompressed_window;
     uint64_t initial_len = len;
 
@@ -1062,7 +1062,7 @@ local int compress_file( FILE *source, FILE *dest, int level )
                 goto compress_file_error;
             }
         } while (strm.avail_out == 0);
-        fprintf(stderr, "have = %ld\n", have);
+        fprintf(stderr, "have = %d\n", have);
         assert(strm.avail_in == 0);     /* all input will be used */
 
         /* done when last data in file processed */
@@ -1080,8 +1080,93 @@ fprintf(stderr, "Z_OK (%d)\n", Z_OK);
     free(in);
     free(out);
     return Z_ERRNO;
+
 }
 
+
+// based on inf from examples/zpipe.c
+/* Decompress from file source to file dest until stream ends or EOF.
+   inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+   allocated for processing, Z_DATA_ERROR if the deflate data is
+   invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
+   the version of the library linked do not match, or Z_ERRNO if there
+   is an error reading or writing the files. */
+local int decompress_file(FILE *source, FILE *dest)
+{
+    int ret;
+    unsigned have;
+    z_stream strm;
+    unsigned char *in;
+    unsigned char *out;
+
+    /* allocate inflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+    ret = inflateInit(&strm);
+    if (ret != Z_OK)
+        return ret;
+
+    in = malloc(CHUNK);
+    out = malloc(CHUNK);
+
+    /* decompress until deflate stream ends or end of file */
+    do {
+        strm.avail_in = fread(in, 1, CHUNK, source);
+        fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
+        if (ferror(source)) {
+            (void)inflateEnd(&strm);
+            ret = Z_ERRNO;
+            goto decompress_file_error;
+        }
+        if (strm.avail_in == 0)
+            break;
+        strm.next_in = in;
+
+        /* run inflate() on input until output buffer not full */
+        do {
+            strm.avail_out = CHUNK;
+            strm.next_out = out;
+fprintf(stderr, "DECOMPRESSING\n");
+            ret = inflate(&strm, Z_NO_FLUSH);
+fprintf(stderr, "DECOMPRESSING %d\n", ret);
+            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+            switch (ret) {
+            case Z_NEED_DICT:
+                ret = Z_DATA_ERROR;     /* and fall through */
+            case Z_DATA_ERROR:
+            case Z_MEM_ERROR:
+                (void)inflateEnd(&strm);
+                goto decompress_file_error;
+            }
+            have = CHUNK - strm.avail_out;
+            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
+            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+                (void)inflateEnd(&strm);
+                ret = Z_ERRNO;
+                goto decompress_file_error;
+            }
+        } while (strm.avail_out == 0);
+        fprintf(stderr, "have = %d\n", have);
+
+        /* done when inflate() says it's done */
+    } while (ret != Z_STREAM_END);
+
+    /* clean up and return */
+    (void)inflateEnd(&strm);
+    free(in);
+    free(out);
+    fprintf(stderr, "ret = %d\n", ret);
+    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+
+  decompress_file_error:
+    free(in);
+    free(out);
+    return ret;
+
+}
 
 
 /* Demonstrate the use of build_index() and extract() by processing the file
@@ -1225,9 +1310,21 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
             case ACT_COMPRESS_CHUNK:
                 // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                 // If we're here it's because stdin will be used
+                SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
                     fprintf( stderr, "Error while compressing STDIN.\nAborted.\n" );
+                    return EXIT_GENERIC_ERROR;
+                }
+                return EXIT_OK;
+
+            case ACT_DECOMPRESS_CHUNK:
+                // compress chunk reads stdin or indicated file, and deflates in raw to stdout
+                // If we're here it's because stdin will be used
+                SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
+                SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+                if ( Z_OK != decompress_file( stdin, stdout ) ) {
+                    fprintf( stderr, "Error while decompressing STDIN.\nAborted.\n" );
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
@@ -1322,8 +1419,25 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
+                    SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                        fprintf( stderr, "Error while compressing '%s'\n", file_name );
+                        fprintf( stderr, "Errod while compressing '%s'\n", file_name );
+                        ret_value = EXIT_GENERIC_ERROR;
+                    }
+                    fclose( in );
+                    break;
+
+                case ACT_DECOMPRESS_CHUNK:
+                    // compress chunk reads stdin or indicated file, and deflates in raw to stdout
+                    // If we're here it's because there's an input file_name (at least one)
+                    if ( NULL == (in = fopen( file_name, "rb" )) ) {
+                        fprintf( stderr, "Error while opening file '%s'\n", file_name );
+                        ret_value = EXIT_GENERIC_ERROR;
+                        break;
+                    }
+                    SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
+                    if ( Z_OK != decompress_file( in, stdout ) ) {
+                        fprintf( stderr, "Error while decompressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     fclose( in );
