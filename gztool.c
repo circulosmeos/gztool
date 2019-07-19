@@ -239,7 +239,6 @@ local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int l
     /* compress until end of input */
     do {
         strm.avail_in = ((i + CHUNK) < input_size) ? CHUNK : (input_size - i);
-        fprintf(stderr, "strm.avail_in = %d (i=%ld) (input_size=%ld)\n", strm.avail_in, i, input_size);
         if ( memcpy(in, source + i, strm.avail_in) == NULL ) {
             (void)deflateEnd(&strm);
             goto compress_chunk_error;
@@ -256,7 +255,6 @@ local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int l
             ret = deflate(&strm, flush);    /* no bad return value */
             assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
             have = CHUNK - strm.avail_out;
-            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
             if ( have != 0 && (
                  NULL == (out_complete = realloc(out_complete, output_size + have)) ||
                  NULL == memcpy(out_complete + output_size, out, have)
@@ -266,7 +264,6 @@ local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int l
             }
             output_size += have;
         } while (strm.avail_out == 0);
-        fprintf(stderr, "output_size = %ld\n", output_size);
         assert(strm.avail_in == 0);     /* all input will be used */
 
         /* done when last data in source processed */
@@ -328,7 +325,6 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
             (void)inflateEnd(&strm);
             goto decompress_chunk_error;
         }
-        fprintf(stderr, "strm.avail_in = %d (i=%ld) (input_size=%ld)\n", strm.avail_in, i, input_size);
         if (strm.avail_in == 0)
             break;
         strm.next_in = in;
@@ -349,7 +345,6 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
                 goto decompress_chunk_error;
             }
             have = CHUNK - strm.avail_out;
-            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
             if ( have != 0 && (
                  NULL == (out_complete = realloc(out_complete, output_size + have)) ||
                  NULL == memcpy(out_complete + output_size, out, have)
@@ -359,7 +354,6 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
             }
             output_size += have;
         } while (strm.avail_out == 0);
-        fprintf(stderr, "output_size = %ld\n", output_size);
 
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);
@@ -590,7 +584,6 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
     index->list = realloc(index->list, sizeof(struct point) * index->have);
     index->size = index->have;
     index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
-fprintf(stderr, "index->file_size = %ld\n", totout);
     *built = index;
     ret.value = index->size;
     return ret;
@@ -666,7 +659,6 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
     ret.error = inflateInit2(&strm, -15);         /* raw inflate */
-fprintf(stderr, "\n\n>>>>>>>>>%ld\n\n",here->out);
     if (ret.error != Z_OK) {
         if (output_to_stdout == 1)
             free(buf);
@@ -684,7 +676,6 @@ fprintf(stderr, "\n\n>>>>>>>>>%ld\n\n",here->out);
         (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
     }
 
-fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here->window_beginning);
     if (here->window == NULL && here->window_beginning != 0) {
         /* index' window data is not on memory, 
         but we have position and size on index file, so we load it now */
@@ -708,7 +699,7 @@ fprintf(stderr, "\n\n>>>>>>>>>%s,%p,%ld\n\n",index->file_name,here->window,here-
         }
         fclose(index_file);
     }
-fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
+
     if (here->window_size != UNCOMPRESSED_WINDOW) {
         /* decompress() use uint64_t counters, but index->list->window_size is smaller */
         uint64_t window_size = here->window_size;
@@ -755,7 +746,6 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
 
         /* uncompress until avail_out filled, or end of stream */
         do {
-            fprintf(stderr, " > ");
             if (skip == 0 && output_to_stdout == 1) {
                 strm.next_out = buf;
                 if (extract_all_input == 0) {
@@ -764,7 +754,6 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
                     strm.avail_out = WINSIZE;
                 }
             }
-            fprintf(stderr, " 2 ");
             if (strm.avail_in == 0) {
                 strm.avail_in = fread(input, 1, CHUNK, in);
                 if (ferror(in)) {
@@ -777,21 +766,17 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
                 }
                 strm.next_in = input;
             }
-            fprintf(stderr, " 3 ");
             ret.error = inflate(&strm, Z_NO_FLUSH);       /* normal inflate */
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR)
                 goto extract_ret;
-            fprintf(stderr, "RET = %d ;", ret.error);
             if (skip == 0 && output_to_stdout == 1) {
                 /* print decompression to stdout */
                 have = WINSIZE - strm.avail_out;
                 if (have > len && extract_all_input == 0) {
                     have = len;
                 }
-                fprintf(stderr, "\noutput_to_stdout = %d, extract_all_input = %d, len = %ld; ", output_to_stdout, extract_all_input, len);
-                fprintf(stderr, "HAVE = %d ;", have);
                 if (fwrite(buf, 1, have, stdout) != have || ferror(stdout)) {
                     (void)inflateEnd(&strm);
                     ret.error = Z_ERRNO;
@@ -804,13 +789,12 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
                         len += have;
                     }
                 }
-                fprintf(stderr, "LEN = %ld, SKIP = %d ;", len, skip);
             }
             if (ret.error == Z_STREAM_END)
                 break;
         } while (
             // skipping output, but window not completely filled
-            (fprintf(stderr, "...while..."),strm.avail_out != 0) ||
+            strm.avail_out != 0 ||
             // extracting to stdout and specified length not reached:
             (skip == 0 && output_to_stdout == 1 && len > 0) ||
             // extract the whole input (until break on Z_STREAM_END)
@@ -824,7 +808,6 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
         /* do until offset reached and requested data read, or stream ends */
     } while (skip);
 
-    fprintf(stderr, "RET FINAL= %ld ;", ret.value);
     /* compute number of uncompressed bytes read after offset */
     ret.value = skip ? 0 : len - strm.avail_out;
     if (output_to_stdout == 1) {
@@ -837,7 +820,6 @@ fprintf(stderr, "\n\n<<<<<<<<<%d\n\n",here->window_size);
 
     /* clean up and return bytes read or error */
   extract_ret:
-    fprintf(stderr, "!!! RET = %d ;", ret.error);
     (void)inflateEnd(&strm);
     if (output_to_stdout == 1)
         free(buf);
@@ -901,11 +883,6 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
         } else {
             fwrite(here->window, here->window_size, 1, output_file);
         }
-
-        /*fprintf(stderr, "%ld >\n", here->out);
-        fprintf(stderr, "%ld >\n", here->in);
-        fprintf(stderr, "%d >\n", here->bits);
-        fprintf(stderr, "%d >\n", here->window_size);*/
     }
 
     /* write size of uncompressed file (useful for bgzip files) */
@@ -942,8 +919,6 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file);
     if (*((uint64_t *)header) != 0 ||
         strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
-        //fprintf(stderr, "File is not a valid gzip index file: %s\n", &header[8]);
-        //fprintf(stderr, "File is not a valid gzip index file: %d, %d, %d, %d\n", (int)header[0], (int)header[1], (int)header[2], (int)header[3]);
         fprintf(stderr, "File is not a valid gzip index file.\n");
         free_index(index);
         return NULL;
@@ -986,10 +961,6 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 goto deserialize_index_from_file_error;
             }
         }
-        /*fprintf(stderr, "%ld <\n", here->out);
-        fprintf(stderr, "%ld <\n", here->in);
-        fprintf(stderr, "%d <\n", here->bits);
-        fprintf(stderr, "%d <\n", here->window_size);*/
     }
 
     /* read size of uncompressed file (useful for bgzip files) */
@@ -1042,7 +1013,6 @@ local int compress_file( FILE *source, FILE *dest, int level )
     /* compress until end of file */
     do {
         strm.avail_in = fread(in, 1, CHUNK, source);
-        fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
         if (ferror(source)) {
             (void)deflateEnd(&strm);
             goto compress_file_error;
@@ -1058,13 +1028,11 @@ local int compress_file( FILE *source, FILE *dest, int level )
             ret = deflate(&strm, flush);    /* no bad return value */
             assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
             have = CHUNK - strm.avail_out;
-            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
             if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
                 (void)deflateEnd(&strm);
                 goto compress_file_error;
             }
         } while (strm.avail_out == 0);
-        fprintf(stderr, "have = %d\n", have);
         assert(strm.avail_in == 0);     /* all input will be used */
 
         /* done when last data in file processed */
@@ -1075,7 +1043,6 @@ local int compress_file( FILE *source, FILE *dest, int level )
     (void)deflateEnd(&strm);
     free(in);
     free(out);
-fprintf(stderr, "Z_OK (%d)\n", Z_OK);
     return Z_OK;
 
   compress_file_error:
@@ -1117,7 +1084,6 @@ local int decompress_file(FILE *source, FILE *dest)
     /* decompress until deflate stream ends or end of file */
     do {
         strm.avail_in = fread(in, 1, CHUNK, source);
-        fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
         if (ferror(source)) {
             (void)inflateEnd(&strm);
             ret = Z_ERRNO;
@@ -1131,9 +1097,7 @@ local int decompress_file(FILE *source, FILE *dest)
         do {
             strm.avail_out = CHUNK;
             strm.next_out = out;
-fprintf(stderr, "DECOMPRESSING\n");
             ret = inflate(&strm, Z_NO_FLUSH);
-fprintf(stderr, "DECOMPRESSING %d\n", ret);
             assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
             switch (ret) {
             case Z_NEED_DICT:
@@ -1144,14 +1108,12 @@ fprintf(stderr, "DECOMPRESSING %d\n", ret);
                 goto decompress_file_error;
             }
             have = CHUNK - strm.avail_out;
-            fprintf(stderr, "strm.avail_out = %d (have=%d)\n", strm.avail_out, have);
             if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
                 (void)inflateEnd(&strm);
                 ret = Z_ERRNO;
                 goto decompress_file_error;
             }
         } while (strm.avail_out == 0);
-        fprintf(stderr, "have = %d\n", have);
 
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);
@@ -1160,7 +1122,6 @@ fprintf(stderr, "DECOMPRESSING %d\n", ret);
     (void)inflateEnd(&strm);
     free(in);
     free(out);
-    fprintf(stderr, "ret = %d\n", ret);
     return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 
   decompress_file_error:
@@ -1176,7 +1137,7 @@ local void print_help() {
     fprintf( stderr, "\n gztool (v1.0)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
-    fprintf( stderr, "\n\t$ gztool [-b #] [-cdefhil] [-I <INDEX>] <FILE> ...\n\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhil] [-I <INDEX>] <FILE> ...\n\n" );
     fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
@@ -1248,8 +1209,6 @@ local int action_create_index( unsigned char *file_name, struct access **index, 
    the way through the uncompressed output, and writing that to stdout. */
 int main(int argc, char **argv)
 {
-
-
     // variables for used for the different actions:
     struct returned_output ret; // TODO: make uint64_t again: extract() SHOULD NOT return negative values, and neither build_index() PATCH!
     off_t offset;
@@ -1276,6 +1235,8 @@ int main(int argc, char **argv)
     int opt = 0;
     int i, j;
     int actions_set = 0;
+
+    fprintf( stderr, "\n" );
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
@@ -1346,8 +1307,10 @@ int main(int argc, char **argv)
                     //print_help();
                 } else
                     fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+                fprintf( stderr, "\n" );
                 return EXIT_INVALID_OPTION;
             default:
+                fprintf( stderr, "\n" );
                 abort ();
         }
 
@@ -1374,10 +1337,9 @@ int main(int argc, char **argv)
     if (optind == argc || argc == 1) {
         // file input is stdin
         // TODO: actions
-fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n" );
+                fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n\n" );
                 return EXIT_INVALID_OPTION;
 
             case ACT_COMPRESS_CHUNK:
@@ -1386,7 +1348,7 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                    fprintf( stderr, "Error while compressing STDIN.\nAborted.\n" );
+                    fprintf( stderr, "Error while compressing STDIN.\nAborted.\n\n" );
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
@@ -1397,7 +1359,7 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout ) ) {
-                    fprintf( stderr, "Error while decompressing STDIN.\nAborted.\n" );
+                    fprintf( stderr, "Error while decompressing STDIN.\nAborted.\n\n" );
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
@@ -1448,7 +1410,7 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
                 if ( continue_on_error == 1 ) {
                     continue;
                 } else {
-                    fprintf( stderr, "Aborted.\n" );
+                    fprintf( stderr, "Aborted.\n\n" );
                     return EXIT_GENERIC_ERROR;
                 }
             }
@@ -1461,7 +1423,7 @@ fprintf(stderr, " > > > > > Lack of file operand > > > > >\n");
                     // TODO: if index_filename doesn't exist action will not proceed, unless `-f`
                     // in which case the index is created, and then the data is extracted.
                     // TODO: for this, it will be useful to convert the code inside these cases to functions...
-fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_byte);
+                    fprintf(stderr, "Extracting data from byte @%ld in file '%s',\nusing index '%s'...\n", extract_from_byte, file_name, index_filename);
                     // open <FILE>:
                     in = fopen( file_name, "rb" );
                     if ( NULL == in ) {
@@ -1540,7 +1502,7 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
 
                 case ACT_LIST_INFO:
                     // open index file:
-                    fprintf( stderr, "\nChecking index file '%s' ...\n", file_name );
+                    fprintf( stderr, "Checking index file '%s' ...\n", file_name );
                     in = fopen( file_name, "rb" );
                     if ( NULL == in ) {
                         fprintf( stderr, "Could not open %s for reading.\n", file_name );
@@ -1560,13 +1522,15 @@ fprintf(stderr, "'%s', '%s', '%ld'\n", file_name, index_filename, extract_from_b
                         for (j=0; j<index->have; j++) {
                             fprintf( stderr, "@%ld ( %d ), ", index->list[j].out, index->list[j].window_size );
                         }
-                        fprintf( stderr, "\n\n" );
+                        fprintf( stderr, "\n" );
                     }
                     break;
 
                 // TODO: actions
                 // ACTION( argv[i] );
             }
+
+            fprintf( stderr, "\n" );
 
             if ( continue_on_error = 0 &&
                  ret_value != EXIT_OK ) {
