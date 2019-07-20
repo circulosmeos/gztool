@@ -664,7 +664,21 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
             free(buf);
         return ret;
     }
-    ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+    if ( stdin == in ) {
+        // read input until here->in - (here->bits ? 1 : 0)
+        uint64_t pos = 0;
+        uint64_t position = here->in - (here->bits ? 1 : 0);
+        ret.error = 0;
+        while ( pos < position ) {
+            if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), in) ) {
+                ret.error = -1;
+                break;
+            }
+            pos += CHUNK;
+        }
+    } else {
+        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+    }
     if (ret.error == -1)
         goto extract_ret;
     if (here->bits) {
@@ -1154,7 +1168,10 @@ local void print_help() {
 }
 
 
-local int action_create_index( unsigned char *file_name, struct access **index, unsigned char *index_filename, int continue_on_error ) {
+local int action_create_index(
+    unsigned char *file_name, struct access **index,
+    unsigned char *index_filename, int continue_on_error )
+{
 
     FILE *in;
     FILE *index_file;
@@ -1204,6 +1221,88 @@ local int action_create_index( unsigned char *file_name, struct access **index, 
 
 }
 
+
+local int action_extract_from_byte(
+    unsigned char *file_name, unsigned char *index_filename,
+    uint64_t extract_from_byte, int continue_on_error, int force_action )
+{
+
+    FILE *in = NULL;
+    FILE *index_file = NULL;
+    struct access *index = NULL;
+    struct returned_output ret;
+    int mark_recursion = 0;
+    int ret_value;
+
+    // TODO: if index_filename doesn't exist action will not proceed, unless `-f`
+    // in which case the index is created, and then the data is extracted.
+    // TODO: for this, it will be useful to convert the code inside these cases to functions...
+    // open <FILE>:
+    if ( strlen(file_name) > 0 ) {
+        fprintf(stderr, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
+            extract_from_byte, file_name, index_filename);
+        in = fopen( file_name, "rb" );
+        if ( NULL == in ) {
+            fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
+            return EXIT_GENERIC_ERROR;
+        }
+    } else {
+        // stdin
+        fprintf(stderr, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
+            extract_from_byte, index_filename);
+        SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+        in = stdin;
+    }
+    // open index file (filename derived from <FILE> unless indicated with `-I`)
+open_index_file:
+    index_file = fopen( index_filename, "rb" );
+    if ( NULL == index_file ) {
+        if ( force_action == 1 && mark_recursion == 0 ) {
+            // before extraction, create index file
+            ret_value = action_create_index( file_name, &index, index_filename, continue_on_error );
+            if ( ret_value != EXIT_OK )
+                goto action_extract_from_byte_error;
+            // index file has been created, so it must now be opened
+            mark_recursion = 1;
+            goto open_index_file;
+        } else {
+            fprintf( stderr, "Index file '%s' not found.\n", index_filename );
+            ret_value = EXIT_GENERIC_ERROR;
+            goto action_extract_from_byte_error;
+        }
+    }
+    // deserialize_index_from_file
+    index = deserialize_index_from_file( index_file, 0, index_filename );
+    if ( ! index ) {
+        fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
+        ret_value = EXIT_GENERIC_ERROR;
+        goto action_extract_from_byte_error;
+    }
+    ret = extract( in, index, extract_from_byte, NULL, 0 );
+    if ( ret.error < 0 ) {
+        fprintf( stderr, "Data extraction failed: %s error\n",
+                ret.error == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
+        ret_value = EXIT_GENERIC_ERROR;
+    } else {
+        if ( strlen(file_name) > 0 )
+            fprintf( stderr, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
+        else
+            fprintf( stderr, "Extracted %ld bytes from stdin to stdout.\n", ret.value );
+        ret_value = EXIT_OK;
+    }
+
+action_extract_from_byte_error:
+    if ( NULL != in )
+        fclose( in );
+    if ( NULL != index_file )
+        fclose( index_file );
+    if ( NULL != index )
+        free_index( index );
+    return ret_value;
+
+}
+
+
 /* Demonstrate the use of build_index() and extract() by processing the file
    provided on the command line, and the extracting 16K from about 2/3rds of
    the way through the uncompressed output, and writing that to stdout. */
@@ -1224,7 +1323,6 @@ int main(int argc, char **argv)
     int continue_on_error = 0;
     int index_filename_indicated = 0;
     int force_action = 0;
-    int mark_recursion = 0;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION
@@ -1339,8 +1437,15 @@ int main(int argc, char **argv)
         // TODO: actions
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                fprintf( stderr, "Cannot use index file with STDIN input.\nAborted.\n\n" );
-                return EXIT_INVALID_OPTION;
+            if ( index_filename_indicated == 1 ) {
+                ret_value = action_extract_from_byte(
+                    "", index_filename, extract_from_byte, continue_on_error, force_action );
+                fprintf( stderr, "\n" );
+                return ret_value;
+            } else {
+                fprintf( stderr, "`-I INDEX` must be used when extracting stdin.\nAborted.\n\n" );
+                return EXIT_GENERIC_ERROR;
+            }
 
             case ACT_COMPRESS_CHUNK:
                 // compress chunk reads stdin or indicated file, and deflates in raw to stdout
@@ -1415,55 +1520,11 @@ int main(int argc, char **argv)
                 }
             }
 
-            mark_recursion = 0;
-
             // "-bil" options can accept multiple files
             switch ( action ) {
                 case ACT_EXTRACT_FROM_BYTE:
-                    // TODO: if index_filename doesn't exist action will not proceed, unless `-f`
-                    // in which case the index is created, and then the data is extracted.
-                    // TODO: for this, it will be useful to convert the code inside these cases to functions...
-                    fprintf(stderr, "Extracting data from byte @%ld in file '%s',\nusing index '%s'...\n", extract_from_byte, file_name, index_filename);
-                    // open <FILE>:
-                    in = fopen( file_name, "rb" );
-                    if ( NULL == in ) {
-                        fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
-                        ret_value = EXIT_GENERIC_ERROR;
-                        break;
-                    }
-                    // open index file (filename derived from <FILE> unless indicated with `-I`)
-            open_index_file:
-                    index_file = fopen( index_filename, "rb" );
-                    if ( NULL == index_file ) {
-                        if ( force_action == 1 && mark_recursion == 0 ) {
-                            // before extraction, create index file
-                            ret_value = action_create_index( file_name, &index, index_filename, continue_on_error );
-                            if ( ret_value != EXIT_OK )
-                                break;
-                            // index file has been created, so it must now be opened
-                            mark_recursion = 1;
-                            goto open_index_file;
-                        } else {
-                            fprintf( stderr, "Index file '%s' not found.\n", index_filename );
-                            ret_value = EXIT_GENERIC_ERROR;
-                            break;
-                        }
-                    }
-                    // deserialize_index_from_file
-                    index = deserialize_index_from_file( index_file, 0, index_filename );
-                    if ( ! index ) {
-                        fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
-                        ret_value = EXIT_GENERIC_ERROR;
-                        break;
-                    }
-                    ret = extract( in, index, extract_from_byte, NULL, 0 );
-                    if ( ret.error < 0 ) {
-                        fprintf( stderr, "Data extraction failed: %s error\n",
-                                ret.error == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
-                        ret_value = EXIT_GENERIC_ERROR;
-                    } else {
-                        fprintf( stderr, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
-                    }
+                    ret_value = action_extract_from_byte(
+                        file_name, index_filename, extract_from_byte, continue_on_error, force_action );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
