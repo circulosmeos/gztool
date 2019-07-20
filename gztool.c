@@ -961,7 +961,26 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
             here->window = NULL;
             here->window_beginning = ftello(input_file);
             // and position into file as if read had occur
-            fseeko(input_file, here->window_size, SEEK_CUR);
+            if ( stdin == input_file ) {
+                // read input until here->window_size
+                uint64_t pos = 0;
+                uint64_t position = here->window_size;
+                unsigned char *input = malloc(CHUNK);
+                if ( NULL == input ) {
+                    fprintf(stderr, "Not enough memory to load index from stdin.\n");
+                    goto deserialize_index_from_file_error;
+                }
+                while ( pos < position ) {
+                    if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), input_file) ) {
+                        fprintf(stderr, "Could not read index from stdin.\n");
+                        goto deserialize_index_from_file_error;
+                    }
+                    pos += CHUNK;
+                }
+                free(input);
+            } else {
+                fseeko(input_file, here->window_size, SEEK_CUR);
+            }
         } else {
             here->window = malloc(here->window_size);
             here->window_beginning = 0;
@@ -1169,7 +1188,7 @@ local void print_help() {
 
 local int action_create_index(
     unsigned char *file_name, struct access **index,
-    unsigned char *index_filename, int continue_on_error )
+    unsigned char *index_filename )
 {
 
     FILE *in;
@@ -1210,8 +1229,7 @@ local int action_create_index(
     if ( NULL == index_file ||
          ! serialize_index_to_file( index_file, *index ) ) {
         fprintf( stderr, "Could not write index to file '%s'.\n", index_filename );
-        if ( continue_on_error == 0 )
-            return EXIT_GENERIC_ERROR;
+        return EXIT_GENERIC_ERROR;
     }
     fclose ( index_file );
     fprintf(stderr, "Index written to '%s'.\n", index_filename);
@@ -1223,7 +1241,7 @@ local int action_create_index(
 
 local int action_extract_from_byte(
     unsigned char *file_name, unsigned char *index_filename,
-    uint64_t extract_from_byte, int continue_on_error, int force_action )
+    uint64_t extract_from_byte, int force_action )
 {
 
     FILE *in = NULL;
@@ -1255,7 +1273,7 @@ open_index_file:
     if ( NULL == index_file ) {
         if ( force_action == 1 && mark_recursion == 0 ) {
             // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename, continue_on_error );
+            ret_value = action_create_index( file_name, &index, index_filename );
             if ( ret_value != EXIT_OK )
                 goto action_extract_from_byte_error;
             // index file has been created, so it must now be opened
@@ -1292,6 +1310,60 @@ action_extract_from_byte_error:
         fclose( in );
     if ( NULL != index_file )
         fclose( index_file );
+    if ( NULL != index )
+        free_index( index );
+    return ret_value;
+
+}
+
+
+local int action_list_info( unsigned char *file_name ) {
+
+    FILE *in = NULL;
+    struct access *index = NULL;
+    uint64_t j;
+    int ret_value;
+
+    // open index file:
+    if ( strlen(file_name) > 0 ) {
+        fprintf( stderr, "Checking index file '%s' ...\n", file_name );
+        in = fopen( file_name, "rb" );
+        if ( NULL == in ) {
+            fprintf( stderr, "Could not open %s for reading.\n", file_name );
+            return EXIT_GENERIC_ERROR;
+        }
+    } else {
+        // stdin
+        fprintf( stderr, "Checking index from stdin ...\n" );
+        SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+        in = stdin;
+    }
+
+    // in case in == stdin, file_name == "" but this doesn't matter as windows won't be deconmpressed
+    index = deserialize_index_from_file( in, 0, file_name );
+
+    if ( ! index ) {
+
+        fprintf(stderr, "Could not read index from file '%s'.\n", file_name);
+        ret_value = EXIT_GENERIC_ERROR;
+        goto action_list_info_error;
+
+    } else {
+
+        fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
+        if (index->file_size != 0)
+            fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
+        fprintf( stderr, "\tList of points: [ @ uncompressed byte (index data size in Bytes) ]\n\t" );
+        for (j=0; j<index->have; j++) {
+            fprintf( stderr, "@%ld ( %d ), ", index->list[j].out, index->list[j].window_size );
+        }
+        fprintf( stderr, "\n" );
+
+    }
+
+action_list_info_error:
+    if ( NULL != in )
+        fclose( in );
     if ( NULL != index )
         free_index( index );
     return ret_value;
@@ -1399,7 +1471,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdil`.\nAborted.\n" );
+        fprintf(stderr, "Please, do not merge parameters `-bcdil`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
     if ( actions_set == 0 ) {
@@ -1408,11 +1480,11 @@ int main(int argc, char **argv)
             action = ACT_CREATE_INDEX;
             if ( (optind + 1) < argc ) {
                 // too much files indicated to use `-I`
-                fprintf(stderr, "`-I` is incompatible with multiple input files.\nAborted.\n" );
+                fprintf(stderr, "`-I` is incompatible with multiple input files.\nAborted.\n\n" );
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdil`.\nAborted.\n" );
+            fprintf(stderr, "Please, indicate one parameter of `-bcdil`.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -1424,7 +1496,7 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
             if ( index_filename_indicated == 1 ) {
                 ret_value = action_extract_from_byte(
-                    "", index_filename, extract_from_byte, continue_on_error, force_action );
+                    "", index_filename, extract_from_byte, force_action );
                 fprintf( stderr, "\n" );
                 return ret_value;
             } else {
@@ -1453,6 +1525,13 @@ int main(int argc, char **argv)
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
+
+            case ACT_LIST_INFO:
+                // stdin is an index file that must be checked
+                SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
+                ret_value = action_list_info( "" );
+                fprintf( stderr, "\n" );
+                return ret_value;
 
             // TODO ...
         }
@@ -1510,7 +1589,7 @@ int main(int argc, char **argv)
 
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_extract_from_byte(
-                        file_name, index_filename, extract_from_byte, continue_on_error, force_action );
+                        file_name, index_filename, extract_from_byte, force_action );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -1544,33 +1623,11 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename, continue_on_error );
+                    ret_value = action_create_index( file_name, &index, index_filename );
                     break;
 
                 case ACT_LIST_INFO:
-                    // open index file:
-                    fprintf( stderr, "Checking index file '%s' ...\n", file_name );
-                    in = fopen( file_name, "rb" );
-                    if ( NULL == in ) {
-                        fprintf( stderr, "Could not open %s for reading.\n", file_name );
-                        ret_value = EXIT_GENERIC_ERROR;
-                        break;
-                    }
-                    index = deserialize_index_from_file( in, 0, file_name );
-                    if ( ! index ) {
-                        fprintf(stderr, "Could not read index from file '%s'.\n", file_name);
-                        if ( continue_on_error == 0 )
-                            ret_value = EXIT_GENERIC_ERROR;
-                    } else {
-                        fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
-                        if (index->file_size != 0)
-                            fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
-                        fprintf( stderr, "\tList of points: [ @ uncompressed byte (index data size in Bytes) ]\n\t" );
-                        for (j=0; j<index->have; j++) {
-                            fprintf( stderr, "@%ld ( %d ), ", index->list[j].out, index->list[j].window_size );
-                        }
-                        fprintf( stderr, "\n" );
-                    }
+                    ret_value = action_list_info( file_name );
                     break;
 
             }
