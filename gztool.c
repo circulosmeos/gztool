@@ -1,16 +1,20 @@
+//
 // gztool
+//
 // Create small indexes for gzipped files and use them
 // for quick and random data extraction.
 // No more waiting when the end of a 10 GiB gzip is needed!
 //
-// based on parts from 
+// based on parts from
 // zlib/examples/zran.c & zlib/examples/zpipe.c by Mark Adler
 // //github.com/madler/zlib
 //
-// v1.0 by Roberto S. Galende
+// v0.1 by Roberto S. Galende, 2019-06
 // //github.com/circulosmeos/gztool
 //
+//
 // Original zran.c notice is copied here:
+//
 //
     /* zran.c -- example of zlib/gzip stream indexing and random access
      * Copyright (C) 2005, 2012 Mark Adler
@@ -421,7 +425,7 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 }
 
 
-// Allocate an index structure 
+// Allocate an index structure
 // and fill it with empty values
 // OUTPUT:
 // pointer to index
@@ -440,7 +444,7 @@ local struct access *create_empty_index()
 }
 
 
-// Deallocate from memory 
+// Deallocate from memory
 // an index built by build_index()
 // INPUT:
 // struct access *index: pointer to index
@@ -537,7 +541,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     if (compressed_chunk == NULL) {
         fprintf(stderr, "Error whilst compressing index chunk\nProcess aborted\n.");
         return NULL;
-    } 
+    }
     free(next->window);
     next->window = compressed_chunk;
     /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
@@ -683,7 +687,7 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
 // unsigned char *buf   : pointer to destination data buffer
 //                        if buf is NULL, stdout will be used as output
 // uint64_t len         : size of destination buffer `buf`
-//                        If 0 && buf == NULL all input stream 
+//                        If 0 && buf == NULL all input stream
 //                        from `offset` will be inflated
 // OUTPUT:
 // struct returned_output: contains two values:
@@ -775,7 +779,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     }
 
     if (here->window == NULL && here->window_beginning != 0) {
-        /* index' window data is not on memory, 
+        /* index' window data is not on memory,
         but we have position and size on index file, so we load it now */
         FILE *index_file;
         if (NULL == (index_file = fopen(index->file_name, "rb")) ||
@@ -788,7 +792,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
         }
         here->window_beginning = 0;
         if ( NULL == (here->window = malloc(here->window_size)) ||
-            !fread(here->window, here->window_size, 1, index_file) 
+            !fread(here->window, here->window_size, 1, index_file)
             ) {
             fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
             fclose(index_file);
@@ -955,7 +959,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     if (NULL == output_file || NULL == index) {
         return 0;
     }
-    
+
     /*if (index->have <= 0)
         return 0;*/
     /* writing and empy index is allowed (of size 4*8 = 32 bytes) */
@@ -998,7 +1002,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
 // INPUT:
 // FILE *input_file         : input stream
 // int load_windows         : 0 do not yet load windows on memory; 1 to load them
-// unsigned char *file_name : file path to index file, needed in case 
+// unsigned char *file_name : file path to index file, needed in case
 //                            load_windows==0, so a later extract() can access the
 //                            index file again to read the window data.
 // OUTPUT:
@@ -1276,7 +1280,7 @@ local int decompress_file(FILE *source, FILE *dest)
 // print help
 local void print_help() {
 
-    fprintf( stderr, " gztool (v1.0)\n GZIP files indexer and data retriever.\n");
+    fprintf( stderr, " gztool (v0.1)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "\n  $ gztool [-b #] [-cdefhil] [-I <INDEX>] <FILE> ...\n\n" );
@@ -1298,9 +1302,11 @@ local void print_help() {
 
 // write index for a gzip file
 // INPUT:
-// unsigned char *file_name     : file name of gzip file for which index will be calculated
+// unsigned char *file_name     : file name of gzip file for which index will be calculated,
+//                                If strlen(file_name) == 0 stdin is used as gzip file.
 // struct access **index        : memory address of index pointer (passed by reference)
 // unsigned char *index_filename: file name where index will be written
+//                                If strlen(index_filename) == 0 stdout is used as output for index.
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
@@ -1313,10 +1319,16 @@ local int action_create_index(
     struct returned_output ret;
 
     // open <FILE>:
-    in = fopen( file_name, "rb" );
-    if ( NULL == in ) {
-        fprintf( stderr, "Could not open %s for reading.\n", file_name );
-        return EXIT_GENERIC_ERROR;
+    if ( strlen(file_name) > 0 ) {
+        in = fopen( file_name, "rb" );
+        if ( NULL == in ) {
+            fprintf( stderr, "Could not open %s for reading.\n", file_name );
+            return EXIT_GENERIC_ERROR;
+        }
+    } else {
+        // stdin
+        SET_BINARY_MODE(STDIN); // sets binary mode for stdin in Windows
+        in = stdin;
     }
 
     // compute index:
@@ -1342,14 +1354,23 @@ local int action_create_index(
     fprintf(stderr, "Built index with %ld access points.\n", ret.value);
 
     // write index to index file:
-    index_file = fopen( index_filename, "wb" );
+    if ( strlen(index_filename) > 0 ) {
+        index_file = fopen( index_filename, "wb" );
+    } else {
+        SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
+        index_file = stdout;
+    }
     if ( NULL == index_file ||
          ! serialize_index_to_file( index_file, *index ) ) {
         fprintf( stderr, "Could not write index to file '%s'.\n", index_filename );
         return EXIT_GENERIC_ERROR;
     }
     fclose ( index_file );
-    fprintf(stderr, "Index written to '%s'.\n", index_filename);
+
+    if ( strlen(index_filename) > 0 )
+        fprintf(stderr, "Index written to '%s'.\n", index_filename);
+    else
+        fprintf(stderr, "Index written to stdout.\n");
 
     return EXIT_OK;
 
@@ -1589,9 +1610,12 @@ int main(int argc, char **argv)
                 actions_set++;
                 break;
             case '?':
-                if (isprint (optopt)) {
-                    fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-                    //print_help();
+                if ( isprint (optopt) ) {
+                    // print warning only if char option is unknown
+                    if ( NULL == strchr("bcdefhiIl", optopt) ) {
+                        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                        print_help();
+                    }
                 } else
                     fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
                 fprintf( stderr, "\n" );
@@ -1632,7 +1656,7 @@ int main(int argc, char **argv)
                 fprintf( stderr, "\n" );
                 return ret_value;
             } else {
-                fprintf( stderr, "`-I INDEX` must be used when extracting stdin.\nAborted.\n\n" );
+                fprintf( stderr, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
                 return EXIT_GENERIC_ERROR;
             }
 
@@ -1642,7 +1666,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                    fprintf( stderr, "Error while compressing STDIN.\nAborted.\n\n" );
+                    fprintf( stderr, "Error while compressing stdin.\nAborted.\n\n" );
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
@@ -1653,19 +1677,27 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout ) ) {
-                    fprintf( stderr, "Error while decompressing STDIN.\nAborted.\n\n" );
+                    fprintf( stderr, "Error while decompressing stdin.\nAborted.\n\n" );
                     return EXIT_GENERIC_ERROR;
                 }
                 return EXIT_OK;
 
+            case ACT_CREATE_INDEX:
+                // stdin is a gzip file that must be indexed
+                if ( index_filename_indicated == 1 ) {
+                    ret_value = action_create_index( "", &index, index_filename );
+                } else {
+                    ret_value = action_create_index( "", &index, "" );
+                }
+                fprintf( stderr, "\n" );
+                return ret_value;
+
             case ACT_LIST_INFO:
                 // stdin is an index file that must be checked
-                SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 ret_value = action_list_info( "" );
                 fprintf( stderr, "\n" );
                 return ret_value;
 
-            // TODO ...
         }
 
     } else {
@@ -1792,5 +1824,7 @@ int main(int argc, char **argv)
         return ret_value;
 
     }
+
+    assert( 0 );
 
 }
