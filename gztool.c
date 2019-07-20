@@ -10,6 +10,7 @@
 // //github.com/madler/zlib
 //
 // v0.1 by Roberto S. Galende, 2019-06
+// Licensed under GPL v3
 // //github.com/circulosmeos/gztool
 //
 //
@@ -471,7 +472,7 @@ local void free_index(struct access *index)
 local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
 {
     uint64_t i;
-    for (i=from; i++; i<to) {
+    for (i=from; i<to; i++) {
         index->list[i].window = NULL;
         index->list[i].window_size = 0;
     }
@@ -520,7 +521,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
             return NULL;
         }
         index->list = next;
-        empty_index_list( index, index->have + 1, index->size );
+        empty_index_list( index, index->have, index->size );
     }
 
     /* fill in entry and increment how many we have */
@@ -1504,9 +1505,9 @@ local int action_list_info( unsigned char *file_name ) {
         fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
         if (index->file_size != 0)
             fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
-        fprintf( stderr, "\tList of points: [ @ uncompressed byte (index data size in Bytes) ]\n\t" );
+        fprintf( stderr, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
         for (j=0; j<index->have; j++) {
-            fprintf( stderr, "@%ld ( %d ), ", index->list[j].out, index->list[j].window_size );
+            fprintf( stderr, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
         }
         fprintf( stderr, "\n" );
 
