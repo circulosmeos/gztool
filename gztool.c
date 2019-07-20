@@ -606,7 +606,7 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
    was generated.  extract() may also return Z_ERRNO if there is an error on
    reading or seeking the input file. */
 local struct returned_output extract(FILE *in, struct access *index, off_t offset,
-                  unsigned char *buf, uint64_t len)  // TODO: cambiar a uint64_t, y escribir en stdout, no buf si buf==NULL
+                  unsigned char *buf, uint64_t len)
 {
     struct returned_output ret;
     int i, skip;
@@ -830,7 +830,6 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     if (extract_all_input == 1) {
         ret.value = len;
     }
-    // TODO: extract len bytes with output_to_stdout, and also set len at the end: 20190710 DONE
 
     /* clean up and return bytes read or error */
   extract_ret:
@@ -1234,9 +1233,6 @@ local int action_extract_from_byte(
     int mark_recursion = 0;
     int ret_value;
 
-    // TODO: if index_filename doesn't exist action will not proceed, unless `-f`
-    // in which case the index is created, and then the data is extracted.
-    // TODO: for this, it will be useful to convert the code inside these cases to functions...
     // open <FILE>:
     if ( strlen(file_name) > 0 ) {
         fprintf(stderr, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
@@ -1309,7 +1305,7 @@ action_extract_from_byte_error:
 int main(int argc, char **argv)
 {
     // variables for used for the different actions:
-    struct returned_output ret; // TODO: make uint64_t again: extract() SHOULD NOT return negative values, and neither build_index() PATCH!
+    struct returned_output ret;
     off_t offset;
     unsigned char *file_name = NULL;
     FILE *in = NULL;
@@ -1342,7 +1338,6 @@ int main(int argc, char **argv)
         switch(opt) {
             // help
             case 'h':
-                // TODO
                 print_help();
                 return EXIT_OK;
             // `-b` extracts data from indicated position byte in uncompressed stream of <FILE>
@@ -1352,21 +1347,16 @@ int main(int argc, char **argv)
                 // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_BYTE;
                 actions_set++;
-                // TODO
                 break;
             // `-c` compress <FILE> (or stdin if none) to stdout
             case 'c':
-                // TODO: check that compress_chunk() can be called in CHUNK sizes and decompress_chunk() inflates that
                 action = ACT_COMPRESS_CHUNK;
                 actions_set++;
-                // TODO
                 break;
             // `-d` decompress <FILE> (or stdin if none) to stdout
             case 'd':
-                // TODO: check that decompress_chunk() can be called in CHUNK sizes and complete inflation is correct
                 action = ACT_DECOMPRESS_CHUNK;
                 actions_set++;
-                // TODO
                 break;
             // `-e` continues on error if multiple input files indicated
             case 'e':
@@ -1380,28 +1370,23 @@ int main(int argc, char **argv)
             case 'i':
                 action = ACT_CREATE_INDEX;
                 actions_set++;
-                // TODO
                 break;
             // list number of bytes, but not 0 valued
             // `-I` creates index for <FILE> with name <INDEX_FILE>
             case 'I':
-                // TODO: do not overwrite files unless `-f` is indicated
+                // action = ACT_CREATE_INDEX but only if no other option indicated
                 index_filename_indicated = 1;
                 index_filename = malloc( strlen(optarg) + 1 );
                 memcpy( index_filename, optarg, strlen(optarg) + 1 );
-                // action = ACT_CREATE_INDEX but only if no other option indicated
-                // TODO
                 break;
             // `-l` list info of index <FILE>
             case 'l':
                 action = ACT_LIST_INFO;
                 actions_set++;
-                // TODO
                 break;
             case '?':
                 if (isprint (optopt)) {
                     fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-                    // TODO
                     //print_help();
                 } else
                     fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
@@ -1434,8 +1419,8 @@ int main(int argc, char **argv)
 
     if (optind == argc || argc == 1) {
         // file input is stdin
-        // TODO: actions
         switch ( action ) {
+
             case ACT_EXTRACT_FROM_BYTE:
             if ( index_filename_indicated == 1 ) {
                 ret_value = action_extract_from_byte(
@@ -1522,6 +1507,7 @@ int main(int argc, char **argv)
 
             // "-bil" options can accept multiple files
             switch ( action ) {
+
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_extract_from_byte(
                         file_name, index_filename, extract_from_byte, continue_on_error, force_action );
@@ -1587,8 +1573,6 @@ int main(int argc, char **argv)
                     }
                     break;
 
-                // TODO: actions
-                // ACTION( argv[i] );
             }
 
             fprintf( stderr, "\n" );
