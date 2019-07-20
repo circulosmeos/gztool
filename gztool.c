@@ -1,56 +1,70 @@
-/* zran.c -- example of zlib/gzip stream indexing and random access
- * Copyright (C) 2005, 2012 Mark Adler
- * For conditions of distribution and use, see copyright notice in zlib.h
-   Version 1.1  29 Sep 2012  Mark Adler */
+// gztool
+// Create small indexes for gzipped files and use them
+// for quick and random data extraction.
+// No more waiting when the end of a 10 GiB gzip is needed!
+//
+// based on parts from 
+// zlib/examples/zran.c & zlib/examples/zpipe.c by Mark Adler
+// //github.com/madler/zlib
+//
+// v1.0 by Roberto S. Galende
+// //github.com/circulosmeos/gztool
+//
+// Original zran.c notice is copied here:
+//
+    /* zran.c -- example of zlib/gzip stream indexing and random access
+     * Copyright (C) 2005, 2012 Mark Adler
+     * For conditions of distribution and use, see copyright notice in zlib.h
+       Version 1.1  29 Sep 2012  Mark Adler */
 
-/* Version History:
- 1.0  29 May 2005  First version
- 1.1  29 Sep 2012  Fix memory reallocation error
- */
+    /* Version History:
+     1.0  29 May 2005  First version
+     1.1  29 Sep 2012  Fix memory reallocation error
+     */
 
-/* Illustrate the use of Z_BLOCK, inflatePrime(), and inflateSetDictionary()
-   for random access of a compressed file.  A file containing a zlib or gzip
-   stream is provided on the command line.  The compressed stream is decoded in
-   its entirety, and an index built with access points about every SPAN bytes
-   in the uncompressed output.  The compressed file is left open, and can then
-   be read randomly, having to decompress on the average SPAN/2 uncompressed
-   bytes before getting to the desired block of data.
+    /* Illustrate the use of Z_BLOCK, inflatePrime(), and inflateSetDictionary()
+       for random access of a compressed file.  A file containing a zlib or gzip
+       stream is provided on the command line.  The compressed stream is decoded in
+       its entirety, and an index built with access points about every SPAN bytes
+       in the uncompressed output.  The compressed file is left open, and can then
+       be read randomly, having to decompress on the average SPAN/2 uncompressed
+       bytes before getting to the desired block of data.
 
-   An access point can be created at the start of any deflate block, by saving
-   the starting file offset and bit of that block, and the 32K bytes of
-   uncompressed data that precede that block.  Also the uncompressed offset of
-   that block is saved to provide a referece for locating a desired starting
-   point in the uncompressed stream.  build_index() works by decompressing the
-   input zlib or gzip stream a block at a time, and at the end of each block
-   deciding if enough uncompressed data has gone by to justify the creation of
-   a new access point.  If so, that point is saved in a data structure that
-   grows as needed to accommodate the points.
+       An access point can be created at the start of any deflate block, by saving
+       the starting file offset and bit of that block, and the 32K bytes of
+       uncompressed data that precede that block.  Also the uncompressed offset of
+       that block is saved to provide a referece for locating a desired starting
+       point in the uncompressed stream.  build_index() works by decompressing the
+       input zlib or gzip stream a block at a time, and at the end of each block
+       deciding if enough uncompressed data has gone by to justify the creation of
+       a new access point.  If so, that point is saved in a data structure that
+       grows as needed to accommodate the points.
 
-   To use the index, an offset in the uncompressed data is provided, for which
-   the latest access point at or preceding that offset is located in the index.
-   The input file is positioned to the specified location in the index, and if
-   necessary the first few bits of the compressed data is read from the file.
-   inflate is initialized with those bits and the 32K of uncompressed data, and
-   the decompression then proceeds until the desired offset in the file is
-   reached.  Then the decompression continues to read the desired uncompressed
-   data from the file.
+       To use the index, an offset in the uncompressed data is provided, for which
+       the latest access point at or preceding that offset is located in the index.
+       The input file is positioned to the specified location in the index, and if
+       necessary the first few bits of the compressed data is read from the file.
+       inflate is initialized with those bits and the 32K of uncompressed data, and
+       the decompression then proceeds until the desired offset in the file is
+       reached.  Then the decompression continues to read the desired uncompressed
+       data from the file.
 
-   Another approach would be to generate the index on demand.  In that case,
-   requests for random access reads from the compressed data would try to use
-   the index, but if a read far enough past the end of the index is required,
-   then further index entries would be generated and added.
+       Another approach would be to generate the index on demand.  In that case,
+       requests for random access reads from the compressed data would try to use
+       the index, but if a read far enough past the end of the index is required,
+       then further index entries would be generated and added.
 
-   There is some fair bit of overhead to starting inflation for the random
-   access, mainly copying the 32K byte dictionary.  So if small pieces of the
-   file are being accessed, it would make sense to implement a cache to hold
-   some lookahead and avoid many calls to extract() for small lengths.
+       There is some fair bit of overhead to starting inflation for the random
+       access, mainly copying the 32K byte dictionary.  So if small pieces of the
+       file are being accessed, it would make sense to implement a cache to hold
+       some lookahead and avoid many calls to extract() for small lengths.
 
-   Another way to build an index would be to use inflateCopy().  That would
-   not be constrained to have access points at block boundaries, but requires
-   more memory per access point, and also cannot be saved to file due to the
-   use of pointers in the state.  The approach here allows for storage of the
-   index in a file.
- */
+       Another way to build an index would be to use inflateCopy().  That would
+       not be constrained to have access points at block boundaries, but requires
+       more memory per access point, and also cannot be saved to file due to the
+       use of pointers in the state.  The approach here allows for storage of the
+       index in a file.
+     */
 
 // .................................................
 // large file support (LFS) (files with size >2^31 (2 GiB) in linux, and >4 GiB in Windows)
@@ -65,7 +79,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "zlib.h"
+#include <zlib.h>
 #include <unistd.h> // getopt(), access(), sleep()
 #include <ctype.h>  // isprint()
 
@@ -146,10 +160,18 @@ static inline void *endiannes_swap_8p(void *x)
     return x;
 }
 
-// fread substitute for endianness management of 4 and 8 bytes words
-local size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+// fread() substitute for endianness management of 4 and 8 bytes words
+// Data in *ptr will be received as this target system waits them
+// independently of how they were stored (always as big endian).
+// INPUT:
+// void * ptr   : pointer to buffer where data will be received
+// size_t size  : size of data in bytes
+// FILE * stream: stream to read
+// OUTPUT:
+// number of bytes read
+local size_t fread_endian( void * ptr, size_t size, FILE * stream ) {
 
-    size_t output = fread(ptr, size, count, stream);
+    size_t output = fread(ptr, size, 1, stream);
 
     if (endiannes_is_big()) {
         ;
@@ -171,17 +193,26 @@ local size_t fread_endian( void * ptr, size_t size, size_t count, FILE * stream 
 
 }
 
-// fread substitute for endianness management of 4 and 8 bytes words
-local size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream ) {
+// fwrite() substitute for endianness management of 4 and 8 bytes words
+// Data in *ptr will be stored as big endian
+// independently of how they were stored in this system.
+// INPUT:
+// void * ptr   : pointer to buffer where data is stored
+// size_t size  : size of data in bytes
+// FILE * stream: stream to write
+// OUTPUT:
+// number of bytes written
+local size_t fwrite_endian( void * ptr, size_t size, FILE * stream ) {
 
     size_t output;
     void *endian_ptr;
 
+    endian_ptr = malloc(size);
+
     if (endiannes_is_big()) {
-        ;
+        memcpy(endian_ptr, ptr, size);
     } else {
         // machine is little endian: flip bytes
-        endian_ptr = malloc(size);
         switch (size) {
             case 4:
                 *(uint32_t *)endian_ptr = *(uint32_t *)ptr;
@@ -196,7 +227,7 @@ local size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream
         }
     }
 
-    output = fwrite(endian_ptr, size, count, stream);
+    output = fwrite(endian_ptr, size, 1, stream);
 
     free(endian_ptr);
     return output;
@@ -207,13 +238,20 @@ local size_t fwrite_endian( void * ptr, size_t size, size_t count, FILE * stream
  *******************/
 
 
-// compression function, based on def() from examples/zpipe.c
-/* Compress from file source to file dest until EOF on source.
-   def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
-   allocated for processing, Z_STREAM_ERROR if an invalid compression
-   level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
-   version of the library linked do not match, or Z_ERRNO if there is
-   an error reading or writing the files. */
+// compression function
+// based on def() from zlib/examples/zpipe.c by Mark Adler :
+    /* Compress from file source to file dest until EOF on source.
+       def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+       allocated for processing, Z_STREAM_ERROR if an invalid compression
+       level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
+       version of the library linked do not match, or Z_ERRNO if there is
+       an error reading or writing the files. */
+// INPUT:
+// unsigned char *source: pointer to data
+// uint64_t *size       : size of data in bytes
+// int level            : level of compression
+// OUTPUT:
+// pointer to compressed data (NULL on error)
 local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int level)
 {
     int ret, flush;
@@ -287,13 +325,19 @@ local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int l
 }
 
 
-// decompression function, based on inf() from examples/zpipe.c
-/* Decompress from file source to file dest until stream ends or EOF.
-   inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
-   allocated for processing, Z_DATA_ERROR if the deflate data is
-   invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
-   the version of the library linked do not match, or Z_ERRNO if there
-   is an error reading or writing the files. */
+// decompression function,
+// based on inf() from zlib/examples/zpipe.c by Mark Adler
+    /* Decompress from file source to file dest until stream ends or EOF.
+       inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+       allocated for processing, Z_DATA_ERROR if the deflate data is
+       invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
+       the version of the library linked do not match, or Z_ERRNO if there
+       is an error reading or writing the files. */
+// INPUT:
+// unsigned char *source: pointer to data
+// uint64_t *size       : size of data in bytes
+// OUTPUT:
+// pointer to decompressed data (NULL on error)
 local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 {
     int ret;
@@ -377,7 +421,10 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 }
 
 
-/* Allocate an index and fill with empty values */
+// Allocate an index structure 
+// and fill it with empty values
+// OUTPUT:
+// pointer to index
 local struct access *create_empty_index()
 {
     struct access *index;
@@ -393,7 +440,10 @@ local struct access *create_empty_index()
 }
 
 
-/* Deallocate an index built by build_index() */
+// Deallocate from memory 
+// an index built by build_index()
+// INPUT:
+// struct access *index: pointer to index
 local void free_index(struct access *index)
 {
     uint64_t i;
@@ -408,8 +458,12 @@ local void free_index(struct access *index)
 }
 
 
-/* fill pointers of and index->list with NULL
-   so that free_index() can proceed on any contingency */
+// fill pointers of and index->list with NULL windows
+// so that free_index() can proceed on any contingency
+// INPUT:
+// struct access *index : pointer to index
+// uint64_t from        : initial point to fill
+// uint64_t to          : last point to fill
 local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
 {
     uint64_t i;
@@ -423,6 +477,15 @@ local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
 
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
+// INPUT:
+// struct access *index : pointer to original index
+// uint32_t bits        : (new entry data)
+// off_t in             : (new entry data)
+// off_t out            : (new entry data)
+// unsigned left        : (new entry data)
+// unsigned char *window: (new entry data)
+// OUTPUT:
+// pointer to (new) index (NULL on error)
 local struct access *addpoint(struct access *index, uint32_t bits,
     off_t in, off_t out, unsigned left, unsigned char *window)
 {
@@ -493,6 +556,14 @@ local struct access *addpoint(struct access *index, uint32_t bits,
    returns the number of access points on success (>= 1), Z_MEM_ERROR for out
    of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
    file read error.  On success, *built points to the resulting index. */
+// INPUT:
+// FILE *in             : input stream
+// off_t span           : span
+// struct access **built: address of index pointer, equivalent to passed by reference
+// OUTPUT:
+// struct returned_output: contains two values:
+//      .error: Z_* error code or Z_OK if everything was ok
+//      .value: size of built index (index->size)
 local struct returned_output build_index(FILE *in, off_t span, struct access **built)
 {
     struct returned_output ret;
@@ -605,6 +676,19 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
    should not return a data error unless the file was modified since the index
    was generated.  extract() may also return Z_ERRNO if there is an error on
    reading or seeking the input file. */
+// INPUT:
+// FILE *in             : input stream
+// struct access *index : pointer to index
+// off_t offset         : offset in uncompressed bytes in source
+// unsigned char *buf   : pointer to destination data buffer
+//                        if buf is NULL, stdout will be used as output
+// uint64_t len         : size of destination buffer `buf`
+//                        If 0 && buf == NULL all input stream 
+//                        from `offset` will be inflated
+// OUTPUT:
+// struct returned_output: contains two values:
+//      .error: Z_* error code or Z_OK if everything was ok
+//      .value: size of data returned in `buf`
 local struct returned_output extract(FILE *in, struct access *index, off_t offset,
                   unsigned char *buf, uint64_t len)
 {
@@ -840,7 +924,12 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
 }
 
 
-// TODO: functions description
+// serialize index into a file
+// INPUT:
+// FILE *output_file    : output stream
+// struct access *index : pointer to index
+// OUTPUT:
+// 0 on error, 1 on success
 int serialize_index_to_file( FILE *output_file, struct access *index ) {
     struct point *here;
     uint64_t temp;
@@ -875,21 +964,21 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
     /* the initial uint32_t is the number of bgzip-idx registers) */
     temp = 0;
-    fwrite_endian(&temp, sizeof(temp), 1, output_file);
+    fwrite_endian(&temp, sizeof(temp), output_file);
     /* a 64 bits readable identifier */
     fprintf(output_file, GZIP_INDEX_IDENTIFIER_STRING);
 
     /* and now the raw data: the access struct "index" */
-    fwrite_endian(&index->have, sizeof(index->have), 1, output_file);
+    fwrite_endian(&index->have, sizeof(index->have), output_file);
     /* index->size is not written as only filled entries are usable */
-    fwrite_endian(&index->have, sizeof(index->have), 1, output_file);
+    fwrite_endian(&index->have, sizeof(index->have), output_file);
 
     for (i = 0; i < index->have; i++) {
         here = &(index->list[i]);
-        fwrite_endian(&(here->out),  sizeof(here->out),  1, output_file);
-        fwrite_endian(&(here->in),   sizeof(here->in),   1, output_file);
-        fwrite_endian(&(here->bits), sizeof(here->bits), 1, output_file);
-        fwrite_endian(&(here->window_size), sizeof(here->window_size), 1, output_file);
+        fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
+        fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
+        fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
+        fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
         if (NULL == here->window) {
             fprintf(stderr, "Index incomplete! - index writing aborted.\n");
             return 0;
@@ -899,12 +988,21 @@ int serialize_index_to_file( FILE *output_file, struct access *index ) {
     }
 
     /* write size of uncompressed file (useful for bgzip files) */
-    fwrite_endian(&(index->file_size), sizeof(index->file_size), 1, output_file);
+    fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
 
     return 1;
 }
 
 
+// read index from a file
+// INPUT:
+// FILE *input_file         : input stream
+// int load_windows         : 0 do not yet load windows on memory; 1 to load them
+// unsigned char *file_name : file path to index file, needed in case 
+//                            load_windows==0, so a later extract() can access the
+//                            index file again to read the window data.
+// OUTPUT:
+// struct access *index : pointer to index, or NULL on error
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
     struct point *here;
     struct access *index;
@@ -937,7 +1035,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         return NULL;
     }
 
-    fread_endian(&(index->have), sizeof(index->have), 1, input_file);
+    fread_endian(&(index->have), sizeof(index->have), input_file);
     if (index->have <= 0) {
         fprintf(stderr, "Index file contains no indexes.\n");
         free_index(index);
@@ -945,7 +1043,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     }
 
     // index->size should be equal to index->have, but this isn't checked
-    fread_endian(&(index->size), sizeof(index->size), 1, input_file);
+    fread_endian(&(index->size), sizeof(index->size), input_file);
 
     // create the list of points
     index->list = malloc(sizeof(struct point) * index->size);
@@ -953,10 +1051,10 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
     for (i = 0; i < index->size; i++) {
         here = &(index->list[i]);
-        fread_endian(&(here->out),  sizeof(here->out),  1, input_file);
-        fread_endian(&(here->in),   sizeof(here->in),   1, input_file);
-        fread_endian(&(here->bits), sizeof(here->bits), 1, input_file);
-        fread_endian(&(here->window_size), sizeof(here->window_size), 1, input_file);
+        fread_endian(&(here->out),  sizeof(here->out),  input_file);
+        fread_endian(&(here->in),   sizeof(here->in),   input_file);
+        fread_endian(&(here->bits), sizeof(here->bits), input_file);
+        fread_endian(&(here->window_size), sizeof(here->window_size), input_file);
         if ( load_windows == 0 ) {
             here->window = NULL;
             here->window_beginning = ftello(input_file);
@@ -998,7 +1096,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     /* read size of uncompressed file (useful for bgzip files) */
     /* this field may not exist (maybe useful for growing gzip files?) */
     index->file_size = 0;
-    fread_endian(&(index->file_size), sizeof(index->file_size), 1, input_file);
+    fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
 
 
     index->file_name = malloc( strlen(file_name) + 1 );
@@ -1016,13 +1114,19 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 }
 
 
-// based on def from examples/zpipe.c
-/* Compress from file source to file dest until EOF on source.
-   def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
-   allocated for processing, Z_STREAM_ERROR if an invalid compression
-   level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
-   version of the library linked do not match, or Z_ERRNO if there is
-   an error reading or writing the files. */
+// based on def from zlib/examples/zpipe.c by Mark Adler
+    /* Compress from file source to file dest until EOF on source.
+       def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+       allocated for processing, Z_STREAM_ERROR if an invalid compression
+       level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
+       version of the library linked do not match, or Z_ERRNO if there is
+       an error reading or writing the files. */
+// INPUT:
+// FILE *source : source stream
+// FILE *dest   : destination stream
+// int level    : level of compression
+// OUTPUT:
+// Z_* error code or Z_OK on success
 local int compress_file( FILE *source, FILE *dest, int level )
 {
     int ret, flush;
@@ -1085,13 +1189,18 @@ local int compress_file( FILE *source, FILE *dest, int level )
 }
 
 
-// based on inf from examples/zpipe.c
-/* Decompress from file source to file dest until stream ends or EOF.
-   inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
-   allocated for processing, Z_DATA_ERROR if the deflate data is
-   invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
-   the version of the library linked do not match, or Z_ERRNO if there
-   is an error reading or writing the files. */
+// based on inf from zlib/examples/zpipe.c by Mark Adler
+    /* Decompress from file source to file dest until stream ends or EOF.
+       inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
+       allocated for processing, Z_DATA_ERROR if the deflate data is
+       invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
+       the version of the library linked do not match, or Z_ERRNO if there
+       is an error reading or writing the files. */
+// INPUT:
+// FILE *source : source stream
+// FILE *dest   : destination stream
+// OUTPUT:
+// Z_* error code or Z_OK on success
 local int decompress_file(FILE *source, FILE *dest)
 {
     int ret;
@@ -1164,9 +1273,10 @@ local int decompress_file(FILE *source, FILE *dest)
 }
 
 
+// print help
 local void print_help() {
 
-    fprintf( stderr, "\n gztool (v1.0)\n GZIP files indexer and data retriever.\n");
+    fprintf( stderr, " gztool (v1.0)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "\n  $ gztool [-b #] [-cdefhil] [-I <INDEX>] <FILE> ...\n\n" );
@@ -1177,7 +1287,7 @@ local void print_help() {
     fprintf( stderr, " -f: with `-i` force index overwriting if one exists\n" );
     fprintf( stderr, "     with `-b` force index creation if none exists\n" );
     fprintf( stderr, " -h: print this help\n" );
-    fprintf( stderr, " -i: create index for indicated gzip file- (For 'file.gz'\n" );
+    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
     fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: list info contained in indicated index file\n" );
@@ -1186,6 +1296,13 @@ local void print_help() {
 }
 
 
+// write index for a gzip file
+// INPUT:
+// unsigned char *file_name     : file name of gzip file for which index will be calculated
+// struct access **index        : memory address of index pointer (passed by reference)
+// unsigned char *index_filename: file name where index will be written
+// OUTPUT:
+// EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
     unsigned char *index_filename )
@@ -1239,6 +1356,14 @@ local int action_create_index(
 }
 
 
+// extract data from a gzip file using its index file (creates it if it doesn't exist)
+// INPUT:
+// unsigned char *file_name     : gzip file name
+// unsigned char *index_filename: index file name
+// uint64_t extract_from_byte   : uncompressed offset of original data from which to extract
+// int force_action             : if 1 and index file doesn't exist, create it
+// OUTPUT:
+// EXIT_* error code or EXIT_OK on success
 local int action_extract_from_byte(
     unsigned char *file_name, unsigned char *index_filename,
     uint64_t extract_from_byte, int force_action )
@@ -1317,6 +1442,11 @@ action_extract_from_byte_error:
 }
 
 
+// list info for an index file
+// INPUT:
+// unsigned char *file_name: index file name
+// OUTPUT:
+// EXIT_* error code or EXIT_OK on success
 local int action_list_info( unsigned char *file_name ) {
 
     FILE *in = NULL;
@@ -1371,9 +1501,11 @@ action_list_info_error:
 }
 
 
-/* Demonstrate the use of build_index() and extract() by processing the file
-   provided on the command line, and the extracting 16K from about 2/3rds of
-   the way through the uncompressed output, and writing that to stdout. */
+// .................................................
+
+
+// OUTPUT:
+// EXIT_* error code or EXIT_OK on success
 int main(int argc, char **argv)
 {
     // variables for used for the different actions:
@@ -1484,7 +1616,7 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdil`.\nAborted.\n\n" );
+            fprintf(stderr, "Please, indicate one parameter of `-bcdil`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
