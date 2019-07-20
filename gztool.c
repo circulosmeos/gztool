@@ -9,13 +9,56 @@
 // zlib/examples/zran.c & zlib/examples/zpipe.c by Mark Adler
 // //github.com/madler/zlib
 //
-// v0.1 by Roberto S. Galende, 2019-06
-// Licensed under GPL v3
-// //github.com/circulosmeos/gztool
+//.................................................
 //
+// LICENSE:
+//
+// v0.1 by Roberto S. Galende, 2019-06
+// //github.com/circulosmeos/gztool
+// A work by Roberto S. Galende 
+// distributed under the same License terms covering
+// zlib from Mark Adler (aka Zlib license):
+//   This software is provided 'as-is', without any express or implied
+//   warranty.  In no event will the authors be held liable for any damages
+//   arising from the use of this software.
+//   Permission is granted to anyone to use this software for any purpose,
+//   including commercial applications, and to alter it and redistribute it
+//   freely, subject to the following restrictions:
+//   1. The origin of this software must not be misrepresented; you must not
+//      claim that you wrote the original software. If you use this software
+//      in a product, an acknowledgment in the product documentation would be
+//      appreciated but is not required.
+//   2. Altered source versions must be plainly marked as such, and must not be
+//      misrepresented as being the original software.
+//   3. This notice may not be removed or altered from any source distribution.
+//
+// License contained in zlib.h by Mark Adler is copied here:
+//
+/* zlib.h -- interface of the 'zlib' general purpose compression library
+  version 1.2.11, January 15th, 2017
+  Copyright (C) 1995-2017 Jean-loup Gailly and Mark Adler
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+  Jean-loup Gailly        Mark Adler
+  jloup@gzip.org          madler@alumni.caltech.edu
+  The data format used by the zlib library is described by RFCs (Request for
+  Comments) 1950 to 1952 in the files http://tools.ietf.org/html/rfc1950
+  (zlib format), rfc1951 (deflate format) and rfc1952 (gzip format).
+*/
+//.................................................
 //
 // Original zran.c notice is copied here:
-//
 //
     /* zran.c -- example of zlib/gzip stream indexing and random access
      * Copyright (C) 2005, 2012 Mark Adler
@@ -70,6 +113,7 @@
        use of pointers in the state.  The approach here allows for storage of the
        index in a file.
      */
+//
 
 // .................................................
 // large file support (LFS) (files with size >2^31 (2 GiB) in linux, and >4 GiB in Windows)
