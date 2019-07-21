@@ -92,14 +92,18 @@ In this latter case, if index hasn't yet been created the program will complain 
 Index file format
 =================
 
-Index files are created by default with extension '.gzi' appended to the original file name of the '.gz' file:
+Index files are created by default with extension '.gzi' appended to the original file name of the gzipped file:
 
     filename.gz     ->     filename.gzi
+
+If the original file doesn't have ".gz" extension, ".gzi" will be appended - for example:
+
+    filename.tgz     ->     filename.tgz.gzi
 
 There's a special header to mark ".gzi" files as index files usable for this app:
 
     +-----------------+-----------------+
-    | 0x0 64 bits     |    "gzipindx"   |
+    |   0x0 64 bits   |    "gzipindx"   |     ~     16 bytes = 128 bits
     +-----------------+-----------------+
 
 Note that this header has been built so that this format will be "compatible" with index files generated for *bgzip*-compressed files. **[bgzip](http://www.htslib.org/doc/bgzip.html)** files are totally compatible with gzip: they've just been made so every 64 kiB of uncompressed data the zlib library is restart, so they are composed of independent gzipped blocks one after another. The *bgzip* command can create index files for bgzipped files in less time and with much less space than with this tool as they're already almost random-access-capable. The first 64-bit-long of bgzip files is the count of index pairs that are next, so with this 0x0 header gztool-index-files can be ignored by *bgzip* command and so bgzipped and gzipped files and their indexes could live in the same folder without collision. In the next version *gztool* will also ignore *bgzip*-index files (and in a future version *gztool* will hopefully read both index file types).
@@ -110,9 +114,11 @@ Next, and almost one-to-one pass of *struct access* is serialize to the file. *a
 
 After that, comes all the *struct point* data. As previously said, windows are compressed so a previous register (32 bits) with their length is needed.
 
-After all the *struct point* structures data, the original uncompressed data of the gzipped file is stored (64 bits).
+After all the *struct point* structures data, the original uncompressed data size of the gzipped file is stored (64 bits).
 
-Please note that not all the data is 64-bit long. This is because some counters will always fit in less length. Refer to code.
+Please note that not all stored numbers are 64-bit long. This is because some counters will always fit in less length. Refer to code.
+
+With 64 bit long numbers, the index could potentially manage files up to 2^64 = 16 EiB (16 777 216 TiB).
 
 Version
 =======
