@@ -69,6 +69,7 @@ Usage
      -I INDEX: index file name will be 'INDEX'
      -l: list info contained in indicated index file
 
+Please, note that STDOUT is used for data extraction with `-bcd` modifiers.
 
 Examples of use
 ===============
@@ -88,6 +89,46 @@ Retrieve data from uncompressed byte position 1000000 inside test.gz:
 In this latter case, if index hasn't yet been created the program will complain and stop. But index creation can be `forced` if it does not exist yet:
 
     $ gztool -fb 1000000 test.gz
+
+Creating and index for all "\*gz" files in a directory. If `-e` were not used the process would stop on first file as an index for it already exist - `-e` continuos processing next file regardless of previous errors.
+
+    $ gztool -ie *gz
+
+    Index file 'data.1.tar.gz.gzi' already exists.
+    Index file 'data.2.tar.gz.gzi' already exists.
+    Index file 'data_project.0.tar.gz.gzi' already exists.
+    Processing 'data_project.1.tar.gz' ...
+    Built index with 129 access points.
+    Index written to 'data_project.1.tar.gz.gzi'.
+
+    Processing 'data_project.2.tar.gz' ...
+    Built index with 73 access points.
+    Index written to 'data_project.2.tar.gz.gzi'.
+
+    Processing 'project_2.gz' ...
+    Built index with 3 access points.
+    Index written to 'project_2.gz.gzi'.
+
+Extract data from project.gz byte 25600000 to STDOUT, and use `grep` on this output:
+
+    $ gztool -b 25600000 | grep -i "balance = "
+
+Please, note that STDOUT is used for data extraction with `-bcd` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
+
+    $ gztool -b 99900000 > uncompressed.data
+
+Show internals of all index files in this directory:
+
+    $ gztool -l *.gzi
+
+    Checking index file 'accounting.gz.gzi' ...
+            Number of index points:    73
+        Size of uncompressed file: 81285120
+        List of points:
+           @ compressed/uncompressed byte (index data size in Bytes), ...
+        @ 10 / 0 ( 22870 ), @ 1034606 / 1069037 ( 32784 ), @ 2085195 / 2120817 ( 32784 ), @ 3136550 / 3180475 ( 32784 ), ...
+    ...
+
 
 Index file format
 =================
