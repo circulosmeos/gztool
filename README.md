@@ -90,7 +90,7 @@ In this latter case, if index hasn't yet been created the program will complain 
 
     $ gztool -fb 1000000 test.gz
 
-Creating and index for all "\*gz" files in a directory. If `-e` were not used the process would stop on first file as an index for it already exist - `-e` continuos processing next file regardless of previous errors.
+Creating and index for all "\*gz" files in a directory. If `-e` were not used the process would stop on first file as an index for it already exist - `-e` continues processing next file regardless of previous errors.
 
     $ gztool -ie *gz
 
@@ -109,13 +109,13 @@ Creating and index for all "\*gz" files in a directory. If `-e` were not used th
     Built index with 3 access points.
     Index written to 'project_2.gz.gzi'.
 
-Extract data from project.gz byte 25600000 to STDOUT, and use `grep` on this output:
+Extract data from project.gz byte 25600000 to STDOUT, creating index if necessary (`-f`), and use `grep` on this output:
 
-    $ gztool -b 25600000 | grep -i "balance = "
+    $ gztool -fb 25600000 project.gz | grep -i "balance = "
 
 Please, note that STDOUT is used for data extraction with `-bcd` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
 
-    $ gztool -b 99900000 > uncompressed.data
+    $ gztool -fb 99900000 project.gz > uncompressed.data
 
 Show internals of all index files in this directory:
 
