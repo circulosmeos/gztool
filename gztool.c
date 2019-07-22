@@ -1789,7 +1789,8 @@ int main(int argc, char **argv)
                     continue;
                 } else {
                     fprintf( stderr, "Aborted.\n\n" );
-                    return EXIT_GENERIC_ERROR;
+                    ret_value = EXIT_GENERIC_ERROR;
+                    break;
                 }
             }
 
