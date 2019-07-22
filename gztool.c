@@ -145,12 +145,14 @@
 
 #define local static
 
-#define SPAN 1048576L       /* desired distance between access points */
+#define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
 #define CHUNK 16384         /* file input buffer size */
 #define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 #define GZIP_INDEX_HEADER_SIZE 16
+// waiting time in seconds when supervising a growing gzip file:
+#define WAITING_TIME 4
 
 /* access point entry */
 struct point {
@@ -178,6 +180,8 @@ struct returned_output {
 };
 
 enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
+
+enum SUPERVISE_OPTIONS { SUPERVISE_DONT = 0, SUPERVISE_DO = 1 };
 
 /**************
  * Endianness *
@@ -609,11 +613,17 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 // FILE *in             : input stream
 // off_t span           : span
 // struct access **built: address of index pointer, equivalent to passed by reference
+// enum SUPERVISE_OPTIONS supervise = SUPERVISE_DONT: usual behaviour
+//                                  = SUPERVISE_DO  : supervise a growing "in" gzip stream
+// unsigned char *index_filename    : in case SUPERVISE_DO, index will be written on-the-fly
+//                                    to this index file name.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->size)
-local struct returned_output build_index(FILE *in, off_t span, struct access **built)
+local struct returned_output build_index(
+    FILE *in, off_t span, struct access **built, 
+    enum SUPERVISE_OPTIONS supervise, unsigned char *index_filename )
 {
     struct returned_output ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
@@ -645,6 +655,18 @@ local struct returned_output build_index(FILE *in, off_t span, struct access **b
     do {
         /* get some compressed data from input file */
         strm.avail_in = fread(input, 1, CHUNK, in);
+        if ( supervise == SUPERVISE_DO ) {
+            if ( feof(in) ) {
+                ; // continue and end build_index() process
+            } else {
+                if ( strm.avail_in != CHUNK ) {
+                    // rewind to previous position, sleep and retry
+                    fseeko(in, - strm.avail_in, SEEK_CUR);
+                    sleep( WAITING_TIME );
+                    continue;
+                }
+            }
+        }
         if (ferror(in)) {
             ret.error = Z_ERRNO;
             goto build_index_error;
@@ -1322,29 +1344,6 @@ local int decompress_file(FILE *source, FILE *dest)
 }
 
 
-// print help
-local void print_help() {
-
-    fprintf( stderr, " gztool (v0.1)\n GZIP files indexer and data retriever.\n");
-    fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
-    fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhil] [-I <INDEX>] <FILE> ...\n\n" );
-    fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
-    fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
-    fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
-    fprintf( stderr, " -e: if multiple files are indicated, continue on error\n" );
-    fprintf( stderr, " -f: with `-i` force index overwriting if one exists\n" );
-    fprintf( stderr, "     with `-b` force index creation if none exists\n" );
-    fprintf( stderr, " -h: print this help\n" );
-    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
-    fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
-    fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
-    fprintf( stderr, " -l: list info contained in indicated index file\n" );
-    fprintf( stderr, "\n" );
-
-}
-
-
 // write index for a gzip file
 // INPUT:
 // unsigned char *file_name     : file name of gzip file for which index will be calculated,
@@ -1352,11 +1351,12 @@ local void print_help() {
 // struct access **index        : memory address of index pointer (passed by reference)
 // unsigned char *index_filename: file name where index will be written
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
+// int supervise                : value passed to build_index()
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
-    unsigned char *index_filename )
+    unsigned char *index_filename, int supervise )
 {
 
     FILE *in;
@@ -1378,7 +1378,7 @@ local int action_create_index(
 
     // compute index:
     fprintf( stderr, "Processing '%s' ...\n", file_name );
-    ret = build_index( in, SPAN, index );
+    ret = build_index( in, SPAN, index, supervise, index_filename );
     fclose(in);
     if ( ret.error < 0 ) {
        switch ( ret.error ) {
@@ -1464,7 +1464,7 @@ open_index_file:
     if ( NULL == index_file ) {
         if ( force_action == 1 && mark_recursion == 0 ) {
             // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename );
+            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT );
             if ( ret_value != EXIT_OK )
                 goto action_extract_from_byte_error;
             // index file has been created, so it must now be opened
@@ -1570,6 +1570,31 @@ action_list_info_error:
 // .................................................
 
 
+// print help
+local void print_help() {
+
+    fprintf( stderr, " gztool (v0.1)\n GZIP files indexer and data retriever.\n");
+    fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
+    fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhils] [-I <INDEX>] <FILE> ...\n\n" );
+    fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
+    fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
+    fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
+    fprintf( stderr, " -e: if multiple files are indicated, continue on error\n" );
+    fprintf( stderr, " -f: with `-i` force index overwriting if one exists\n" );
+    fprintf( stderr, "     with `-b` force index creation if none exists\n" );
+    fprintf( stderr, " -h: print this help\n" );
+    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
+    fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
+    fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
+    fprintf( stderr, " -l: list info contained in indicated index file\n" );
+    fprintf( stderr, " -s: supervise indicated file: create a growing index,\n" );
+    fprintf( stderr, "     for a still-growing gzip file. (-i implicit).\n" );
+    fprintf( stderr, "\n" );
+
+}
+
+
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 int main(int argc, char **argv)
@@ -1593,7 +1618,7 @@ int main(int argc, char **argv)
     enum EXIT_APP_VALUES ret_value;
     enum ACTION
         { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
-          ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP }
+          ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE }
         action;
 
     int opt = 0;
@@ -1604,7 +1629,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:l")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefhiI:ls")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -1638,8 +1663,11 @@ int main(int argc, char **argv)
                 break;
             // `-i` creates index for <FILE>
             case 'i':
-                action = ACT_CREATE_INDEX;
-                actions_set++;
+                // ACT_SUPERVISE overrides ACT_CREATE_INDEX
+                if ( action != ACT_SUPERVISE ) {
+                    action = ACT_CREATE_INDEX;
+                    actions_set++;
+                }
                 break;
             // list number of bytes, but not 0 valued
             // `-I` creates index for <FILE> with name <INDEX_FILE>
@@ -1654,10 +1682,15 @@ int main(int argc, char **argv)
                 action = ACT_LIST_INFO;
                 actions_set++;
                 break;
+            // `-s` supervise a still-growing gzip <FILE> and create index for it
+            case 's':
+                action = ACT_SUPERVISE;
+                actions_set++;
+                break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdefhiIl", optopt) ) {
+                    if ( NULL == strchr("bcdefhiIls", optopt) ) {
                         fprintf(stderr, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -1672,7 +1705,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdil`.\nAborted.\n\n" );
+        fprintf(stderr, "Please, do not merge parameters `-bcdils`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
     if ( actions_set == 0 ) {
@@ -1728,11 +1761,19 @@ int main(int argc, char **argv)
                 return EXIT_OK;
 
             case ACT_CREATE_INDEX:
+                if ( force_action == 0 &&
+                     index_filename_indicated == 1 &&
+                     access( index_filename, F_OK ) != -1 ) {
+                    // index file already exists
+                    fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
+                    fprintf( stderr, "Use `-f` to force overwriting.\nAborted.\n\n" );
+                    return EXIT_GENERIC_ERROR;
+                }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT );
                 } else {
-                    ret_value = action_create_index( "", &index, "" );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT );
                 }
                 fprintf( stderr, "\n" );
                 return ret_value;
@@ -1743,9 +1784,27 @@ int main(int argc, char **argv)
                 fprintf( stderr, "\n" );
                 return ret_value;
 
+            case ACT_SUPERVISE:
+                // stdin is a gzip file for which an index file must be created on-the-fly
+                if ( index_filename_indicated == 1 ) {
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO );
+                } else {
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO );
+                }
+                fprintf( stderr, "\n" );
+                return ret_value;
+
         }
 
     } else {
+
+        if ( action == ACT_SUPERVISE && 
+             ( argc - optind > 1 ) ) {
+            // supervise only accepts one input gz file
+            fprintf( stderr, "`-s` option only accepts one gzip file parameter: %d indicated\n", argc - optind );
+            fprintf( stderr, "Aborted\n" );
+            return EXIT_GENERIC_ERROR;
+        }
 
         for (i = optind; i < argc; i++) {
 
@@ -1781,14 +1840,14 @@ int main(int argc, char **argv)
             }
 
             if ( force_action == 0 &&
-                 action == ACT_CREATE_INDEX &&
+                 ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
                 fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
                 if ( continue_on_error == 1 ) {
                     continue;
                 } else {
-                    fprintf( stderr, "Aborted.\n\n" );
+                    fprintf( stderr, "Use `-f` to force overwriting.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -1833,7 +1892,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename );
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT );
                     break;
 
                 case ACT_LIST_INFO:
