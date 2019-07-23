@@ -604,7 +604,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
         next->window_size = size;
     } else {
         if ( window == NULL ) {
-            // create a NULL window: it resides on file, 
+            // create a NULL window: it resides on file,
             // and can/will later loaded on memory
             next->window_size = 0;
             next->window = NULL;
@@ -622,8 +622,105 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 }
 
 
-// build_index() use serialize_index_to_file()
-int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t index_last_written_point );
+// serialize index into a file
+// Note that the function writes and empty header when called with index_last_written_point = 0
+// and also writes next points from index_last_written_point to index->have.
+// To create a valid index, this function must be called a last time (at least, a 2nd time)
+// to write the correct header values (and the (optional) tail (size of uncompressed file)).
+// INPUT:
+// FILE *output_file    : output stream
+// struct access *index : pointer to index
+// uint64_t index_last_written_point : last index point already written to file
+// OUTPUT:
+// 0 on error, 1 on success
+int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t index_last_written_point ) {
+    struct point *here;
+    uint64_t temp;
+    int i;
+
+    ///* access point entry */
+    //struct point {
+    //    off_t out;          /* corresponding offset in uncompressed data */
+    //    off_t in;           /* offset in input file of first full byte */
+    //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
+    //    unsigned char *window; /* preceding 32K of uncompressed data, compressed */
+    //    int window_size;    /* size of window */
+    //};
+    //
+    ///* access point list */
+    //struct access {
+    //    int have;           /* number of list entries filled in */
+    //    int size;           /* number of list entries allocated */
+    //    struct point *list; /* allocated list */
+    //};
+
+    /* proceed only if something reasonable to do */
+    if (NULL == output_file || NULL == index) {
+        return 0;
+    }
+
+    /*if (index->have <= 0)
+        return 0;*/
+    /* writing and empy index is allowed: writes the header (of size 4*8 = 32 bytes) */
+
+    if ( index_last_written_point == 0 ) {
+        /* write header */
+        /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
+        /* the initial uint32_t is the number of bgzip-idx registers) */
+        temp = 0;
+        fwrite_endian(&temp, sizeof(temp), output_file);
+        /* a 64 bits readable identifier */
+        fprintf(output_file, GZIP_INDEX_IDENTIFIER_STRING);
+
+        /* and now the raw data: the access struct "index" */
+
+        // as this may be a growing index
+        // values will be filled with special, not actual, values:
+        // 0x0..0 , 0xf..f
+        // Last write operation will overwrite these with correct values, that is, when
+        // serialize_index_to_file() be called with index_last_written_point = index->have
+        fwrite_endian(&temp, sizeof(temp), output_file); // have
+        temp = UINT64_MAX;
+        fwrite_endian(&temp, sizeof(temp), output_file); // size
+    }
+
+    if ( index_last_written_point != index->have ) {
+        for (i = index_last_written_point; i < index->have; i++) {
+            here = &(index->list[i]);
+            fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
+            fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
+            fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
+            fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
+            here->window_beginning = ftello(output_file);
+            if (NULL == here->window) {
+                fprintf(stderr, "Index incomplete! - index writing aborted.\n");
+                return 0;
+            } else {
+                fwrite(here->window, here->window_size, 1, output_file);
+            }
+            // once written, point's window CAN (and will now) BE DELETED from memory
+            free(here->window);
+            here->window = NULL;
+        }
+    } else {
+        // Last write operation:
+        // tail must be written:
+        /* write size of uncompressed file (useful for bgzip files) */
+        fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
+        // and header must be updated:
+        // for this, move position to header:
+        fseeko( output_file, sizeof(temp)*2, SEEK_SET );
+        fwrite_endian(&index->have, sizeof(index->have), output_file);
+        /* index->size is not written as only filled entries are usable */
+        fwrite_endian(&index->have, sizeof(index->have), output_file);
+    }
+
+    // flush written content to disk
+    fflush( output_file );
+
+    return 1;
+}
+
 
 /* Make one entire pass through the compressed stream and build an index, with
    access points about every span bytes of uncompressed output -- span is
@@ -1050,106 +1147,6 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
 }
 
 
-// serialize index into a file
-// Note that the function writes and empty header when called with index_last_written_point = 0
-// and also writes next points from index_last_written_point to index->have.
-// To create a valid index, this function must be called a last time (at least, a 2nd time)
-// to write the correct header values (and the (optional) tail (size of uncompressed file)).
-// INPUT:
-// FILE *output_file    : output stream
-// struct access *index : pointer to index
-// uint64_t index_last_written_point : last index point already written to file
-// OUTPUT:
-// 0 on error, 1 on success
-int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t index_last_written_point ) {
-    struct point *here;
-    uint64_t temp;
-    int i;
-
-    ///* access point entry */
-    //struct point {
-    //    off_t out;          /* corresponding offset in uncompressed data */
-    //    off_t in;           /* offset in input file of first full byte */
-    //    int bits;           /* number of bits (1-7) from byte at in - 1, or 0 */
-    //    unsigned char *window; /* preceding 32K of uncompressed data, compressed */
-    //    int window_size;    /* size of window */
-    //};
-    //
-    ///* access point list */
-    //struct access {
-    //    int have;           /* number of list entries filled in */
-    //    int size;           /* number of list entries allocated */
-    //    struct point *list; /* allocated list */
-    //};
-
-    /* proceed only if something reasonable to do */
-    if (NULL == output_file || NULL == index) {
-        return 0;
-    }
-
-    /*if (index->have <= 0)
-        return 0;*/
-    /* writing and empy index is allowed: writes the header (of size 4*8 = 32 bytes) */
-
-    if ( index_last_written_point == 0 ) {
-        /* write header */
-        /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
-        /* the initial uint32_t is the number of bgzip-idx registers) */
-        temp = 0;
-        fwrite_endian(&temp, sizeof(temp), output_file);
-        /* a 64 bits readable identifier */
-        fprintf(output_file, GZIP_INDEX_IDENTIFIER_STRING);
-
-        /* and now the raw data: the access struct "index" */
-
-        // as this may be a growing index
-        // values will be filled with special, not actual, values:
-        // 0x0..0 , 0xf..f
-        // Last write operation will overwrite these with correct values, that is, when
-        // serialize_index_to_file() be called with index_last_written_point = index->have
-        fwrite_endian(&temp, sizeof(temp), output_file); // have
-        temp = UINT64_MAX;
-        fwrite_endian(&temp, sizeof(temp), output_file); // size
-    }
-
-    if ( index_last_written_point != index->have ) {
-        for (i = index_last_written_point; i < index->have; i++) {
-            here = &(index->list[i]);
-            fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
-            fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
-            fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
-            fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
-            here->window_beginning = ftello(output_file);
-            if (NULL == here->window) {
-                fprintf(stderr, "Index incomplete! - index writing aborted.\n");
-                return 0;
-            } else {
-                fwrite(here->window, here->window_size, 1, output_file);
-            }
-            // once written, point's window CAN (and will now) BE DELETED from memory
-            free(here->window);
-            here->window = NULL;
-        }
-    } else {
-        // Last write operation:
-        // tail must be written:
-        /* write size of uncompressed file (useful for bgzip files) */
-        fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
-        // and header must be updated:
-        // for this, move position to header:
-        fseeko( output_file, sizeof(temp)*2, SEEK_SET );
-        fwrite_endian(&index->have, sizeof(index->have), output_file);
-        /* index->size is not written as only filled entries are usable */
-        fwrite_endian(&index->have, sizeof(index->have), output_file);
-    }
-
-    // flush written content to disk
-    fflush( output_file );
-
-    return 1;
-}
-
-
 // read index from a file
 // INPUT:
 // FILE *input_file         : input stream
@@ -1209,8 +1206,6 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
 
     // create the list of points
-    // TODO 
-    // ongoing refactoring !
     do {
 
         fread_endian(&(here.out),  sizeof(here.out),  input_file);
@@ -1219,7 +1214,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
 
         if ( here.window_size == 0 ) {
-            fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n", 
+            fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
                     file_name, ftello(input_file), index->have + 1);
             continue;
         }
@@ -1266,9 +1261,9 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
             }
         }
 
-        // increase index structure with a new point 
+        // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );                        
+        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
 
         // after increasing index, copy values which were not passed to addpoint():
         index->list[index->have - 1].window_beginning = here.window_beginning;
@@ -1277,11 +1272,11 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
 
-    } while ( 
-        ( file_size - ftello(input_file) ) > 
+    } while (
+        ( file_size - ftello(input_file) ) >
         // at least an empty window must enter, otherwise end loop:
         ( sizeof(here.out)+sizeof(here.in)+sizeof(here.bits)+
-          sizeof(here.window_beginning)+sizeof(index->file_size) ) 
+          sizeof(here.window_beginning)+sizeof(index->file_size) )
         );
 
 
