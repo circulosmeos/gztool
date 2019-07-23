@@ -131,6 +131,7 @@
 #include <zlib.h>
 #include <unistd.h> // getopt(), access(), sleep()
 #include <ctype.h>  // isprint()
+#include <sys/stat.h> // stat()
 
 // sets binary mode for stdin in Windows
 #define STDIN 0
@@ -163,6 +164,7 @@ struct point {
     uint32_t window_size;  /* size of (compressed) window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
 };
+// NOTE: window_beginning is not stored on disk, is an on-memory-only value
 
 /* access point list */
 struct access {
@@ -172,6 +174,7 @@ struct access {
     struct point *list; /* allocated list */
     unsigned char *file_name; /* path to index file */
 };
+// NOTE: file_name is not stored on disk, is an on-memory-only value
 
 /* generic struct to return a function error code and a value */
 struct returned_output {
@@ -474,25 +477,6 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
 }
 
 
-// Allocate an index structure
-// and fill it with empty values
-// OUTPUT:
-// pointer to index
-local struct access *create_empty_index()
-{
-    struct access *index;
-    if ( NULL == ( index = malloc(sizeof(struct access)) ) ) {
-        return NULL;
-    }
-    index->have = 0;
-    index->size = 0;
-    index->file_size = 0;
-    index->list = NULL;
-    index->file_name = NULL;
-    return index;
-}
-
-
 // Deallocate from memory
 // an index built by build_index()
 // INPUT:
@@ -528,6 +512,33 @@ local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
 }
 
 
+// Allocate an index structure
+// and fill it with empty values
+// OUTPUT:
+// pointer to index
+local struct access *create_empty_index()
+{
+    struct access *index;
+    if ( NULL == ( index = malloc(sizeof(struct access)) ) ) {
+        return NULL;
+    }
+    index->file_size = 0;
+    index->list = NULL;
+    index->file_name = NULL;
+
+    index->list = malloc(sizeof(struct point) << 3);
+    empty_index_list( index, 0, 8 );
+    if (index->list == NULL) {
+        free(index);
+        return NULL;
+    }
+    index->size = 8;
+    index->have = 0;
+
+    return index;
+}
+
+
 /* Add an entry to the access point list.  If out of memory, deallocate the
    existing list and return NULL. */
 // INPUT:
@@ -536,11 +547,15 @@ local void empty_index_list(struct access *index, uint64_t from, uint64_t to)
 // off_t in             : (new entry data)
 // off_t out            : (new entry data)
 // unsigned left        : (new entry data)
-// unsigned char *window: (new entry data)
+// unsigned char *window: window data, already compressed with size window_size,
+//                        or uncompressed with size WINSIZE,
+//                        or store an empty window (NULL) because it resides on file.
+// uint32_t window_size : 0: compress passed window of size WINSIZE
+//                       >0: store window, of size window_size, as it is, in point structure
 // OUTPUT:
 // pointer to (new) index (NULL on error)
 local struct access *addpoint(struct access *index, uint32_t bits,
-    off_t in, off_t out, unsigned left, unsigned char *window)
+    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size )
 {
     struct point *next;
     uint64_t size = WINSIZE;
@@ -550,14 +565,6 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     if (index == NULL) {
         index = create_empty_index();
         if (index == NULL) return NULL;
-        index->list = malloc(sizeof(struct point) << 3);
-        empty_index_list( index, 0, 8 );
-        if (index->list == NULL) {
-            free(index);
-            return NULL;
-        }
-        index->size = 8;
-        index->have = 0;
     }
 
     /* if list is full, make it bigger */
@@ -577,24 +584,38 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     next->bits = bits;
     next->in = in;
     next->out = out;
-    next->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
-    next->window = malloc(WINSIZE);
-    if (left)
-        memcpy(next->window, window + WINSIZE - left, left);
-    if (left < WINSIZE)
-        memcpy(next->window + left, window, WINSIZE - left);
-    index->have++;
 
-    // compress window
-    compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
-    if (compressed_chunk == NULL) {
-        fprintf(stderr, "Error whilst compressing index chunk\nProcess aborted\n.");
-        return NULL;
+    if ( window_size == 0 ) {
+        next->window_size = UNCOMPRESSED_WINDOW; // this marks an uncompressed WINSIZE next->window
+        next->window = malloc(WINSIZE);
+        if (left)
+            memcpy(next->window, window + WINSIZE - left, left);
+        if (left < WINSIZE)
+            memcpy(next->window + left, window, WINSIZE - left);
+        // compress window
+        compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
+        if (compressed_chunk == NULL) {
+            fprintf(stderr, "Error whilst compressing index chunk\nProcess aborted\n.");
+            return NULL;
+        }
+        free(next->window);
+        next->window = compressed_chunk;
+        /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
+        next->window_size = size;
+    } else {
+        if ( window == NULL ) {
+            // create a NULL window: it resides on file, 
+            // and can/will later loaded on memory
+            next->window_size = 0;
+            next->window = NULL;
+        } else {
+            // passed window is already compressed: store as it is with size "window_size"
+            next->window_size = window_size;
+            next->window = window;
+        }
     }
-    free(next->window);
-    next->window = compressed_chunk;
-    /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
-    next->window_size = size;
+
+    index->have++;
 
     /* return list, possibly reallocated */
     return index;
@@ -723,7 +744,7 @@ local struct returned_output build_index(
             if ((strm.data_type & 128) && !(strm.data_type & 64) &&
                 (totout == 0 || totout - last > span)) {
                 index = addpoint(index, strm.data_type & 7, totin,
-                                 totout, strm.avail_out, window);
+                                 totout, strm.avail_out, window, 0);
                 if (index == NULL) {
                     ret.error = Z_MEM_ERROR;
                     goto build_index_error;
@@ -1086,9 +1107,9 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         // 0x0..0 , 0xf..f
         // Last write operation will overwrite these with correct values, that is, when
         // serialize_index_to_file() be called with index_last_written_point = index->have
-        fwrite_endian(&temp, sizeof(index->have), output_file);
+        fwrite_endian(&temp, sizeof(temp), output_file); // have
         temp = UINT64_MAX;
-        fwrite_endian(&temp, sizeof(index->have), output_file);
+        fwrite_endian(&temp, sizeof(temp), output_file); // size
     }
 
     if ( index_last_written_point != index->have ) {
@@ -1122,6 +1143,9 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         fwrite_endian(&index->have, sizeof(index->have), output_file);
     }
 
+    // flush written content to disk
+    fflush( output_file );
+
     return 1;
 }
 
@@ -1136,10 +1160,17 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 // OUTPUT:
 // struct access *index : pointer to index, or NULL on error
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
-    struct point *here;
-    struct access *index;
-    uint32_t i;
+    struct point here;
+    struct access *index = NULL;
+    uint32_t i, still_growing = 0;
+    uint64_t index_have, index_size, file_size;
     char header[GZIP_INDEX_HEADER_SIZE];
+    struct stat st;
+
+    // get index file size to calculate on-the-fly how many registers are
+    // in order to being able to read still-growing index files (see `-S`)
+    stat(file_name, &st);
+    file_size = st.st_size;
 
     ///* access point entry */
     //struct point {
@@ -1157,44 +1188,52 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     //    struct point *list; /* allocated list */
     //};
 
-    index = create_empty_index();
-
     fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file);
     if (*((uint64_t *)header) != 0 ||
         strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
         fprintf(stderr, "File is not a valid gzip index file.\n");
-        free_index(index);
         return NULL;
     }
 
-    fread_endian(&(index->have), sizeof(index->have), input_file);
-    if (index->have <= 0) {
-        fprintf(stderr, "Index file contains no indexes.\n");
-        free_index(index);
-        return NULL;
+    index = create_empty_index();
+
+    fread_endian(&(index_have), sizeof(index_have), input_file);
+    fread_endian(&(index_size), sizeof(index_size), input_file);
+
+    // index->size equals index->have when the index file is correctly closed
+    // and index->have == UINT64_MAX when the index is still growing
+    if (index_have == 0 && index_size == UINT64_MAX) {
+        fprintf(stderr, "Index file is still growing!\n");
+        still_growing = 1;
     }
 
-    // index->size should be equal to index->have, but this isn't checked
-    fread_endian(&(index->size), sizeof(index->size), input_file);
 
     // create the list of points
-    index->list = malloc(sizeof(struct point) * index->size);
-    empty_index_list( index, 0, index->size );
+    // TODO 
+    // ongoing refactoring !
+    do {
 
-    for (i = 0; i < index->size; i++) {
-        here = &(index->list[i]);
-        fread_endian(&(here->out),  sizeof(here->out),  input_file);
-        fread_endian(&(here->in),   sizeof(here->in),   input_file);
-        fread_endian(&(here->bits), sizeof(here->bits), input_file);
-        fread_endian(&(here->window_size), sizeof(here->window_size), input_file);
+        fread_endian(&(here.out),  sizeof(here.out),  input_file);
+        fread_endian(&(here.in),   sizeof(here.in),   input_file);
+        fread_endian(&(here.bits), sizeof(here.bits), input_file);
+        fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
+
+        if ( here.window_size == 0 ) {
+            fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n", 
+                    file_name, ftello(input_file), index->have + 1);
+            continue;
+        }
+
         if ( load_windows == 0 ) {
-            here->window = NULL;
-            here->window_beginning = ftello(input_file);
+            // do not load window on here.window, but leave it on disk: this is marked with
+            // a here.window_beginning to the position of the window on disk
+            here.window = NULL;
+            here.window_beginning = ftello(input_file);
             // and position into file as if read had occur
             if ( stdin == input_file ) {
-                // read input until here->window_size
+                // read input until here.window_size
                 uint64_t pos = 0;
-                uint64_t position = here->window_size;
+                uint64_t position = here.window_size;
                 unsigned char *input = malloc(CHUNK);
                 if ( NULL == input ) {
                     fprintf(stderr, "Not enough memory to load index from stdin.\n");
@@ -1209,27 +1248,50 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 }
                 free(input);
             } else {
-                fseeko(input_file, here->window_size, SEEK_CUR);
+                fseeko(input_file, here.window_size, SEEK_CUR);
             }
         } else {
-            here->window = malloc(here->window_size);
-            here->window_beginning = 0;
-            if (here->window == NULL) {
+            // load compressed window on memory:
+            here.window = malloc(here.window_size);
+            // load window on here.window: this is marked with
+            // a here.window_beginning = 0 (which is impossible with gzipindx format)
+            here.window_beginning = 0;
+            if (here.window == NULL) {
                 fprintf(stderr, "Not enough memory to load index from file.\n");
                 goto deserialize_index_from_file_error;
             }
-            if ( !fread(here->window, here->window_size, 1, input_file) ) {
+            if ( !fread(here.window, here.window_size, 1, input_file) ) {
                 fprintf(stderr, "Error while reading index file.\n");
                 goto deserialize_index_from_file_error;
             }
         }
-    }
 
-    /* read size of uncompressed file (useful for bgzip files) */
-    /* this field may not exist (maybe useful for growing gzip files?) */
+        // increase index structure with a new point 
+        // (here.window can be NULL if load_windows==0)
+        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );                        
+
+        // after increasing index, copy values which were not passed to addpoint():
+        index->list[index->have - 1].window_beginning = here.window_beginning;
+        index->list[index->have - 1].window_size = here.window_size;
+
+        // note that even if (here.window != NULL) it MUST NOT be free() here, because
+        // the pointer has been copied in a point of the index structure.
+
+    } while ( 
+        ( file_size - ftello(input_file) ) > 
+        // at least an empty window must enter, otherwise end loop:
+        ( sizeof(here.out)+sizeof(here.in)+sizeof(here.bits)+
+          sizeof(here.window_beginning)+sizeof(index->file_size) ) 
+        );
+
+
     index->file_size = 0;
-    fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
 
+    if ( still_growing == 0 ){
+        /* read size of uncompressed file (useful for bgzip files) */
+        /* this field may not exist (maybe useful for growing gzip files?) */
+        fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
+    }
 
     index->file_name = malloc( strlen(file_name) + 1 );
     if ( NULL == memcpy( index->file_name, file_name, strlen(file_name) + 1 ) ) {
@@ -1422,36 +1484,53 @@ local int action_create_index(
 
     FILE *in;
     struct returned_output ret;
+    int waiting = 0;
 
     // open <FILE>:
     if ( strlen(file_name) > 0 ) {
+wait_for_file_creation:
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            fprintf( stderr, "Could not open %s for reading.\n", file_name );
+            if (supervise == SUPERVISE_DO) {
+                if ( waiting == 0 ) {
+                    fprintf( stderr, "Waiting for creation of file '%s'\n", file_name );
+                    waiting++;
+                }
+                sleep( WAITING_TIME );
+                goto wait_for_file_creation;
+            }
+            fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
+        fprintf( stderr, "Processing '%s' ...\n", file_name );
     } else {
         // stdin
         SET_BINARY_MODE(STDIN); // sets binary mode for stdin in Windows
         in = stdin;
+        fprintf( stderr, "Processing stdin ...\n" );
     }
 
     // compute index:
-    fprintf( stderr, "Processing '%s' ...\n", file_name );
     ret = build_index( in, SPAN, index, supervise, index_filename );
     fclose(in);
     if ( ret.error < 0 ) {
-       switch ( ret.error ) {
-       case Z_MEM_ERROR:
-           fprintf( stderr, "ERROR: Out of memory.\n" );
-           break;
-       case Z_DATA_ERROR:
-           fprintf( stderr, "ERROR: Compressed data error in %s.\n", file_name );
-           break;
-       case Z_ERRNO:
-           fprintf( stderr, "ERROR: Read error on %s.\n", file_name );
-           break;
-       default:
+        switch ( ret.error ) {
+        case Z_MEM_ERROR:
+            fprintf( stderr, "ERROR: Out of memory.\n" );
+            break;
+        case Z_DATA_ERROR:
+            if ( strlen(file_name) > 0 )
+                fprintf( stderr, "ERROR: Compressed data error in '%s'.\n", file_name );
+            else
+                fprintf( stderr, "ERROR: Compressed data error in stdin.\n" );
+            break;
+        case Z_ERRNO:
+            if ( strlen(file_name) > 0 )
+                fprintf( stderr, "ERROR: Read error on '%s'.\n", file_name );
+            else
+                fprintf( stderr, "ERROR: Read error on stdin.\n" );
+            break;
+        default:
            fprintf( stderr, "ERROR: Error %d while building index.\n", ret.error );
        }
        return EXIT_GENERIC_ERROR;
@@ -1566,7 +1645,7 @@ local int action_list_info( unsigned char *file_name ) {
         fprintf( stderr, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            fprintf( stderr, "Could not open %s for reading.\n", file_name );
+            fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
     } else {
@@ -1630,7 +1709,7 @@ local void print_help() {
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: list info contained in indicated index file\n" );
     fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
-    fprintf( stderr, "     for a still-growing gzip file. (-i implicit).\n" );
+    fprintf( stderr, "     for a still-growing gzip file. (`-i` is  implicit).\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -1704,11 +1783,8 @@ int main(int argc, char **argv)
                 break;
             // `-i` creates index for <FILE>
             case 'i':
-                // ACT_SUPERVISE overrides ACT_CREATE_INDEX
-                if ( action != ACT_SUPERVISE ) {
-                    action = ACT_CREATE_INDEX;
-                    actions_set++;
-                }
+                action = ACT_CREATE_INDEX;
+                actions_set++;
                 break;
             // list number of bytes, but not 0 valued
             // `-I` creates index for <FILE> with name <INDEX_FILE>
