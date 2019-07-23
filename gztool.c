@@ -672,17 +672,12 @@ local struct returned_output build_index(
     strm.avail_out = 0;
     do {
         /* get some compressed data from input file */
-fprintf(stderr, "\tin=%d, tell=%ld, ferror=%d, feof=%d\n", strm.avail_in, ftello(in), ferror(in), feof(in));
         strm.avail_in = fread(input, 1, CHUNK, in);
-fprintf(stderr, "\tin=%d, tell=%ld, ferror=%d, feof=%d\n", strm.avail_in, ftello(in), ferror(in), feof(in));
-        if ( supervise == SUPERVISE_DO ) {
-            if ( strm.avail_in != CHUNK ) {
-                // rewind to previous position, sleep and retry
-fprintf(stderr, "sleeping ... ");
-                fseeko(in, ftello(in) - strm.avail_in, SEEK_SET);
-                sleep( WAITING_TIME );
-                continue;
-            }
+        if ( supervise == SUPERVISE_DO &&
+             strm.avail_in == 0 ) {
+            // sleep and retry
+            sleep( WAITING_TIME );
+            continue;
         }
         if (ferror(in)) {
             ret.error = Z_ERRNO;
