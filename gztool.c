@@ -664,11 +664,6 @@ local struct returned_output build_index(
         goto build_index_error;
     }
 
-    if ( strlen(index_filename) > 0 )
-        fprintf(stderr, "Index written to '%s'.\n", index_filename);
-    else
-        fprintf(stderr, "Index written to stdout.\n");
-
     /* inflate the input, maintain a sliding window, and build an index -- this
        also validates the integrity of the compressed data using the check
        information at the end of the gzip or zlib stream */
@@ -677,17 +672,16 @@ local struct returned_output build_index(
     strm.avail_out = 0;
     do {
         /* get some compressed data from input file */
+fprintf(stderr, "\tin=%d, tell=%ld, ferror=%d, feof=%d\n", strm.avail_in, ftello(in), ferror(in), feof(in));
         strm.avail_in = fread(input, 1, CHUNK, in);
+fprintf(stderr, "\tin=%d, tell=%ld, ferror=%d, feof=%d\n", strm.avail_in, ftello(in), ferror(in), feof(in));
         if ( supervise == SUPERVISE_DO ) {
-            if ( feof(in) ) {
-                ; // continue and end build_index() process
-            } else {
-                if ( strm.avail_in != CHUNK ) {
-                    // rewind to previous position, sleep and retry
-                    fseeko(in, - strm.avail_in, SEEK_CUR);
-                    sleep( WAITING_TIME );
-                    continue;
-                }
+            if ( strm.avail_in != CHUNK ) {
+                // rewind to previous position, sleep and retry
+fprintf(stderr, "sleeping ... ");
+                fseeko(in, ftello(in) - strm.avail_in, SEEK_SET);
+                sleep( WAITING_TIME );
+                continue;
             }
         }
         if (ferror(in)) {
@@ -763,6 +757,11 @@ local struct returned_output build_index(
     if ( ! serialize_index_to_file( index_file, index, index->have ) )
         goto build_index_error;
     fclose(index_file);
+
+    if ( strlen(index_filename) > 0 )
+        fprintf(stderr, "Index written to '%s'.\n", index_filename);
+    else
+        fprintf(stderr, "Index written to stdout.\n");
 
     *built = index;
     ret.value = index->size;
@@ -1623,7 +1622,7 @@ local void print_help() {
     fprintf( stderr, " gztool (v0.1)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhils] [-I <INDEX>] <FILE> ...\n\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhilS] [-I <INDEX>] <FILE> ...\n\n" );
     fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
@@ -1635,7 +1634,7 @@ local void print_help() {
     fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: list info contained in indicated index file\n" );
-    fprintf( stderr, " -s: supervise indicated file: create a growing index,\n" );
+    fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
     fprintf( stderr, "     for a still-growing gzip file. (-i implicit).\n" );
     fprintf( stderr, "\n" );
 
@@ -1676,7 +1675,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:ls")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefhiI:lS")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -1729,15 +1728,15 @@ int main(int argc, char **argv)
                 action = ACT_LIST_INFO;
                 actions_set++;
                 break;
-            // `-s` supervise a still-growing gzip <FILE> and create index for it
-            case 's':
+            // `-S` supervise a still-growing gzip <FILE> and create index for it
+            case 'S':
                 action = ACT_SUPERVISE;
                 actions_set++;
                 break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdefhiIls", optopt) ) {
+                    if ( NULL == strchr("bcdefhiIlS", optopt) ) {
                         fprintf(stderr, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -1752,7 +1751,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdils`.\nAborted.\n\n" );
+        fprintf(stderr, "Please, do not merge parameters `-bcdilS`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
     if ( actions_set == 0 ) {
@@ -1765,7 +1764,7 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdil`, or `-h` for help.\nAborted.\n\n" );
+            fprintf(stderr, "Please, indicate one parameter of `-bcdilS`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -1848,8 +1847,8 @@ int main(int argc, char **argv)
         if ( action == ACT_SUPERVISE && 
              ( argc - optind > 1 ) ) {
             // supervise only accepts one input gz file
-            fprintf( stderr, "`-s` option only accepts one gzip file parameter: %d indicated\n", argc - optind );
-            fprintf( stderr, "Aborted\n" );
+            fprintf( stderr, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
+            fprintf( stderr, "Aborted.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
@@ -1945,6 +1944,11 @@ int main(int argc, char **argv)
                 case ACT_LIST_INFO:
                     ret_value = action_list_info( file_name );
                     break;
+
+                case ACT_SUPERVISE:
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO );
+                    fprintf( stderr, "\n" );
+                    return ret_value;
 
             }
 
