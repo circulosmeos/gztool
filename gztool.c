@@ -1470,11 +1470,12 @@ local int decompress_file(FILE *source, FILE *dest)
 // unsigned char *index_filename: file name where index will be written
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
 // int supervise                : value passed to build_index()
+// off_t span_between_points    : span between index points in bytes
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
-    unsigned char *index_filename, int supervise )
+    unsigned char *index_filename, int supervise, off_t span_between_points )
 {
 
     FILE *in;
@@ -1506,7 +1507,7 @@ wait_for_file_creation:
     }
 
     // compute index:
-    ret = build_index( in, SPAN, index, supervise, index_filename );
+    ret = build_index( in, span_between_points, index, supervise, index_filename );
     fclose(in);
     if ( ret.error < 0 ) {
         switch ( ret.error ) {
@@ -1543,11 +1544,12 @@ wait_for_file_creation:
 // unsigned char *index_filename: index file name
 // uint64_t extract_from_byte   : uncompressed offset of original data from which to extract
 // int force_action             : if 1 and index file doesn't exist, create it
+// off_t span_between_points    : span between index points in bytes
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_extract_from_byte(
     unsigned char *file_name, unsigned char *index_filename,
-    uint64_t extract_from_byte, int force_action )
+    uint64_t extract_from_byte, int force_action, off_t span_between_points )
 {
 
     FILE *in = NULL;
@@ -1579,7 +1581,7 @@ open_index_file:
     if ( NULL == index_file ) {
         if ( force_action == 1 && mark_recursion == 0 ) {
             // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT );
+            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, span_between_points );
             if ( ret_value != EXIT_OK )
                 goto action_extract_from_byte_error;
             // index file has been created, so it must now be opened
@@ -1703,6 +1705,7 @@ local void print_help() {
     fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: list info contained in indicated index file\n" );
+    fprintf( stderr, " -s #: span in MiB between index points. By default is 10.\n" );
     fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
     fprintf( stderr, "     for a still-growing gzip file. (`-i` is  implicit).\n" );
     fprintf( stderr, "\n" );
@@ -1725,6 +1728,7 @@ int main(int argc, char **argv)
 
     // variables for grabbing the options:
     uint64_t extract_from_byte = 0;
+    off_t span_between_points = SPAN;
     unsigned char *index_filename = NULL;
     int continue_on_error = 0;
     int index_filename_indicated = 0;
@@ -1744,13 +1748,13 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:lS")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:S")) != -1)
         switch(opt) {
             // help
             case 'h':
                 print_help();
                 return EXIT_OK;
-            // `-b` extracts data from indicated position byte in uncompressed stream of <FILE>
+            // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
                 // TODO: pass to strtoll() checking 0 and 0x
                 extract_from_byte = atoll(optarg);
@@ -1782,7 +1786,7 @@ int main(int argc, char **argv)
                 actions_set++;
                 break;
             // list number of bytes, but not 0 valued
-            // `-I` creates index for <FILE> with name <INDEX_FILE>
+            // `-I INDEX_FILE` creates index for <FILE> with name <INDEX_FILE>
             case 'I':
                 // action = ACT_CREATE_INDEX but only if no other option indicated
                 index_filename_indicated = 1;
@@ -1793,6 +1797,12 @@ int main(int argc, char **argv)
             case 'l':
                 action = ACT_LIST_INFO;
                 actions_set++;
+                break;
+            // `-s #` span between index points, in MiB
+            case 's':
+                // TODO: pass to strtoll() checking 0 and 0x
+                // span is converted to bytes for internal use
+                span_between_points = atoll(optarg) * 1024 * 1024;
                 break;
             // `-S` supervise a still-growing gzip <FILE> and create index for it
             case 'S':
@@ -1843,7 +1853,7 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
             if ( index_filename_indicated == 1 ) {
                 ret_value = action_extract_from_byte(
-                    "", index_filename, extract_from_byte, force_action );
+                    "", index_filename, extract_from_byte, force_action, span_between_points );
                 fprintf( stderr, "\n" );
                 break;
             } else {
@@ -1890,9 +1900,9 @@ int main(int argc, char **argv)
                 }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT, span_between_points );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT, span_between_points );
                 }
                 fprintf( stderr, "\n" );
                 break;
@@ -1906,9 +1916,9 @@ int main(int argc, char **argv)
             case ACT_SUPERVISE:
                 // stdin is a gzip file for which an index file must be created on-the-fly
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, span_between_points );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO, span_between_points );
                 }
                 fprintf( stderr, "\n" );
                 break;
@@ -1977,7 +1987,7 @@ int main(int argc, char **argv)
 
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_extract_from_byte(
-                        file_name, index_filename, extract_from_byte, force_action );
+                        file_name, index_filename, extract_from_byte, force_action, span_between_points );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -2011,7 +2021,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT );
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, span_between_points );
                     break;
 
                 case ACT_LIST_INFO:
@@ -2019,7 +2029,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_SUPERVISE:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO );
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO, span_between_points );
                     fprintf( stderr, "\n" );
                     break;
 
