@@ -1836,6 +1836,7 @@ int main(int argc, char **argv)
     }
 
     if (optind == argc || argc == 1) {
+
         // file input is stdin
         switch ( action ) {
 
@@ -1844,10 +1845,11 @@ int main(int argc, char **argv)
                 ret_value = action_extract_from_byte(
                     "", index_filename, extract_from_byte, force_action );
                 fprintf( stderr, "\n" );
-                return ret_value;
+                break;
             } else {
                 fprintf( stderr, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
-                return EXIT_GENERIC_ERROR;
+                ret_value = EXIT_GENERIC_ERROR;
+                break;
             }
 
             case ACT_COMPRESS_CHUNK:
@@ -1857,9 +1859,11 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
                     fprintf( stderr, "Error while compressing stdin.\nAborted.\n\n" );
-                    return EXIT_GENERIC_ERROR;
+                    ret_value = EXIT_GENERIC_ERROR;
+                    break;
                 }
-                return EXIT_OK;
+                ret_value = EXIT_OK;
+                break;
 
             case ACT_DECOMPRESS_CHUNK:
                 // compress chunk reads stdin or indicated file, and deflates in raw to stdout
@@ -1868,9 +1872,11 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout ) ) {
                     fprintf( stderr, "Error while decompressing stdin.\nAborted.\n\n" );
-                    return EXIT_GENERIC_ERROR;
+                    ret_value = EXIT_GENERIC_ERROR;
+                    break;
                 }
-                return EXIT_OK;
+                ret_value = EXIT_OK;
+                break;
 
             case ACT_CREATE_INDEX:
                 if ( force_action == 0 &&
@@ -1879,7 +1885,8 @@ int main(int argc, char **argv)
                     // index file already exists
                     fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
                     fprintf( stderr, "Use `-f` to force overwriting.\nAborted.\n\n" );
-                    return EXIT_GENERIC_ERROR;
+                    ret_value = EXIT_GENERIC_ERROR;
+                    break;
                 }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
@@ -1888,13 +1895,13 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DONT );
                 }
                 fprintf( stderr, "\n" );
-                return ret_value;
+                break;
 
             case ACT_LIST_INFO:
                 // stdin is an index file that must be checked
                 ret_value = action_list_info( "" );
                 fprintf( stderr, "\n" );
-                return ret_value;
+                break;
 
             case ACT_SUPERVISE:
                 // stdin is a gzip file for which an index file must be created on-the-fly
@@ -1904,7 +1911,7 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DO );
                 }
                 fprintf( stderr, "\n" );
-                return ret_value;
+                break;
 
         }
 
@@ -2014,7 +2021,7 @@ int main(int argc, char **argv)
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO );
                     fprintf( stderr, "\n" );
-                    return ret_value;
+                    break;
 
             }
 
