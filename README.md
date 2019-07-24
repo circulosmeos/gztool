@@ -11,7 +11,7 @@ Considerations
 * Please, note that the initial index creation still consumes as much time as a complete file decompression.   
 Once created the index will reduce this time.
 
-Nonetheless, note that **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*tion.
+Nonetheless, note that **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
 
 * Index size is approximately 1% or less of compressed gzip file. The bigger the gzip usually the better the proportion.
 
@@ -49,12 +49,12 @@ Compilation in Windows
 ======================
 
 Compilation in Windows is possible using *gcc* for Windows and compiling the original *zlib* code to obtain the needed archive library `libz.a`.    
-Please, note that executables for different platforms are provided on the Release page.    
+Please, note that **executables for different platforms are provided** on the [Release page](https://github.com/circulosmeos/gztool/releases).    
 
 * download gcc for Windows: [mingw-w64](https://sourceforge.net/projects/mingw-w64/files/latest/download)
 * Install it and add the path for gcc.exe [to your Windows PATH](https://www.computerhope.com/issues/ch000549.htm)
 * Download zlib code and compile it with your new gcc: [zlib](https://github.com/madler/zlib/archive/master.zip)
-* The previous step generates a **zlib.a** that you need to compile *gztool*:
+* The previous step generates the file **zlib.a** that you need to compile *gztool*:
 Copy gztool.c to the directory where you compiled zlib, and do:
     
     `gcc -static -O3 -I. -o gztool gztool.c libz.a`
@@ -62,12 +62,6 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 
 Usage
 =====
-
-     gztool (v0.2)
-     GZIP files indexer and data retriever.
-     Create small indexes for gzipped files and use them
-     for quick and random data extraction.
-     No more waiting when the end of a 10 GiB gzip is needed!
 
       $ gztool [-b #] [-cdefhilsS] [-I <INDEX>] <FILE> ...
 
