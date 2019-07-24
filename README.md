@@ -5,6 +5,8 @@ GZIP files indexer and data retriever.
 Create small indexes for gzipped files and use them for quick and random data extraction.
 No more waiting when the end of a 10 GiB gzip is needed!
 
+See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform, and [`Compilation` paragraph](https://github.com/circulosmeos/gztool#compilation) in case you want to compile the tool.
+
 Considerations
 ==============
 
