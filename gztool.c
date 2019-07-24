@@ -743,7 +743,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->size)
 local struct returned_output build_index(
-    FILE *in, off_t span, struct access **built, 
+    FILE *in, off_t span, struct access **built,
     enum SUPERVISE_OPTIONS supervise, unsigned char *index_filename )
 {
     struct returned_output ret;
@@ -1693,7 +1693,7 @@ local void print_help() {
     fprintf( stderr, " gztool (v0.2)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhilS] [-I <INDEX>] <FILE> ...\n\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhilsS] [-I <INDEX>] <FILE> ...\n\n" );
     fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
@@ -1931,7 +1931,7 @@ int main(int argc, char **argv)
 
     } else {
 
-        if ( action == ACT_SUPERVISE && 
+        if ( action == ACT_SUPERVISE &&
              ( argc - optind > 1 ) ) {
             // supervise only accepts one input gz file
             fprintf( stderr, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
