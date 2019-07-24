@@ -2036,24 +2036,22 @@ int main(int argc, char **argv)
 
         }
 
-        // final freeing of resources
-        if ( NULL != in ) {
-            free( in );
-        }
-        if ( NULL != index ) {
-            free_index( index );
-        }
-        if ( NULL != index_filename ) {
-            free( index_filename );
-        }
-        if ( NULL != index_file ) {
-            fclose( index_file );
-        }
-
-        return ret_value;
-
     }
 
-    assert( 0 );
+    // final freeing of resources
+    if ( NULL != in ) {
+        free( in );
+    }
+    if ( NULL != index ) {
+        free_index( index );
+    }
+    if ( NULL != index_filename ) {
+        free( index_filename );
+    }
+    if ( NULL != index_file ) {
+        fclose( index_file );
+    }
+
+    return ret_value;
 
 }
