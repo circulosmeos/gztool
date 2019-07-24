@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 by Roberto S. Galende, 2019-06
+// v0.1, v0.2 by Roberto S. Galende, 2019-06
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -1690,7 +1690,7 @@ action_list_info_error:
 // print help
 local void print_help() {
 
-    fprintf( stderr, " gztool (v0.1)\n GZIP files indexer and data retriever.\n");
+    fprintf( stderr, " gztool (v0.2)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "\n  $ gztool [-b #] [-cdefhilS] [-I <INDEX>] <FILE> ...\n\n" );
@@ -1829,6 +1829,10 @@ int main(int argc, char **argv)
     if ( actions_set > 1 ) {
         fprintf(stderr, "Please, do not merge parameters `-bcdilS`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
+    }
+    if ( span_between_points != SPAN &&
+        action != ACT_CREATE_INDEX && action != ACT_SUPERVISE ) {
+        fprintf(stderr, "`-s` parameter will be ignored.\n" );
     }
     if ( actions_set == 0 ) {
         // `-I <FILE>` is equivalent to `-i -I <FILE>`
