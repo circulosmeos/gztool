@@ -186,6 +186,11 @@ enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION 
 
 enum SUPERVISE_OPTIONS { SUPERVISE_DONT = 0, SUPERVISE_DO = 1 };
 
+enum ACTION
+    { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
+      ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL };
+
+
 /**************
  * Endianness *
  **************/
@@ -1545,11 +1550,12 @@ wait_for_file_creation:
 // uint64_t extract_from_byte   : uncompressed offset of original data from which to extract
 // int force_action             : if 1 and index file doesn't exist, create it
 // off_t span_between_points    : span between index points in bytes
+// enum action type_of_extraction: one of { ACT_EXTRACT_FROM_BYTE, ACT_EXTRACT_TAIL }
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_extract_from_byte(
     unsigned char *file_name, unsigned char *index_filename,
-    uint64_t extract_from_byte, int force_action, off_t span_between_points )
+    uint64_t extract_from_byte, int force_action, off_t span_between_points, enum ACTION type_of_extraction )
 {
 
     FILE *in = NULL;
@@ -1561,8 +1567,12 @@ local int action_extract_from_byte(
 
     // open <FILE>:
     if ( strlen(file_name) > 0 ) {
-        fprintf(stderr, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
-            extract_from_byte, file_name, index_filename);
+        if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
+            fprintf(stderr, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
+                extract_from_byte, file_name, index_filename);
+        if ( type_of_extraction == ACT_EXTRACT_TAIL )
+            fprintf(stderr, "Extracting tail data from file '%s',\nusing index '%s'...\n",
+                file_name, index_filename);            
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
             fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
@@ -1570,8 +1580,12 @@ local int action_extract_from_byte(
         }
     } else {
         // stdin
-        fprintf(stderr, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
-            extract_from_byte, index_filename);
+        if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
+            fprintf(stderr, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
+                extract_from_byte, index_filename);
+        if ( type_of_extraction == ACT_EXTRACT_TAIL )
+            fprintf(stderr, "Extracting tail data from stdin,\nusing index '%s'...\n",
+                index_filename);
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
     }
@@ -1599,6 +1613,25 @@ open_index_file:
         fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
         ret_value = EXIT_GENERIC_ERROR;
         goto action_extract_from_byte_error;
+    }
+    if ( type_of_extraction == ACT_EXTRACT_TAIL ) {
+        // on ACT_EXTRACT_TAIL, now that we have the index data loaded,
+        // we're trying to calculate where we can get a chunk of last data:
+        extract_from_byte = index->list[index->have -1].out;
+        // get size of compressed file, if not stdin
+        // and use it to increment extract_from_byte a little more
+        if ( strlen(file_name) > 0 ) {
+            struct stat st;
+            stat(file_name, &st);
+            if ( st.st_size > 0 ) {
+                // try to calculate a viable increment in extract_from_byte:
+                // aprox. +3/4 of remaining compressed size == more than that size
+                // in uncompressed data:
+                extract_from_byte += (st.st_size - index->list[index->have -1].in)*3/4;
+            }
+        }
+        fprintf(stderr, "...extracting data from uncompressed byte @%ld...\n",
+            extract_from_byte);
     }
     ret = extract( in, index, extract_from_byte, NULL, 0 );
     if ( ret.error < 0 ) {
@@ -1709,6 +1742,7 @@ local void print_help() {
     fprintf( stderr, " -s #: span in MiB between index points. By default is 10.\n" );
     fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
     fprintf( stderr, "     for a still-growing gzip file. (`-i` is  implicit).\n" );
+    fprintf( stderr, " -t: tail (extract last bytes) on indicated gzip file\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -1736,10 +1770,7 @@ int main(int argc, char **argv)
     int force_action = 0;
 
     enum EXIT_APP_VALUES ret_value;
-    enum ACTION
-        { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
-          ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE }
-        action;
+    enum ACTION action;
 
     int opt = 0;
     int i, j;
@@ -1749,7 +1780,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:S")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:St")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -1810,6 +1841,10 @@ int main(int argc, char **argv)
                 action = ACT_SUPERVISE;
                 actions_set++;
                 break;
+            case 't':
+                action = ACT_EXTRACT_TAIL;
+                actions_set++;
+                break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
@@ -1828,7 +1863,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdilS`.\nAborted.\n\n" );
+        fprintf(stderr, "Please, do not merge parameters `-bcdilSt`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
     if ( span_between_points != SPAN &&
@@ -1845,7 +1880,7 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdilS`, or `-h` for help.\nAborted.\n\n" );
+            fprintf(stderr, "Please, indicate one parameter of `-bcdilSt`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -1858,7 +1893,7 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
             if ( index_filename_indicated == 1 ) {
                 ret_value = action_extract_from_byte(
-                    "", index_filename, extract_from_byte, force_action, span_between_points );
+                    "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
                 fprintf( stderr, "\n" );
                 break;
             } else {
@@ -1992,7 +2027,7 @@ int main(int argc, char **argv)
 
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_extract_from_byte(
-                        file_name, index_filename, extract_from_byte, force_action, span_between_points );
+                        file_name, index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -2036,6 +2071,11 @@ int main(int argc, char **argv)
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO, span_between_points );
                     fprintf( stderr, "\n" );
+                    break;
+
+                case ACT_EXTRACT_TAIL:
+                    ret_value = action_extract_from_byte(
+                        file_name, index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
                     break;
 
             }
