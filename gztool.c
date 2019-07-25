@@ -961,7 +961,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     /* find where in stream to start */
     here = index->list;
     i = index->have;
-    while (--i && i!=0 && here[1].out <= offset)
+    while (--i && i>0 && here[1].out <= offset)
         here++;
 
     /* initialize file and inflate state to start there */
@@ -1617,19 +1617,22 @@ open_index_file:
     if ( type_of_extraction == ACT_EXTRACT_TAIL ) {
         // on ACT_EXTRACT_TAIL, now that we have the index data loaded,
         // we're trying to calculate where we can get a chunk of last data:
-        extract_from_byte = index->list[index->have -1].out;
-        // get size of compressed file, if not stdin
-        // and use it to increment extract_from_byte a little more
-        if ( strlen(file_name) > 0 ) {
-            struct stat st;
-            stat(file_name, &st);
-            if ( st.st_size > 0 ) {
-                // try to calculate a viable increment in extract_from_byte:
-                // aprox. +3/4 of remaining compressed size == more than that size
-                // in uncompressed data:
-                extract_from_byte += (st.st_size - index->list[index->have -1].in)*3/4;
+        if ( index->have > 0 ) {
+            extract_from_byte = index->list[index->have -1].out;
+            // get size of compressed file, if not stdin
+            // and use it to increment extract_from_byte a little more
+            if ( strlen(file_name) > 0 ) {
+                struct stat st;
+                stat(file_name, &st);
+                if ( st.st_size > 0 ) {
+                    // try to calculate a viable increment in extract_from_byte:
+                    // aprox. +3/4 of remaining compressed size == more than that size
+                    // in uncompressed data:
+                    extract_from_byte += (st.st_size - index->list[index->have -1].in)*3/4;
+                }
             }
-        }
+        } else
+            extract_from_byte = 0;
         fprintf(stderr, "...extracting data from uncompressed byte @%ld...\n",
             extract_from_byte);
     }
