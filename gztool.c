@@ -1727,7 +1727,7 @@ local void print_help() {
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, " //github.com/circulosmeos/gztool (by Roberto S. Galende)\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-cdefhilsS] [-I <INDEX>] <FILE> ...\n\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-s #] [-cdefhilSt] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
