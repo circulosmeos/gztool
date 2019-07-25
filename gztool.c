@@ -1662,7 +1662,7 @@ open_index_file:
                     // try to calculate a viable increment in extract_from_byte:
                     // aprox. +3/4 of remaining compressed size == more than that size
                     // in uncompressed data:
-                    extract_from_byte += (st.st_size - index->list[index->have -1].in)*3/4;
+                    extract_from_byte += (st.st_size - index->list[index->have -1].in)/4*3;
                 }
             }
         } else
