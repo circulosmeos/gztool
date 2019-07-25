@@ -1783,7 +1783,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:St")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:StT")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -1848,10 +1848,14 @@ int main(int argc, char **argv)
                 action = ACT_EXTRACT_TAIL;
                 actions_set++;
                 break;
+            case 'T':
+                action = ACT_EXTRACT_TAIL_AND_CONTINUE;
+                actions_set++;
+                break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdefhiIlS", optopt) ) {
+                    if ( NULL == strchr("bcdefhiIlSstT", optopt) ) {
                         fprintf(stderr, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -1866,7 +1870,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdilSt`.\nAborted.\n\n" );
+        fprintf(stderr, "Please, do not merge parameters `-bcdilStT`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
     if ( span_between_points != SPAN &&
@@ -1883,7 +1887,7 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdilSt`, or `-h` for help.\nAborted.\n\n" );
+            fprintf(stderr, "Please, indicate one parameter of `-bcdilStT`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -1964,6 +1968,11 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DO, span_between_points );
                 }
                 fprintf( stderr, "\n" );
+                break;
+
+            case ACT_EXTRACT_TAIL:
+                ret_value = action_extract_from_byte(
+                    "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
                 break;
 
         }
