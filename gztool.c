@@ -184,11 +184,12 @@ struct returned_output {
 
 enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
 
-enum SUPERVISE_OPTIONS { SUPERVISE_DONT = 0, SUPERVISE_DO = 1 };
+enum SUPERVISE_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL };
 
 enum ACTION
     { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
-      ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL };
+      ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL,
+      ACT_EXTRACT_TAIL_AND_CONTINUE };
 
 
 /**************
@@ -758,6 +759,7 @@ local struct returned_output build_index(
     z_stream strm;
     FILE *index_file = NULL;
     size_t index_last_written_point = 0;
+    int tail_reached = 0;       /* if 1, tail (EOF) of a growing gzip as been reached */
     unsigned char input[CHUNK]; // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
 
@@ -796,12 +798,30 @@ local struct returned_output build_index(
     do {
         /* get some compressed data from input file */
         strm.avail_in = fread(input, 1, CHUNK, in);
-        if ( supervise == SUPERVISE_DO &&
+
+        if ( (supervise == SUPERVISE_DO || supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
              strm.avail_in == 0 ) {
+
+            // if required by passed supervise option, extract to stdout
+            // beginning from a tail "feasible" value and on
+            if ( supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+                tail_reached == 0) {
+                // we still have all the values of output in the strm structure intact
+                // so use them to output the last read/uncompressed block:
+                unsigned have = WINSIZE - strm.avail_out;
+                if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
+                    (void)inflateEnd(&strm);
+                    ret.error = Z_ERRNO;
+                    goto build_index_error;
+                }
+                tail_reached = 1;
+            }
+
             // sleep and retry
             sleep( WAITING_TIME );
             continue;
         }
+
         if (ferror(in)) {
             ret.error = Z_ERRNO;
             goto build_index_error;
@@ -833,6 +853,18 @@ local struct returned_output build_index(
                 goto build_index_error;
             if (ret.error == Z_STREAM_END)
                 break;
+
+            // if required by passed supervise option, extract to stdout
+            // beginning from a tail "feasible" value and on
+            if ( supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+                tail_reached == 1) {
+                unsigned have = WINSIZE - strm.avail_out;
+                if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
+                    (void)inflateEnd(&strm);
+                    ret.error = Z_ERRNO;
+                    goto build_index_error;
+                }
+            }
 
             /* if at end of block, consider adding an index entry (note that if
                data_type indicates an end-of-block, then all of the
@@ -1474,13 +1506,15 @@ local int decompress_file(FILE *source, FILE *dest)
 // struct access **index        : memory address of index pointer (passed by reference)
 // unsigned char *index_filename: file name where index will be written
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
-// int supervise                : value passed to build_index()
+// enum SUPERVISE_OPTIONS supervise: value passed to build_index();
+//                                   in case of SUPERVISE_DO, wait here until gzip file exists.
 // off_t span_between_points    : span between index points in bytes
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
-    unsigned char *index_filename, int supervise, off_t span_between_points )
+    unsigned char *index_filename, enum SUPERVISE_OPTIONS supervise,
+    off_t span_between_points )
 {
 
     FILE *in;
@@ -2088,6 +2122,12 @@ int main(int argc, char **argv)
                 case ACT_EXTRACT_TAIL:
                     ret_value = action_extract_from_byte(
                         file_name, index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
+                    break;
+
+                case ACT_EXTRACT_TAIL_AND_CONTINUE:
+                    ret_value = action_create_index( file_name, &index, index_filename,
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, span_between_points );
+                    fprintf( stderr, "\n" );
                     break;
 
             }
