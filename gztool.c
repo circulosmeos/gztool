@@ -185,7 +185,7 @@ struct returned_output {
 
 enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
 
-enum SUPERVISE_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL };
+enum INDEX_AND_EXTRACTION_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, EXTRACT_FROM_BYTE };
 
 enum ACTION
     { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
@@ -746,11 +746,16 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 //                        from caller, if an index file was already available - and so this
 //                        function must use it or create new points from the last available one,
 //                        if needed.
-// enum SUPERVISE_OPTIONS supervise = SUPERVISE_DONT: usual behaviour
-//                                  = SUPERVISE_DO  : supervise a growing "in" gzip stream
-//                                  = SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: like SUPERVISE_DO but
-//                                    this will also extract data to stdout, starting from
-//                                    the last available bytes (tail) on gzip when called.
+// enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
+//                      = SUPERVISE_DONT: usual behaviour
+//                      = SUPERVISE_DO  : supervise a growing "in" gzip stream
+//                      = SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: like SUPERVISE_DO but
+//                          this will also extract data to stdout, starting from
+//                          the last available bytes (tail) on gzip when called.
+//                      = EXTRACT_FROM_BYTE: extract from indicated offset, to stdout
+// off_t offset         : if indx_n_extraction_opts == EXTRACT_FROM_BYTE, this is the offset byte in
+//                        in the uncompressed stream from which to extract to stdout.
+//                        0 otherwise.
 // unsigned char *index_filename    : in case SUPERVISE_DO, index will be written on-the-fly
 //                                    to this index file name.
 // OUTPUT:
@@ -759,12 +764,16 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 //      .value: size of built index (index->size)
 local struct returned_output build_index(
     FILE *in, off_t span, struct access **built,
-    enum SUPERVISE_OPTIONS supervise, unsigned char *index_filename )
+    enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset,
+    unsigned char *index_filename )
 {
     struct returned_output ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     struct access *index;       /* access points being generated */
+    struct point *here;
+    uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
+    unsigned char *decompressed_window;
     z_stream strm;
     FILE *index_file = NULL;
     size_t index_last_written_point = 0;
@@ -792,7 +801,7 @@ local struct returned_output build_index(
        also validates the integrity of the compressed data using the check
        information at the end of the gzip or zlib stream */
 
-    // if and index is already passed, use it
+    // if and index is already passed, use it:
     if ( NULL != *built ) {
         index = *built;
         // there's no sense in calling build_index() with an already complete index
@@ -809,6 +818,69 @@ local struct returned_output build_index(
         ret.error = inflateInit2(&strm, -15);         /* raw inflate */
         if (ret.error != Z_OK)
             return ret;
+
+        // move to adequate position on "in", depending on indx_n_extraction_opts
+        if ( indx_n_extraction_opts == SUPERVISE_DO ||
+             indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+             indx_n_extraction_opts == SUPERVISE_DONT ) {
+            // it is strange that a previous index existed, but anyway,
+            // move to last available point, and continue from it
+            actual_index_point = index->have - 1;
+            here = &(index->list[ actual_index_point ]);
+        }
+        if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
+            // move to the point needed for positioning on offset, or
+            // move to last available point if offset can't be reached
+            // with actually available index
+            here = index->list;
+            actual_index_point = 0;
+            while (
+                ++actual_index_point &&
+                actual_index_point < index->have &&
+                here[1].out <= offset
+                )
+                here++;
+            actual_index_point--;
+        }
+
+        // obtain window and initialize with it zlib's Dictionary
+        if (here->window == NULL && here->window_beginning != 0) {
+            /* index' window data is not on memory,
+            but we have position and size on index file, so we load it now */
+            FILE *index_file;
+            if (NULL == (index_file = fopen(index->file_name, "rb")) ||
+                0 != fseeko(index_file, here->window_beginning, SEEK_SET)
+                ) {
+                fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            // here->window_beginning = 0; // this is not needed
+            if ( NULL == (here->window = malloc(here->window_size)) ||
+                !fread(here->window, here->window_size, 1, index_file)
+                ) {
+                fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            fclose(index_file);
+        }
+
+        if (here->window_size != UNCOMPRESSED_WINDOW) {
+            /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+            uint64_t window_size = here->window_size;
+            /* window is compressed on memory, so decompress it */
+            decompressed_window = decompress_chunk(here->window, &window_size);
+            free(here->window);
+            here->window = decompressed_window;
+            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
+        }
+
+        (void)inflateSetDictionary(&strm, here->window, WINSIZE);
+
+        if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE )
+            offset -= here->out;
+
     } else {
         /* initialize inflate */
         strm.zalloc = Z_NULL;
@@ -829,12 +901,13 @@ local struct returned_output build_index(
         /* get some compressed data from input file */
         strm.avail_in = fread(input, 1, CHUNK, in);
 
-        if ( (supervise == SUPERVISE_DO || supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
+        if ( (indx_n_extraction_opts == SUPERVISE_DO ||
+              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
              strm.avail_in == 0 ) {
 
-            // if required by passed supervise option, extract to stdout
+            // if required by passed indx_n_extraction_opts option, extract to stdout
             // beginning from a tail "feasible" value and on
-            if ( supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
                 tail_reached == 0) {
                 // we still have all the values of output in the strm structure intact
                 // so use them to output the last read/uncompressed block:
@@ -884,9 +957,27 @@ local struct returned_output build_index(
             if (ret.error == Z_STREAM_END)
                 break;
 
-            // if required by passed supervise option, extract to stdout,
-            // beginning from a tail "feasible" value, and on
-            if ( supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+            //
+            // if required by passed indx_n_extraction_opts option, extract to stdout:
+            //
+            // EXTRACT_FROM_BYTE: extract all:
+            if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
+                unsigned have = WINSIZE - strm.avail_out;
+                if ( ( offset > 0 && offset - have <= 0 ) ||
+                    offset == 0 ) {
+                    offset = 0;
+                    // print offset - have bytes
+                    // If offset==0 (from offset byte on) this prints always all bytes:
+                    if (fwrite(strm.next_out + offset, 1, have - offset, stdout) != (have - offset) ||
+                        ferror(stdout)) {
+                        (void)inflateEnd(&strm);
+                        ret.error = Z_ERRNO;
+                        goto build_index_error;
+                    }
+                }
+            }
+            // SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: beginning from a tail "feasible" value, and on:
+            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
                 tail_reached == 1) {
                 unsigned have = WINSIZE - strm.avail_out;
                 if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
@@ -907,22 +998,34 @@ local struct returned_output build_index(
              */
             if ((strm.data_type & 128) && !(strm.data_type & 64) &&
                 (totout == 0 || totout - last > span)) {
-                index = addpoint(index, strm.data_type & 7, totin,
-                                 totout, strm.avail_out, window, 0);
-                if (index == NULL) {
-                    ret.error = Z_MEM_ERROR;
-                    goto build_index_error;
+                
+                // check actual_index_point to see if we've passed
+                // the end of the passed previous index, and so
+                // we must addpoint() from now on :
+                if ( actual_index_point > 0 )
+                    ++actual_index_point;
+                if ( actual_index_point > (index->have - 1) ) {
+                    actual_index_point = 0; // this checks are not needed any more
                 }
-                last = totout;
+                if ( actual_index_point == 0 ) { // TODO or finished ?
+                    index = addpoint(index, strm.data_type & 7, totin,
+                                     totout, strm.avail_out, window, 0);
+                    if (index == NULL) {
+                        ret.error = Z_MEM_ERROR;
+                        goto build_index_error;
+                    }
+                    last = totout;
 
-                // write added point!
-                // note that points written are automatically emptied of its window values
-                // in order to use as less memory a s possible
-                if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
-                    goto build_index_error;
-                index_last_written_point = index->have;
+                    // write added point!
+                    // note that points written are automatically emptied of its window values
+                    // in order to use as less memory a s possible
+                    if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
+                        goto build_index_error;
+                    index_last_written_point = index->have;
+                }
 
             }
+
         } while (strm.avail_in != 0);
     } while (ret.error != Z_STREAM_END);
 
@@ -1077,7 +1180,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
             ret.error = Z_ERRNO;
             goto extract_ret;
         }
-        here->window_beginning = 0;
+        // here->window_beginning = 0; // this is not needed
         if ( NULL == (here->window = malloc(here->window_size)) ||
             !fread(here->window, here->window_size, 1, index_file)
             ) {
@@ -1542,15 +1645,19 @@ local int decompress_file(FILE *source, FILE *dest)
 // struct access **index        : memory address of index pointer (passed by reference)
 // unsigned char *index_filename: file name where index will be written
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
-// enum SUPERVISE_OPTIONS supervise: value passed to build_index();
-//                                   in case of SUPERVISE_DO*, wait here until gzip file exists.
+// enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
+//                                  value passed to build_index();
+//                                  in case of SUPERVISE_DO*, wait here until gzip file exists.
+// off_t offset                 : if supervise == EXTRACT_FROM_BYTE, this is the offset byte in
+//                                in the uncompressed stream from which to extract to stdout.
+//                                0 otherwise.
 // off_t span_between_points    : span between index points in bytes
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
-    unsigned char *index_filename, enum SUPERVISE_OPTIONS supervise,
-    off_t span_between_points )
+    unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
+    off_t offset, off_t span_between_points )
 {
 
     FILE *in;
@@ -1562,8 +1669,8 @@ local int action_create_index(
 wait_for_file_creation:
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            if ( supervise == SUPERVISE_DO ||
-                 supervise == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
+            if ( indx_n_extraction_opts == SUPERVISE_DO ||
+                 indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
                 if ( waiting == 0 ) {
                     fprintf( stderr, "Waiting for creation of file '%s'\n", file_name );
                     waiting++;
@@ -1604,7 +1711,7 @@ wait_for_file_creation:
         }
     }
 
-    ret = build_index( in, span_between_points, index, supervise, index_filename );
+    ret = build_index( in, span_between_points, index, indx_n_extraction_opts, offset, index_filename );
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -1689,7 +1796,7 @@ open_index_file:
     if ( NULL == index_file ) {
         if ( force_action == 1 && mark_recursion == 0 ) {
             // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, span_between_points );
+            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
             if ( ret_value != EXIT_OK )
                 goto action_extract_from_byte_error;
             // index file has been created, so it must now be opened
@@ -2042,9 +2149,9 @@ int main(int argc, char **argv)
                 // TODO: if force_action==1, delete index first...
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT, span_between_points );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT, span_between_points );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT, 0, span_between_points );
                 }
                 fprintf( stderr, "\n" );
                 break;
@@ -2058,9 +2165,9 @@ int main(int argc, char **argv)
             case ACT_SUPERVISE:
                 // stdin is a gzip file for which an index file must be created on-the-fly
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, span_between_points );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, 0, span_between_points );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO, span_between_points );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0, span_between_points );
                 }
                 fprintf( stderr, "\n" );
                 break;
@@ -2169,7 +2276,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, span_between_points );
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
                     break;
 
                 case ACT_LIST_INFO:
@@ -2177,7 +2284,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_SUPERVISE:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO, span_between_points );
+                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO, 0, span_between_points );
                     fprintf( stderr, "\n" );
                     break;
 
@@ -2188,7 +2295,7 @@ int main(int argc, char **argv)
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
                     ret_value = action_create_index( file_name, &index, index_filename,
-                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, span_between_points );
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
                     fprintf( stderr, "\n" );
                     break;
 
