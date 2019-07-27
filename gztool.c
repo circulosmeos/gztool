@@ -806,9 +806,9 @@ local struct returned_output build_index(
        information at the end of the gzip or zlib stream */
 
     // if and index is already passed, use it:
-fprintf(stderr, "*built = %p\n", *built);
+//fprintf(stderr, "*built = %p\n", *built);
     if ( NULL != *built ) {
-fprintf(stderr, "NULL != *built\n");
+//fprintf(stderr, "NULL != *built\n");
         index = *built;
         // There's sense in calling build_index() with an already complete index,
         // because build_index can be called without knowing if index is complete or not
@@ -897,16 +897,16 @@ fprintf(stderr, "NULL != *built\n");
         strm.opaque = Z_NULL;
         strm.avail_in = 0;
         strm.next_in = Z_NULL;
-fprintf(stderr, "strm\n");
+//fprintf(stderr, "strm\n");
         ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
-fprintf(stderr, "ret.error = %d\n", ret.error);
+//fprintf(stderr, "ret.error = %d\n", ret.error);
         if (ret.error != Z_OK)
             return ret;
         totin = totout = last = 0;
         index = NULL;               /* will be allocated by first addpoint() */
     }
 
-fprintf(stderr, "index = %p\n", index);
+//fprintf(stderr, "index = %p\n", index);
     strm.avail_out = 0;
     do {
         /* get some compressed data from input file */
@@ -925,14 +925,14 @@ fprintf(stderr, "index = %p\n", index);
                 // in the just last finished cycle strm structure,
                 // so use them to output the last read/uncompressed block:
                 unsigned have = WINSIZE - strm.avail_out;
-fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-fprintf(stderr, "have = %d\n", have);
+//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
+//fprintf(stderr, "have = %d\n", have);
                 if (fwrite(window, 1, have, stdout) != have || ferror(stdout)) {
                     (void)inflateEnd(&strm);
                     ret.error = Z_ERRNO;
                     goto build_index_error;
                 }
-fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
+//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
                 fflush(stdout);
                 tail_reached = 1;
             }
@@ -959,7 +959,7 @@ fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
                 strm.avail_out = WINSIZE;
                 strm.next_out = window;
             }
-fprintf(stderr, "0. strm.next_out = %p ???\n", strm.next_out);
+//fprintf(stderr, "0. strm.next_out = %p ???\n", strm.next_out);
 
             /* inflate until out of input, output, or at end of block --
                update the total input and output counters */
@@ -998,17 +998,17 @@ fprintf(stderr, "0. strm.next_out = %p ???\n", strm.next_out);
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
                 tail_reached == 1) {
                 unsigned have = WINSIZE - strm.avail_out;
-fprintf(stderr, "2. strm.avail_out = %d\n", strm.avail_out);
-fprintf(stderr, "2. have = %d\n", have);
+//fprintf(stderr, "2. strm.avail_out = %d\n", strm.avail_out);
+//fprintf(stderr, "2. have = %d\n", have);
                 int fwrite_output = fwrite(window, 1, have, stdout);
-fprintf(stderr, "2. strm.next_out = %p ???\n", strm.next_out);
-fprintf(stderr, "2. %d ???\n", fwrite_output);
+//fprintf(stderr, "2. strm.next_out = %p ???\n", strm.next_out);
+//fprintf(stderr, "2. %d ???\n", fwrite_output);
                 if ( fwrite_output != have || ferror(stdout)) {
                 //if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                     (void)inflateEnd(&strm);
                     ret.error = Z_ERRNO;
                     goto build_index_error;
-fprintf(stderr, "2. %d END\n", fwrite_output);
+//fprintf(stderr, "2. %d END\n", fwrite_output);
                 }
             }
 
@@ -1027,7 +1027,7 @@ fprintf(stderr, "2. %d END\n", fwrite_output);
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
-fprintf(stderr, "actual_index_point = %ld\n", actual_index_point);
+//fprintf(stderr, "actual_index_point = %ld\n", actual_index_point);
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -1035,7 +1035,7 @@ fprintf(stderr, "actual_index_point = %ld\n", actual_index_point);
                     actual_index_point = 0; // this checks are not needed any more
                 }
                 if ( actual_index_point == 0 ) { // TODO or finished ?
-fprintf(stderr, "addpoint\n");
+//fprintf(stderr, "addpoint\n");
                     index = addpoint(index, strm.data_type & 7, totin,
                                      totout, strm.avail_out, window, 0);
                     if (index == NULL) {
