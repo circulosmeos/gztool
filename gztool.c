@@ -722,6 +722,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
             fseeko( output_file, sizeof(temp)*2, SEEK_SET );
             fwrite_endian(&index->have, sizeof(index->have), output_file);
             /* index->size is not written as only filled entries are usable */
+            fseeko( output_file, sizeof(temp)*3, SEEK_SET ); // fseeko after each fwrite (a+)
             fwrite_endian(&index->have, sizeof(index->have), output_file);
         }
 
@@ -791,7 +792,7 @@ local struct returned_output build_index(
     /* open index_filename for binary writing */
     // write index to index file:
     if ( strlen(index_filename) > 0 ) {
-        index_file = fopen( index_filename, "wb" );
+        index_file = fopen( index_filename, "a+b" );
     } else {
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         index_file = stdout;
