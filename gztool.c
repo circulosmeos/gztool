@@ -692,40 +692,38 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         temp = UINT64_MAX;
         fwrite_endian(&temp, sizeof(temp), output_file); // size
 
-    } else {
+    }
 
-        if ( index_last_written_point != index->have ) {
-            for (i = index_last_written_point; i < index->have; i++) {
-                here = &(index->list[i]);
-                fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
-                fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
-                fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
-                fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
-                here->window_beginning = ftello(output_file);
-                if (NULL == here->window) {
-                    fprintf(stderr, "Index incomplete! - index writing aborted.\n");
-                    return 0;
-                } else {
-                    fwrite(here->window, here->window_size, 1, output_file);
-                }
-                // once written, point's window CAN (and will now) BE DELETED from memory
-                free(here->window);
-                here->window = NULL;
+    if ( index_last_written_point != index->have ) {
+        for (i = index_last_written_point; i < index->have; i++) {
+            here = &(index->list[i]);
+            fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
+            fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
+            fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
+            fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
+            here->window_beginning = ftello(output_file);
+            if (NULL == here->window) {
+                fprintf(stderr, "Index incomplete! - index writing aborted.\n");
+                return 0;
+            } else {
+                fwrite(here->window, here->window_size, 1, output_file);
             }
-        } else {
-            // Last write operation:
-            // tail must be written:
-            /* write size of uncompressed file (useful for bgzip files) */
-            fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
-            // and header must be updated:
-            // for this, move position to header:
-            fseeko( output_file, sizeof(temp)*2, SEEK_SET );
-            fwrite_endian(&index->have, sizeof(index->have), output_file);
-            /* index->size is not written as only filled entries are usable */
-            fseeko( output_file, sizeof(temp)*3, SEEK_SET ); // fseeko after each fwrite (a+)
-            fwrite_endian(&index->have, sizeof(index->have), output_file);
+            // once written, point's window CAN (and will now) BE DELETED from memory
+            free(here->window);
+            here->window = NULL;
         }
-
+    } else {
+        // Last write operation:
+        // tail must be written:
+        /* write size of uncompressed file (useful for bgzip files) */
+        fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
+        // and header must be updated:
+        // for this, move position to header:
+        fseeko( output_file, sizeof(temp)*2, SEEK_SET );
+        fwrite_endian(&index->have, sizeof(index->have), output_file);
+        /* index->size is not written as only filled entries are usable */
+        fseeko( output_file, sizeof(temp)*3, SEEK_SET ); // fseeko after each fwrite (a+)
+        fwrite_endian(&index->have, sizeof(index->have), output_file);
     }
 
     // flush written content to disk
