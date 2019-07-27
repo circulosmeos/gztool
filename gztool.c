@@ -1905,7 +1905,7 @@ local int action_list_info( unsigned char *file_name ) {
 
     // open index file:
     if ( strlen(file_name) > 0 ) {
-        fprintf( stderr, "Checking index file '%s' ...\n", file_name );
+        fprintf( stdout, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
             fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
@@ -1929,14 +1929,14 @@ local int action_list_info( unsigned char *file_name ) {
 
     } else {
 
-        fprintf( stderr, "\tNumber of index points:    %ld\n", index->have );
+        fprintf( stdout, "\tNumber of index points:    %ld\n", index->have );
         if (index->file_size != 0)
-            fprintf( stderr, "\tSize of uncompressed file: %ld\n", index->file_size );
-        fprintf( stderr, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
+            fprintf( stdout, "\tSize of uncompressed file: %ld\n", index->file_size );
+        fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
         for (j=0; j<index->have; j++) {
-            fprintf( stderr, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
+            fprintf( stdout, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
         }
-        fprintf( stderr, "\n" );
+        fprintf( stdout, "\n" );
 
     }
 
