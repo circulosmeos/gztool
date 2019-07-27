@@ -2252,17 +2252,12 @@ int main(int argc, char **argv)
             }
 
             if ( force_action == 0 &&
-                 ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ) &&
+                 ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
+                    ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
-                fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
-                if ( continue_on_error == 1 ) {
-                    continue;
-                } else {
-                    fprintf( stderr, "Use `-f` to force overwriting.\nAborted.\n\n" );
-                    ret_value = EXIT_GENERIC_ERROR;
-                    break;
-                }
+                fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
+                fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
             }
             // TODO: if force_action==1, delete index first...
 
