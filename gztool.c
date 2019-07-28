@@ -185,7 +185,7 @@ struct returned_output {
 
 enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
 
-enum INDEX_AND_EXTRACTION_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, EXTRACT_FROM_BYTE };
+enum INDEX_AND_EXTRACTION_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, EXTRACT_FROM_BYTE, EXTRACT_TAIL };
 
 enum ACTION
     { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
@@ -875,6 +875,33 @@ local struct returned_output build_index(
             totout = index->list[ actual_index_point ].out;
             here = &(index->list[ actual_index_point ]);
         }
+        if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
+            if ( index->have > 0 )
+                actual_index_point = index->have - 1;
+            if ( index->index_incomplete == 0 ) {
+                // move to last point + 3/4
+                if ( index->have > 0 ) {
+                    offset = index->list[index->have - 1].out;
+                    // get size of compressed file, if not stdin
+                    // and use it to increment offset a little more
+                    if ( strlen(index->file_name) > 0 ) {
+                        struct stat st;
+                        stat(index->file_name, &st);
+                        if ( st.st_size > 0 ) {
+                            // try to calculate a viable increment in offset:
+                            // aprox. +3/4 of remaining compressed size == more than that size
+                            // in uncompressed data:
+                            offset += (st.st_size - index->list[index->have -1].in)/4*3;
+                        }
+                    }
+                }
+            } else {
+                // move to last available point
+                totin  = index->list[ index->have - 1 ].in;
+                totout = index->list[ index->have - 1 ].out;
+                here = &(index->list[ index->have - 1 ]);
+            }
+        }
         if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
             // move to the point needed for positioning on offset, or
             // move to last available point if offset can't be reached
@@ -1043,6 +1070,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                     }
                 }
             }
+            // TODO: delete this block when -T && -t are converted to EXTRACT_FROM_BYTE
             // SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: beginning from a tail "feasible" value, and on:
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
                 tail_reached == 1) {
@@ -1120,13 +1148,16 @@ if ( NULL != index )
 
         } while (strm.avail_in != 0);
 
+        //
+        // TODO : tail is referred to gzip contents, not to end of index (in/complete) file
+        //
         // if required by passed indx_n_extraction_opts option, extract to stdout
         // beginning from a tail "feasible" value and on
         if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
             tail_reached == 0 &&
             strm.avail_out > 0 ) {
             // we still have all the values of output intact
-            // in the just last finished cycle strm structure,
+            // in the last just-finished cycle strm structure,
             // so use them to output the last read/uncompressed block:
             unsigned have = WINSIZE - strm.avail_out;
 //fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
@@ -1763,9 +1794,9 @@ local int decompress_file(FILE *source, FILE *dest)
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
 // enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
 //                                  value passed to build_index();
-//                                  in case of SUPERVISE_DO*, wait here until gzip file exists.
+//                                  in case of SUPERVISE_DO* (not *DONT), wait here until gzip file exists.
 // off_t offset                 : if supervise == EXTRACT_FROM_BYTE, this is the offset byte in
-//                                in the uncompressed stream from which to extract to stdout.
+//                                the uncompressed stream from which to extract to stdout.
 //                                0 otherwise.
 // off_t span_between_points    : span between index points in bytes
 // OUTPUT:
@@ -1914,6 +1945,7 @@ local int action_extract_from_byte(
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
     }
+
     // open index file (filename derived from <FILE> unless indicated with `-I`)
 open_index_file:
     index_file = fopen( index_filename, "rb" );
@@ -1932,6 +1964,7 @@ open_index_file:
             goto action_extract_from_byte_error;
         }
     }
+
     // deserialize_index_from_file
     index = deserialize_index_from_file( index_file, 0, index_filename );
     if ( ! index ) {
@@ -1939,6 +1972,7 @@ open_index_file:
         ret_value = EXIT_GENERIC_ERROR;
         goto action_extract_from_byte_error;
     }
+
     if ( type_of_extraction == ACT_EXTRACT_TAIL ) {
         // on ACT_EXTRACT_TAIL, now that we have the index data loaded,
         // we're trying to calculate where we can get a chunk of last data:
@@ -1956,8 +1990,9 @@ open_index_file:
                     extract_from_byte += (st.st_size - index->list[index->have -1].in)/4*3;
                 }
             }
-        } else
+        } else {
             extract_from_byte = 0;
+        }
         fprintf(stderr, "...extracting data from uncompressed byte @%ld...\n",
             extract_from_byte);
     }
@@ -2055,7 +2090,7 @@ local void print_help() {
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, " //github.com/circulosmeos/gztool (by Roberto S. Galende)\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-s #] [-cdefhilSt] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "\n  $ gztool [-b #] [-s #] [-cdefhilStT] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
@@ -2071,6 +2106,8 @@ local void print_help() {
     fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
     fprintf( stderr, "     for a still-growing gzip file. (`-i` is  implicit).\n" );
     fprintf( stderr, " -t: tail (extract last bytes) on indicated gzip file\n" );
+    fprintf( stderr, " -T: tail (extract last bytes) on indicated gzip file\n" );
+    fprintf( stderr, "     and continue Supervising & extracting it.\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -2223,16 +2260,17 @@ int main(int argc, char **argv)
         switch ( action ) {
 
             case ACT_EXTRACT_FROM_BYTE:
-            if ( index_filename_indicated == 1 ) {
-                ret_value = action_extract_from_byte(
-                    "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
-                fprintf( stderr, "\n" );
-                break;
-            } else {
-                fprintf( stderr, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
-                ret_value = EXIT_GENERIC_ERROR;
-                break;
-            }
+                // stdin is a gzip file
+                if ( index_filename_indicated == 1 ) {
+                    ret_value = action_extract_from_byte(
+                        "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
+                    fprintf( stderr, "\n" );
+                    break;
+                } else {
+                    fprintf( stderr, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
+                    ret_value = EXIT_GENERIC_ERROR;
+                    break;
+                }
 
             case ACT_COMPRESS_CHUNK:
                 // compress chunk reads stdin or indicated file, and deflates in raw to stdout
@@ -2297,8 +2335,15 @@ int main(int argc, char **argv)
                 break;
 
             case ACT_EXTRACT_TAIL:
-                ret_value = action_extract_from_byte(
-                    "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
+                // stdin is a gzip file
+                if ( index_filename_indicated == 1 ) {
+                    ret_value = action_extract_from_byte(
+                        "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
+                } else {
+                    // if an index filename is not indicated, index will not be output
+                    // as stdout is already used for data extraction
+                    fprintf( stderr, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
+                }
                 break;
 
         }
