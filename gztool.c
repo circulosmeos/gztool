@@ -173,9 +173,9 @@ struct access {
     uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
     unsigned char *file_name; /* path to index file */
-    int index_incomplete;     /* 0: index is complete; 1: index is (still) incomplete */
+    int index_complete;     /* 1: index is complete; 0: index is (still) incomplete */
 };
-// NOTE: file_name and index_incomplete are not stored on disk (on-memory-only values)
+// NOTE: file_name and index_complete are not stored on disk (on-memory-only values)
 
 /* generic struct to return a function error code and a value */
 struct returned_output {
@@ -185,7 +185,7 @@ struct returned_output {
 
 enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
 
-enum INDEX_AND_EXTRACTION_OPTIONS { SUPERVISE_DONT, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, EXTRACT_FROM_BYTE, EXTRACT_TAIL };
+enum INDEX_AND_EXTRACTION_OPTIONS { JUST_CREATE_INDEX, SUPERVISE_DO, SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, EXTRACT_FROM_BYTE, EXTRACT_TAIL };
 
 enum ACTION
     { ACT_NOT_SET, ACT_EXTRACT_FROM_BYTE, ACT_COMPRESS_CHUNK, ACT_DECOMPRESS_CHUNK,
@@ -541,7 +541,7 @@ local struct access *create_empty_index()
     }
     index->size = 8;
     index->have = 0;
-    index->index_incomplete = 1;
+    index->index_complete = 0;
 
     return index;
 }
@@ -776,7 +776,7 @@ fprintf(stderr, "offset = %ld\n", offset);
 //                        function must use it or create new points from the last available one,
 //                        if needed.
 // enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
-//                      = SUPERVISE_DONT: usual behaviour
+//                      = JUST_CREATE_INDEX: usual behaviour
 //                      = SUPERVISE_DO  : supervise a growing "in" gzip stream
 //                      = SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: like SUPERVISE_DO but
 //                          this will also extract data to stdout, starting from
@@ -799,8 +799,8 @@ local struct returned_output build_index(
     struct returned_output ret;
     off_t totin, totout;        /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
-    struct access *index;       /* access points being generated */
-    struct point *here;
+    struct access *index = NULL;/* access points being generated */
+    struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
     unsigned char *decompressed_window;
     z_stream strm;
@@ -816,7 +816,7 @@ local struct returned_output build_index(
     /* open index_filename for binary writing */
     // write index to index file:
     if ( strlen(index_filename) > 0 &&
-        ( NULL == index || index->index_incomplete == 1 )
+        ( NULL == index || index->index_complete == 0 )
         ) {
         if ( access( index_filename, F_OK ) != -1 ) {
             // index_filename already exist:
@@ -866,9 +866,10 @@ local struct returned_output build_index(
         // select an index point to start, depending on indx_n_extraction_opts
         if ( indx_n_extraction_opts == SUPERVISE_DO ||
              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
-             indx_n_extraction_opts == SUPERVISE_DONT ) {
-            // it is strange that a previous index existed, but anyway,
-            // move to last available point, and continue from it
+             indx_n_extraction_opts == JUST_CREATE_INDEX ||
+             indx_n_extraction_opts == EXTRACT_TAIL
+             ) {
+            // move to last available index point, and continue from it
             actual_index_point = index->have - 1;
             // this index must be completed from last point: index->list[index->have-1]
             totin  = index->list[ actual_index_point ].in;
@@ -878,7 +879,7 @@ local struct returned_output build_index(
         if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
             if ( index->have > 0 )
                 actual_index_point = index->have - 1;
-            if ( index->index_incomplete == 0 ) {
+            if ( index->index_complete == 1 ) {
                 // move to last point + 3/4
                 if ( index->have > 0 ) {
                     offset = index->list[index->have - 1].out;
@@ -1113,7 +1114,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                 }
                 if ( actual_index_point == 0 &&
                     // addpoint() only if index doesn't yet exist or it is incomplete
-                    ( NULL == index || index->index_incomplete == 1 )
+                    ( NULL == index || index->index_complete == 0 )
                     ) { // TODO or finished ?
 if ( NULL != index )
     fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
@@ -1182,19 +1183,19 @@ fprintf(stderr, "have = %d\n", have);
 
     // once all index values are filled, close index file: a last call must be done
     // with index_last_written_point = index->have
-    if ( index->index_incomplete == 1 )
+    if ( index->index_complete == 0 )
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto build_index_error;
     if ( NULL != index_file )
         fclose(index_file);
 
-    if ( index->index_incomplete == 1 )
+    if ( index->index_complete == 0 )
         if ( strlen(index_filename) > 0 )
             fprintf(stderr, "Index written to '%s'.\n", index_filename);
         else
             fprintf(stderr, "Index written to stdout.\n");
 
-    index->index_incomplete = 0; /* index is now complete */
+    index->index_complete = 1; /* index is now complete */
 
     *built = index;
     ret.value = index->have;
@@ -1209,6 +1210,10 @@ fprintf(stderr, "have = %d\n", have);
     if (index_file != NULL)
         fclose(index_file);
     return ret;
+
+    // there's no need to free(here),
+    // because it pointed to index's values, and they
+    // will be freed with free_index().
 }
 
 
@@ -1479,7 +1484,8 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
     struct point here;
     struct access *index = NULL;
-    uint32_t i, index_incomplete = 0;
+    uint32_t i;
+    uint32_t index_complete = 1;
     uint64_t index_have, index_size, file_size;
     char header[GZIP_INDEX_HEADER_SIZE];
     struct stat st;
@@ -1521,7 +1527,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     // and index->have == UINT64_MAX when the index is still growing
     if (index_have == 0 && index_size == UINT64_MAX) {
         fprintf(stderr, "Index file is incomplete.\n");
-        index_incomplete = 1;
+        index_complete = 0;
     }
 
 
@@ -1600,7 +1606,7 @@ fprintf(stderr, "READ window_size = %d\n", here.window_size);
 
     index->file_size = 0;
 
-    if ( index_incomplete == 0 ){
+    if ( index_complete == 1 ){
         /* read size of uncompressed file (useful for bgzip files) */
         /* this field may not exist (maybe useful for growing gzip files?) */
         fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
@@ -1612,10 +1618,10 @@ fprintf(stderr, "READ window_size = %d\n", here.window_size);
         goto deserialize_index_from_file_error;
     }
 
-    if ( index_incomplete == 0 )
-        index->index_incomplete = 0; /* index is now complete */
+    if ( index_complete == 1 )
+        index->index_complete = 1; /* index is now complete */
     else
-        index->index_incomplete = 1;
+        index->index_complete = 0;
 
     return index;
 
@@ -1952,7 +1958,7 @@ open_index_file:
     if ( NULL == index_file ) {
         if ( force_action == 1 && mark_recursion == 0 ) {
             // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
+            ret_value = action_create_index( file_name, &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
             if ( ret_value != EXIT_OK )
                 goto action_extract_from_byte_error;
             // index file has been created, so it must now be opened
@@ -2311,9 +2317,9 @@ int main(int argc, char **argv)
                 // TODO: if force_action==1, delete index first...
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DONT, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX, 0, span_between_points );
                 }
                 fprintf( stderr, "\n" );
                 break;
@@ -2343,6 +2349,7 @@ int main(int argc, char **argv)
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
                     fprintf( stderr, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
+                    ret_value = EXIT_INVALID_OPTION;
                 }
                 break;
 
@@ -2440,7 +2447,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DONT, 0, span_between_points );
+                    ret_value = action_create_index( file_name, &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
                     break;
 
                 case ACT_LIST_INFO:
