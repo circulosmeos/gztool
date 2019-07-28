@@ -585,7 +585,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
             return NULL;
         }
         index->list = next;
-        empty_index_list( index, index->have + 1, index->size );
+        empty_index_list( index, index->have, index->size );
     }
 
     /* fill in entry and increment how many we have */
