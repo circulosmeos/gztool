@@ -559,7 +559,8 @@ local struct access *create_empty_index()
 //                        or uncompressed with size WINSIZE,
 //                        or store an empty window (NULL) because it resides on file.
 // uint32_t window_size : 0: compress passed window of size WINSIZE
-//                       >0: store window, of size window_size, as it is, in point structure
+//                       >0 & NULL != window: store window, of size window_size, as it is, in point structure
+//                       >0 & NULL == window: ->window=NULL : this marks a window of size window_size that resides on file
 // OUTPUT:
 // pointer to (new) index (NULL on error)
 local struct access *addpoint(struct access *index, uint32_t bits,
@@ -584,7 +585,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
             return NULL;
         }
         index->list = next;
-        empty_index_list( index, index->have, index->size );
+        empty_index_list( index, index->have + 1, index->size );
     }
 
     /* fill in entry and increment how many we have */
@@ -610,11 +611,12 @@ local struct access *addpoint(struct access *index, uint32_t bits,
         next->window = compressed_chunk;
         /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
         next->window_size = size;
+fprintf(stderr, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
     } else {
         if ( window == NULL ) {
             // create a NULL window: it resides on file,
             // and can/will later loaded on memory
-            next->window_size = 0;
+            next->window_size = window_size;
             next->window = NULL;
         } else {
             // passed window is already compressed: store as it is with size "window_size"
@@ -638,12 +640,14 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 // INPUT:
 // FILE *output_file    : output stream
 // struct access *index : pointer to index
-// uint64_t index_last_written_point : last index point already written to file
+// uint64_t index_last_written_point : last index point already written to file: its values
+//                                     go from 1 to index->have, so that 0 has special value "None".
 // OUTPUT:
 // 0 on error, 1 on success
 int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t index_last_written_point ) {
-    struct point *here;
+    struct point *here = NULL;
     uint64_t temp;
+    uint64_t offset;
     int i;
 
     ///* access point entry */
@@ -674,6 +678,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
     if ( index_last_written_point == 0 ) {
 
         /* write header */
+        fseeko( output_file, 0, SEEK_SET);
         /* 0x0 8 bytes (to be compatible with .gzi for bgzip format: */
         /* the initial uint32_t is the number of bgzip-idx registers) */
         temp = 0;
@@ -694,13 +699,35 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 
     }
 
+    // fseek to index position of index_last_written_point
+    offset = 4*sizeof(temp);
+    for (i = 0; i < index_last_written_point; i++) {
+        here = &(index->list[i]);
+        offset += sizeof(here->out) + sizeof(here->in) +
+                  sizeof(here->bits) + sizeof(here->window_size) +
+                  ((here->window_size==UNCOMPRESSED_WINDOW)? WINSIZE: (here->window_size));
+if (i>=63)
+    fprintf(stderr, ">>> %d->window_size = %d\n", i, here->window_size);
+    }
+    fseeko( output_file, offset, SEEK_SET);
+fprintf(stderr, "index_last_written_point = %ld\n", index_last_written_point);
+if (NULL!=here) {
+    fprintf(stderr, "%d->window_size = %d\n", i, here->window_size);
+}
+fprintf(stderr, "offset = %ld\n", offset);
+
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
             here = &(index->list[i]);
             fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
             fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
             fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
-            fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
+            if ( here->window_size==UNCOMPRESSED_WINDOW ) {
+                temp = WINSIZE;
+                fwrite_endian(&(temp), sizeof(here->window_size), output_file);
+            } else {
+                fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
+            }
             here->window_beginning = ftello(output_file);
             if (NULL == here->window) {
                 fprintf(stderr, "Index incomplete! - index writing aborted.\n");
@@ -722,7 +749,6 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         fseeko( output_file, sizeof(temp)*2, SEEK_SET );
         fwrite_endian(&index->have, sizeof(index->have), output_file);
         /* index->size is not written as only filled entries are usable */
-        fseeko( output_file, sizeof(temp)*3, SEEK_SET ); // fseeko after each fwrite (a+)
         fwrite_endian(&index->have, sizeof(index->have), output_file);
     }
 
@@ -789,8 +815,19 @@ local struct returned_output build_index(
 
     /* open index_filename for binary writing */
     // write index to index file:
-    if ( strlen(index_filename) > 0 ) {
-        index_file = fopen( index_filename, "a+b" );
+    if ( strlen(index_filename) > 0 &&
+        ( NULL == index || index->index_incomplete == 1 )
+        ) {
+        if ( access( index_filename, F_OK ) != -1 ) {
+            // index_filename already exist:
+            // "r+": Open a file for update (both for input and output). The file must exist.
+            // r+, because the index may be incomplete, and so build_index() will
+            // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
+            index_file = fopen( index_filename, "r+b" );
+        } else {
+            // index_filename does not exist:
+            index_file = fopen( index_filename, "w+b" );
+        }
     } else {
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         index_file = stdout;
@@ -807,7 +844,9 @@ local struct returned_output build_index(
     // if and index is already passed, use it:
 //fprintf(stderr, "*built = %p\n", *built);
     if ( NULL != *built ) {
+        // NULL != *built (there is a previous index available: use it!)
 //fprintf(stderr, "NULL != *built\n");
+
         index = *built;
         // There's sense in calling build_index() with an already complete index,
         // because build_index can be called without knowing if index is complete or not
@@ -822,7 +861,9 @@ local struct returned_output build_index(
         if (ret.error != Z_OK)
             return ret;
 
-        // move to adequate position on "in", depending on indx_n_extraction_opts
+        index_last_written_point = index->have;
+
+        // select an index point to start, depending on indx_n_extraction_opts
         if ( indx_n_extraction_opts == SUPERVISE_DO ||
              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
              indx_n_extraction_opts == SUPERVISE_DONT ) {
@@ -849,6 +890,20 @@ local struct returned_output build_index(
             actual_index_point--;
             totin  = index->list[ actual_index_point ].in;
             totout = index->list[ actual_index_point ].out;
+        }
+
+        // fseek in data for correct position (last index point)
+        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+        if (ret.error == -1)
+            goto build_index_error;
+        if (here->bits) {
+            int i;
+            i = getc(in);
+            if (i == -1) {
+                ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
+                goto build_index_error;
+            }
+            (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
         }
 
         // obtain window and initialize with it zlib's Dictionary
@@ -879,17 +934,22 @@ local struct returned_output build_index(
             uint64_t window_size = here->window_size;
             /* window is compressed on memory, so decompress it */
             decompressed_window = decompress_chunk(here->window, &window_size);
-            free(here->window);
+            // In order to avoid deleting the on-memory here->window_size, that may
+            // be needed later if index must be increased and written disk (fseeko):
+            (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
+            /*free(here->window);
             here->window = decompressed_window;
-            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
+            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
+        } else {
+            (void)inflateSetDictionary(&strm, here->window, WINSIZE);
         }
-
-        (void)inflateSetDictionary(&strm, here->window, WINSIZE);
 
         if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE )
             offset -= here->out;
 
     } else {
+        // NULL != *built (there is no previous index available: build it from scratch)
+
         /* initialize inflate */
         strm.zalloc = Z_NULL;
         strm.zfree = Z_NULL;
@@ -909,36 +969,19 @@ local struct returned_output build_index(
     strm.avail_out = 0;
     do {
         /* get some compressed data from input file */
+/*fprintf(stderr, "totin = %ld\n", totin);
+fprintf(stderr, "totout = %ld\n", totout);
+fprintf(stderr, "ftello = %ld\n", ftello(in));*/
         strm.avail_in = fread(input, 1, CHUNK, in);
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
               indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
              strm.avail_in == 0 ) {
 
-            // if required by passed indx_n_extraction_opts option, extract to stdout
-            // beginning from a tail "feasible" value and on
-            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
-                tail_reached == 0 &&
-                strm.avail_out > 0 ) {
-                // we still have all the values of output intact
-                // in the just last finished cycle strm structure,
-                // so use them to output the last read/uncompressed block:
-                unsigned have = WINSIZE - strm.avail_out;
-//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-//fprintf(stderr, "have = %d\n", have);
-                if (fwrite(window, 1, have, stdout) != have || ferror(stdout)) {
-                    (void)inflateEnd(&strm);
-                    ret.error = Z_ERRNO;
-                    goto build_index_error;
-                }
-//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-                fflush(stdout);
-                tail_reached = 1;
-            }
-
             // sleep and retry
             sleep( WAITING_TIME );
             continue;
+
         }
 
         if (ferror(in)) {
@@ -965,12 +1008,19 @@ local struct returned_output build_index(
             totin += strm.avail_in;
             totout += strm.avail_out;
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
+/*fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
+fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
+fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             totin -= strm.avail_in;
             totout -= strm.avail_out;
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
-            if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR)
+            if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
+/*fprintf(stderr, "totin = %ld\n", totin);
+fprintf(stderr, "totout = %ld\n", totout);
+fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                 goto build_index_error;
+            }
             if (ret.error == Z_STREAM_END)
                 break;
 
@@ -1033,10 +1083,23 @@ local struct returned_output build_index(
                     actual_index_point > (index->have - 1) ) {
                     actual_index_point = 0; // this checks are not needed any more
                 }
-                if ( actual_index_point == 0 ) { // TODO or finished ?
-//fprintf(stderr, "addpoint\n");
+                if ( actual_index_point == 0 &&
+                    // addpoint() only if index doesn't yet exist or it is incomplete
+                    ( NULL == index || index->index_incomplete == 1 )
+                    ) { // TODO or finished ?
+if ( NULL != index )
+    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
+fprintf(stderr, "totin=%ld, totout=%ld\n", totin, totout);
+if ( NULL != index )
+fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-1,index->list[index->have-1].window_size);
+if ( NULL != index )
+fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-2,index->list[index->have-2].window_size);
                     index = addpoint(index, strm.data_type & 7, totin,
                                      totout, strm.avail_out, window, 0);
+if ( NULL != index )
+fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-2,index->list[index->have-2].window_size);
+if ( NULL != index )
+fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-1,index->list[index->have-1].window_size);
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
                         goto build_index_error;
@@ -1046,6 +1109,8 @@ local struct returned_output build_index(
                     // write added point!
                     // note that points written are automatically emptied of its window values
                     // in order to use as less memory a s possible
+if ( NULL != index )
+    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
                     if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
                         goto build_index_error;
                     index_last_written_point = index->have;
@@ -1054,6 +1119,28 @@ local struct returned_output build_index(
             }
 
         } while (strm.avail_in != 0);
+
+        // if required by passed indx_n_extraction_opts option, extract to stdout
+        // beginning from a tail "feasible" value and on
+        if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+            tail_reached == 0 &&
+            strm.avail_out > 0 ) {
+            // we still have all the values of output intact
+            // in the just last finished cycle strm structure,
+            // so use them to output the last read/uncompressed block:
+            unsigned have = WINSIZE - strm.avail_out;
+//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
+fprintf(stderr, "have = %d\n", have);
+            if (fwrite(window, 1, have, stdout) != have || ferror(stdout)) {
+                (void)inflateEnd(&strm);
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
+            fflush(stdout);
+            tail_reached = 1;
+        }
+
     } while (ret.error != Z_STREAM_END);
 
     /* clean up and return index (release unused entries in list) */
@@ -1061,18 +1148,22 @@ local struct returned_output build_index(
     index->list = realloc(index->list, sizeof(struct point) * index->have);
     index->size = index->have;
     index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
-    index->index_incomplete = 0; /* index is now complete */
 
     // once all index values are filled, close index file: a last call must be done
     // with index_last_written_point = index->have
-    if ( ! serialize_index_to_file( index_file, index, index->have ) )
-        goto build_index_error;
-    fclose(index_file);
+    if ( index->index_incomplete == 1 )
+        if ( ! serialize_index_to_file( index_file, index, index->have ) )
+            goto build_index_error;
+    if ( NULL != index_file )
+        fclose(index_file);
 
-    if ( strlen(index_filename) > 0 )
-        fprintf(stderr, "Index written to '%s'.\n", index_filename);
-    else
-        fprintf(stderr, "Index written to stdout.\n");
+    if ( index->index_incomplete == 1 )
+        if ( strlen(index_filename) > 0 )
+            fprintf(stderr, "Index written to '%s'.\n", index_filename);
+        else
+            fprintf(stderr, "Index written to stdout.\n");
+
+    index->index_incomplete = 0; /* index is now complete */
 
     *built = index;
     ret.value = index->have;
@@ -1357,7 +1448,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
     struct point here;
     struct access *index = NULL;
-    uint32_t i, still_growing = 0;
+    uint32_t i, index_incomplete = 0;
     uint64_t index_have, index_size, file_size;
     char header[GZIP_INDEX_HEADER_SIZE];
     struct stat st;
@@ -1399,7 +1490,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     // and index->have == UINT64_MAX when the index is still growing
     if (index_have == 0 && index_size == UINT64_MAX) {
         fprintf(stderr, "Index file is incomplete.\n");
-        still_growing = 1;
+        index_incomplete = 1;
     }
 
 
@@ -1410,7 +1501,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.in),   sizeof(here.in),   input_file);
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
-
+fprintf(stderr, "READ window_size = %d\n", here.window_size);
         if ( here.window_size == 0 ) {
             fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
                     file_name, ftello(input_file), index->have + 1);
@@ -1461,12 +1552,10 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
+        index = addpoint( index, here.bits, here.in, here.out, 0, NULL, here.window_size );
 
         // after increasing index, copy values which were not passed to addpoint():
         index->list[index->have - 1].window_beginning = here.window_beginning;
-        index->list[index->have - 1].window_size = here.window_size;
-
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
 
@@ -1480,7 +1569,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
     index->file_size = 0;
 
-    if ( still_growing == 0 ){
+    if ( index_incomplete == 0 ){
         /* read size of uncompressed file (useful for bgzip files) */
         /* this field may not exist (maybe useful for growing gzip files?) */
         fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
@@ -1492,7 +1581,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         goto deserialize_index_from_file_error;
     }
 
-    if ( still_growing == 0 )
+    if ( index_incomplete == 0 )
         index->index_incomplete = 0; /* index is now complete */
     else
         index->index_incomplete = 1;
@@ -1689,6 +1778,7 @@ local int action_create_index(
 
     FILE *in;
     struct returned_output ret;
+    uint64_t number_of_index_points = 0;
     int waiting = 0;
 
     // open <FILE>:
@@ -1733,6 +1823,7 @@ wait_for_file_creation:
                 return EXIT_GENERIC_ERROR;
             }
             // index ok, continue
+            number_of_index_points = (*index)->have;
         } else {
             fprintf( stderr, "Could not open '%s' for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
@@ -1765,7 +1856,12 @@ wait_for_file_creation:
        return EXIT_GENERIC_ERROR;
     }
 
-    fprintf(stderr, "Built index with %ld access points.\n", ret.value);
+    if ( number_of_index_points != (*index)->have )
+        if ( number_of_index_points > 0 ) {
+            fprintf(stderr, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
+            fprintf(stderr, "Now index have %ld access points.\n", ret.value);
+        } else
+            fprintf(stderr, "Built index with %ld access points.\n", ret.value);
 
     return EXIT_OK;
 
