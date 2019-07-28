@@ -797,7 +797,8 @@ local struct returned_output build_index(
     unsigned char *index_filename )
 {
     struct returned_output ret;
-    off_t totin, totout;        /* our own total counters to avoid 4GB limit */
+    off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
+    off_t totout = 0;           /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
@@ -863,119 +864,154 @@ local struct returned_output build_index(
 
         index_last_written_point = index->have;
 
-        // select an index point to start, depending on indx_n_extraction_opts
+        //
+        // Select an index point to start, depending on indx_n_extraction_opts,
+        // and also set offset to a new value if needed (overwriting 0 value input)
+        //
         if ( indx_n_extraction_opts == SUPERVISE_DO ||
              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
              indx_n_extraction_opts == JUST_CREATE_INDEX ||
              indx_n_extraction_opts == EXTRACT_TAIL
              ) {
             // move to last available index point, and continue from it
-            actual_index_point = index->have - 1;
-            // this index must be completed from last point: index->list[index->have-1]
-            totin  = index->list[ actual_index_point ].in;
-            totout = index->list[ actual_index_point ].out;
-            here = &(index->list[ actual_index_point ]);
-        }
-        if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
-            if ( index->have > 0 )
+            if ( index->have > 0 ) {
                 actual_index_point = index->have - 1;
-            if ( index->index_complete == 1 ) {
-                // move to last point + 3/4
-                if ( index->have > 0 ) {
-                    offset = index->list[index->have - 1].out;
-                    // get size of compressed file, if not stdin
-                    // and use it to increment offset a little more
-                    if ( strlen(index->file_name) > 0 ) {
-                        struct stat st;
-                        stat(index->file_name, &st);
-                        if ( st.st_size > 0 ) {
-                            // try to calculate a viable increment in offset:
-                            // aprox. +3/4 of remaining compressed size == more than that size
-                            // in uncompressed data:
-                            offset += (st.st_size - index->list[index->have -1].in)/4*3;
-                        }
+                // this index must be completed from last point: index->list[index->have-1]
+                totin  = index->list[ actual_index_point ].in;
+                totout = index->list[ actual_index_point ].out;
+                here = &(index->list[ actual_index_point ]);
+            } else {
+                // if index->have == 0 index is superfluous
+                // and management will be as if stdin without index
+                // were used.
+            }
+        }
+
+        // if EXTRACT_TAIL but index is incomplete,
+        // change the case to SUPERVISE_DO_AND_EXTRACT_FROM_TAIL
+        if ( indx_n_extraction_opts == EXTRACT_TAIL &&
+            index->index_complete == 0 ) {
+            indx_n_extraction_opts = SUPERVISE_DO_AND_EXTRACT_FROM_TAIL;
+        }
+
+        // convert SUPERVISE_DO_AND_EXTRACT_FROM_TAIL and EXTRACT_TAIL
+        // to subcases of EXTRACT_FROM_BYTE
+        if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+             indx_n_extraction_opts == EXTRACT_TAIL ) {
+            // (it doesn't matter here if index->index_complete or not.)
+            // move to last point + 3/4
+            if ( index->have > 0 ) {
+                offset = index->list[index->have - 1].out;
+                // get size of compressed file, if not stdin
+                // and use it to increment offset a little more
+                if ( strlen(index->file_name) > 0 ) {
+                    struct stat st;
+                    stat(index->file_name, &st);
+                    if ( st.st_size > 0 ) {
+                        // try to calculate a viable increment in offset:
+                        // aprox. +3/4 of remaining compressed size == more than that size
+                        // in uncompressed data:
+                        offset += (st.st_size - index->list[index->have -1].in)/4*3;
                     }
                 }
             } else {
                 // move to last available point
-                totin  = index->list[ index->have - 1 ].in;
-                totout = index->list[ index->have - 1 ].out;
-                here = &(index->list[ index->have - 1 ]);
+                // (this has been already done) and
+                // extraction will be printed on first input complete depletion
             }
         }
+
         if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
             // move to the point needed for positioning on offset, or
             // move to last available point if offset can't be reached
             // with actually available index
-            here = index->list;
-            actual_index_point = 0;
-            while (
-                ++actual_index_point &&
-                actual_index_point < index->have &&
-                here[1].out <= offset
-                )
-                here++;
-            actual_index_point--;
-            totin  = index->list[ actual_index_point ].in;
-            totout = index->list[ actual_index_point ].out;
-        }
-
-        // fseek in data for correct position (last index point)
-        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
-        if (ret.error == -1)
-            goto build_index_error;
-        if (here->bits) {
-            int i;
-            i = getc(in);
-            if (i == -1) {
-                ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
-                goto build_index_error;
+            if ( NULL != here ) {
+                here = index->list;
+                actual_index_point = 0;
+                while (
+                    ++actual_index_point &&
+                    actual_index_point < index->have &&
+                    here[1].out <= offset
+                    )
+                    here++;
+                actual_index_point--;
+                totin  = index->list[ actual_index_point ].in;
+                totout = index->list[ actual_index_point ].out;
+            } else {
+                // if no useful index is available
+                // processing proceed from start of input.
             }
-            (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
         }
 
-        // obtain window and initialize with it zlib's Dictionary
-        if (here->window == NULL && here->window_beginning != 0) {
-            /* index' window data is not on memory,
-            but we have position and size on index file, so we load it now */
-            FILE *index_file;
-            if (NULL == (index_file = fopen(index->file_name, "rb")) ||
-                0 != fseeko(index_file, here->window_beginning, SEEK_SET)
-                ) {
-                fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
-                ret.error = Z_ERRNO;
+        // fseek in data for correct position
+        // using here index data:
+        if ( NULL != here ) {
+            ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+            if (ret.error == -1)
                 goto build_index_error;
+            if (here->bits) {
+                int i;
+                i = getc(in);
+                if (i == -1) {
+                    ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
+                    goto build_index_error;
+                }
+                (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
             }
-            // here->window_beginning = 0; // this is not needed
-            if ( NULL == (here->window = malloc(here->window_size)) ||
-                !fread(here->window, here->window_size, 1, index_file)
-                ) {
-                fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
-                ret.error = Z_ERRNO;
-                goto build_index_error;
+
+            // obtain window and initialize with it zlib's Dictionary
+            if (here->window == NULL && here->window_beginning != 0) {
+                /* index' window data is not on memory,
+                but we have position and size on index file, so we load it now */
+                FILE *index_file;
+                if (NULL == (index_file = fopen(index->file_name, "rb")) ||
+                    0 != fseeko(index_file, here->window_beginning, SEEK_SET)
+                    ) {
+                    fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
+                    ret.error = Z_ERRNO;
+                    goto build_index_error;
+                }
+                // here->window_beginning = 0; // this is not needed
+                if ( NULL == (here->window = malloc(here->window_size)) ||
+                    !fread(here->window, here->window_size, 1, index_file)
+                    ) {
+                    fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
+                    ret.error = Z_ERRNO;
+                    goto build_index_error;
+                }
+                fclose(index_file);
             }
-            fclose(index_file);
+
+            if (here->window_size != UNCOMPRESSED_WINDOW) {
+                /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+                uint64_t window_size = here->window_size;
+                /* window is compressed on memory, so decompress it */
+                decompressed_window = decompress_chunk(here->window, &window_size);
+                // In order to avoid deleting the on-memory here->window_size, that may
+                // be needed later if index must be increased and written disk (fseeko):
+                (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
+                /*free(here->window);
+                here->window = decompressed_window;
+                here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
+            } else {
+                (void)inflateSetDictionary(&strm, here->window, WINSIZE);
+            }
+
+            if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+                 indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+                 indx_n_extraction_opts == EXTRACT_TAIL ) {
+                if ( offset > here->out )
+                    offset -= here->out;
+            }
+
         }
 
-        if (here->window_size != UNCOMPRESSED_WINDOW) {
-            /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-            uint64_t window_size = here->window_size;
-            /* window is compressed on memory, so decompress it */
-            decompressed_window = decompress_chunk(here->window, &window_size);
-            // In order to avoid deleting the on-memory here->window_size, that may
-            // be needed later if index must be increased and written disk (fseeko):
-            (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-            /*free(here->window);
-            here->window = decompressed_window;
-            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
-        } else {
-            (void)inflateSetDictionary(&strm, here->window, WINSIZE);
-        }
+    }
 
-        if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE )
-            offset -= here->out;
-
-    } else {
+    // default zlib initialization
+    // when no index entry points has been found:
+    if ( NULL == *built ||
+        NULL == here ) {
         // NULL != *built (there is no previous index available: build it from scratch)
 
         /* initialize inflate */
@@ -1986,6 +2022,7 @@ open_index_file:
             extract_from_byte = index->list[index->have -1].out;
             // get size of compressed file, if not stdin
             // and use it to increment extract_from_byte a little more
+            // by increasing the offset with + 3/4*(gzip size - last .in)
             if ( strlen(file_name) > 0 ) {
                 struct stat st;
                 stat(file_name, &st);
