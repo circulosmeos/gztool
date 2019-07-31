@@ -2504,14 +2504,25 @@ int main(int argc, char **argv)
                 index_file = NULL;
             }
 
-            if ( force_action == 0 &&
-                 ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
+            if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
                     ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
-                fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
-                fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
+
+                if ( force_action == 0 ) {
+                    fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
+                    fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
+                } else {
+                    // force_action == 1
+                    // delete idnex file
+                    fprintf( stderr, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                    // TODO: delete it
+                    fprintf( stderr, "TODO: Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                }
+
             }
+
+
             // TODO: if force_action==1, delete index first...
 
             // "-bil" options can accept multiple files
