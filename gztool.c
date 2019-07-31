@@ -2516,8 +2516,11 @@ int main(int argc, char **argv)
                     // force_action == 1
                     // delete idnex file
                     fprintf( stderr, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                    // TODO: delete it
-                    fprintf( stderr, "TODO: Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                    // delete it
+                    if ( remove( index_filename ) != 0 ) {
+                        fprintf( stderr, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                        return EXIT_GENERIC_ERROR;
+                    }
                 }
 
             }
