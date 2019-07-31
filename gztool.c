@@ -759,6 +759,28 @@ fprintf(stderr, "offset = %ld\n", offset);
 }
 
 
+/* Basic checks of existing index file */
+// TODO: description, and use this !
+int check_index_file( struct access *index, unsigned char *index_filename, unsigned char *file_name ) {
+
+    if ( strlen( file_name ) > 0 ) {
+        if ( NULL != index ) {
+            // size of input file
+            struct stat st;
+            stat( file_name, &st ); // TODO: done: file_name received as parameter in build_index()
+            if ( index->have > 1 &&
+                st.st_size > index->list[index->have - 1].in +
+                    2*( index->list[index->have - 1].in - index->list[index->have - 2].in )
+                ) {
+                fprintf( stderr, "WARNING: Index file '%s' seems to be for a file bigger than '%s'\n",
+                    index_filename, file_name );
+            }
+        }
+    }
+
+}
+
+
 /* Make one entire pass through the compressed stream and build an index, with
    access points about every span bytes of uncompressed output -- span is
    chosen to balance the speed of random access against the memory requirements
