@@ -768,8 +768,14 @@ fprintf(stderr, "offset = %ld\n", offset);
    of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
    file read error.  On success, *built points to the resulting index. */
 // INPUT:
-// FILE *in             : input stream
-// off_t span           : span
+// FILE *in                 : input stream
+// unsigned char *file_name : name of the input file associated with FILE *in.
+//                            Can be "" (no file name: stdin used), but not NULL.
+//                            Used only if there's no usable index && input (FILE *in)
+//                            is associated with a file (not stdin) &&
+//                            indx_n_extraction_opts == *_TAIL, for the use of the file
+//                            size as approximation of the size of the tail to be output.
+// off_t span               : span
 // struct access **built: address of index pointer, equivalent to passed by reference.
 //                        Note that index may be received with some (all) points already set
 //                        from caller, if an index file was already available - and so this
@@ -792,7 +798,7 @@ fprintf(stderr, "offset = %ld\n", offset);
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->have)
 local struct returned_output build_index(
-    FILE *in, off_t span, struct access **built,
+    FILE *in, unsigned char *file_name, off_t span, struct access **built,
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset,
     unsigned char *index_filename )
 {
@@ -800,6 +806,7 @@ local struct returned_output build_index(
     off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
     off_t totout = 0;           /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
+    off_t offset_in;
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
@@ -807,7 +814,9 @@ local struct returned_output build_index(
     z_stream strm;
     FILE *index_file = NULL;
     size_t index_last_written_point = 0;
-    int tail_reached = 0;       /* if 1, tail (EOF) of a growing gzip as been reached */
+    int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
+    int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
+                                                 // 1: start on first depletion.
     unsigned char input[CHUNK]; // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
 
@@ -830,6 +839,8 @@ local struct returned_output build_index(
             index_file = fopen( index_filename, "w+b" );
         }
     } else {
+        // restrictions to not collide index output with data output to stdout
+        // MUST have been made on caller.
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         index_file = stdout;
     }
@@ -844,14 +855,15 @@ local struct returned_output build_index(
 
     // if and index is already passed, use it:
 //fprintf(stderr, "*built = %p\n", *built);
-    if ( NULL != *built ) {
+    if ( NULL != *built &&
+        // if index->have == 0 index is superfluous
+        (*built)->have > 0 ) {
         // NULL != *built (there is a previous index available: use it!)
+        // Also, there's sense in calling build_index() with an already complete index,
+        // because build_index can be called without knowing if index is complete or not
 //fprintf(stderr, "NULL != *built\n");
 
         index = *built;
-        // There's sense in calling build_index() with an already complete index,
-        // because build_index can be called without knowing if index is complete or not
-        //
         /* initialize file and inflate state to start there */
         strm.zalloc = Z_NULL;
         strm.zfree = Z_NULL;
@@ -865,8 +877,7 @@ local struct returned_output build_index(
         index_last_written_point = index->have;
 
         //
-        // Select an index point to start, depending on indx_n_extraction_opts,
-        // and also set offset to a new value if needed (overwriting 0 value input)
+        // Select an index point to start, depending on indx_n_extraction_opts
         //
         if ( indx_n_extraction_opts == SUPERVISE_DO ||
              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
@@ -874,139 +885,157 @@ local struct returned_output build_index(
              indx_n_extraction_opts == EXTRACT_TAIL
              ) {
             // move to last available index point, and continue from it
-            if ( index->have > 0 ) {
-                actual_index_point = index->have - 1;
-                // this index must be completed from last point: index->list[index->have-1]
-                totin  = index->list[ actual_index_point ].in;
-                totout = index->list[ actual_index_point ].out;
-                here = &(index->list[ actual_index_point ]);
-            } else {
-                // if index->have == 0 index is superfluous
-                // and management will be as if stdin without index
-                // were used.
-            }
-        }
-
-        // if EXTRACT_TAIL but index is incomplete,
-        // change the case to SUPERVISE_DO_AND_EXTRACT_FROM_TAIL
-        if ( indx_n_extraction_opts == EXTRACT_TAIL &&
-            index->index_complete == 0 ) {
-            indx_n_extraction_opts = SUPERVISE_DO_AND_EXTRACT_FROM_TAIL;
-        }
-
-        // convert SUPERVISE_DO_AND_EXTRACT_FROM_TAIL and EXTRACT_TAIL
-        // to subcases of EXTRACT_FROM_BYTE
-        if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
-             indx_n_extraction_opts == EXTRACT_TAIL ) {
-            // (it doesn't matter here if index->index_complete or not.)
-            // move to last point + 3/4
-            if ( index->have > 0 ) {
-                offset = index->list[index->have - 1].out;
-                // get size of compressed file, if not stdin
-                // and use it to increment offset a little more
-                if ( strlen(index->file_name) > 0 ) {
-                    struct stat st;
-                    stat(index->file_name, &st);
-                    if ( st.st_size > 0 ) {
-                        // try to calculate a viable increment in offset:
-                        // aprox. +3/4 of remaining compressed size == more than that size
-                        // in uncompressed data:
-                        offset += (st.st_size - index->list[index->have -1].in)/4*3;
-                    }
-                }
-            } else {
-                // move to last available point
-                // (this has been already done) and
-                // extraction will be printed on first input complete depletion
-            }
+            actual_index_point = index->have - 1;
+            // this index must be completed from last point: index->list[index->have-1]
+            totin  = index->list[ actual_index_point ].in;
+            totout = index->list[ actual_index_point ].out;
+            here = &(index->list[ actual_index_point ]);
         }
 
         if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
             // move to the point needed for positioning on offset, or
             // move to last available point if offset can't be reached
             // with actually available index
-            if ( NULL != here ) {
-                here = index->list;
-                actual_index_point = 0;
-                while (
-                    ++actual_index_point &&
-                    actual_index_point < index->have &&
-                    here[1].out <= offset
-                    )
-                    here++;
-                actual_index_point--;
-                totin  = index->list[ actual_index_point ].in;
-                totout = index->list[ actual_index_point ].out;
-            } else {
-                // if no useful index is available
-                // processing proceed from start of input.
+            here = index->list;
+            actual_index_point = 0;
+            while (
+                ++actual_index_point &&
+                actual_index_point < index->have &&
+                here[1].out <= offset
+                )
+                here++;
+            actual_index_point--;
+            totin  = index->list[ actual_index_point ].in;
+            totout = index->list[ actual_index_point ].out;
+            continue_extraction = 1;
+            // offset value comes from caller as parameter
+        }
+
+        if ( index->index_complete == 1 ) {
+            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+                 indx_n_extraction_opts == EXTRACT_TAIL ) {
+
+                offset = ( index->file_size - here->out ) /4*3;
+                indx_n_extraction_opts = EXTRACT_FROM_BYTE;
+                continue_extraction = 1;
+
             }
         }
+
+        assert( NULL != here );
 
         // fseek in data for correct position
         // using here index data:
-        if ( NULL != here ) {
-            ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
-            if (ret.error == -1)
+        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+        if (ret.error == -1)
+            goto build_index_error;
+        if (here->bits) {
+            int i;
+            i = getc(in);
+            if (i == -1) {
+                ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
                 goto build_index_error;
-            if (here->bits) {
-                int i;
-                i = getc(in);
-                if (i == -1) {
-                    ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
-                    goto build_index_error;
-                }
-                (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
             }
-
-            // obtain window and initialize with it zlib's Dictionary
-            if (here->window == NULL && here->window_beginning != 0) {
-                /* index' window data is not on memory,
-                but we have position and size on index file, so we load it now */
-                FILE *index_file;
-                if (NULL == (index_file = fopen(index->file_name, "rb")) ||
-                    0 != fseeko(index_file, here->window_beginning, SEEK_SET)
-                    ) {
-                    fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
-                    ret.error = Z_ERRNO;
-                    goto build_index_error;
-                }
-                // here->window_beginning = 0; // this is not needed
-                if ( NULL == (here->window = malloc(here->window_size)) ||
-                    !fread(here->window, here->window_size, 1, index_file)
-                    ) {
-                    fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
-                    ret.error = Z_ERRNO;
-                    goto build_index_error;
-                }
-                fclose(index_file);
-            }
-
-            if (here->window_size != UNCOMPRESSED_WINDOW) {
-                /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-                uint64_t window_size = here->window_size;
-                /* window is compressed on memory, so decompress it */
-                decompressed_window = decompress_chunk(here->window, &window_size);
-                // In order to avoid deleting the on-memory here->window_size, that may
-                // be needed later if index must be increased and written disk (fseeko):
-                (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-                /*free(here->window);
-                here->window = decompressed_window;
-                here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
-            } else {
-                (void)inflateSetDictionary(&strm, here->window, WINSIZE);
-            }
-
-            if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
-                 indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
-                 indx_n_extraction_opts == EXTRACT_TAIL ) {
-                if ( offset > here->out )
-                    offset -= here->out;
-            }
-
+            (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
         }
 
-    }
+        // obtain window and initialize with it zlib's Dictionary
+        if (here->window == NULL && here->window_beginning != 0) {
+            /* index' window data is not on memory,
+            but we have position and size on index file, so we load it now */
+            FILE *index_file;
+            if (NULL == (index_file = fopen(index->file_name, "rb")) ||
+                0 != fseeko(index_file, here->window_beginning, SEEK_SET)
+                ) {
+                fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            // here->window_beginning = 0; // this is not needed
+            if ( NULL == (here->window = malloc(here->window_size)) ||
+                !fread(here->window, here->window_size, 1, index_file)
+                ) {
+                fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            fclose(index_file);
+        }
+
+        if (here->window_size != UNCOMPRESSED_WINDOW) {
+            /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+            uint64_t window_size = here->window_size;
+            /* window is compressed on memory, so decompress it */
+            decompressed_window = decompress_chunk(here->window, &window_size);
+            // In order to avoid deleting the on-memory here->window_size, that may
+            // be needed later if index must be increased and written disk (fseeko):
+            (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
+            /*free(here->window);
+            here->window = decompressed_window;
+            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
+        } else {
+            (void)inflateSetDictionary(&strm, here->window, WINSIZE);
+        }
+
+    } // end if ( NULL != *built && (*built)->have > 0 ) {
+
+
+    // more decisions for extracting uncompressed data
+    if ( ( NULL != *built && stdin == in ) ||
+         NULL == *built ) {
+         // no index, or index available and stdin is used as gzip data input
+
+        if ( stdin == in ) {
+            // stdin is used as input for gzip data
+
+            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
+                start_extraction_on_first_depletion = 1;
+                // continue_extraction = 1; on depletion
+            }
+            if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
+                start_extraction_on_first_depletion = 1;
+                // continue_extraction = 0; on depletion
+            }
+
+        } else {
+            // there's a gzip filename
+
+            if ( indx_n_extraction_opts == EXTRACT_TAIL ||
+                 indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
+                // set offset_in (equivalent to offset but for ->in values)
+                // to the last CHUNK of gzip data ... this can be a good tail...
+                struct stat st;
+                if ( strlen( file_name ) > 0 ) {
+                    stat(file_name, &st); // TODO: done: file_name received as parameter in build_index()
+                    if ( st.st_size > 0 ) {
+                        continue_extraction = 1;
+                        if ( st.st_size <= CHUNK ) {
+                            // gzip file is really small:
+                            // change operation mode to extract from byte 0
+                            // (continue_extraction is set to correct value later) TODO: think this line isn't true
+                            indx_n_extraction_opts = EXTRACT_FROM_BYTE; // offset = 0
+                        } else {
+                            offset_in = st.st_size - CHUNK;
+                        }
+fprintf(stderr, "offset_in=%ld\n", offset_in);
+                    } else {
+                        start_extraction_on_first_depletion = 1;
+                    }
+                } else {
+                    start_extraction_on_first_depletion = 1;
+                }
+                /*if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL )
+                    continue_extraction = 1;
+                else
+                    continue_extraction = 0;*/ // both set later
+            }
+
+        } // end if ( stdin == in )
+
+    } // end if ( ( NULL != *built && stdin == in ) ||
+      //          NULL == *built )
+
+
 
     // default zlib initialization
     // when no index entry points has been found:
@@ -1041,6 +1070,35 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
               indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
              strm.avail_in == 0 ) {
+
+            // check conditions to start output of uncompressed data
+            if ( start_extraction_on_first_depletion == 1 ) {
+                start_extraction_on_first_depletion = 0;
+
+                // output uncompressed data
+                unsigned have = WINSIZE - strm.avail_out;
+                if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
+                    (void)inflateEnd(&strm);
+                    ret.error = Z_ERRNO;
+                    goto build_index_error;
+                }
+                fflush(stdout);
+
+                if ( continue_extraction == 0 ) {
+                    // the process ends here as all required data has been output
+                    // (index remains incomplete)
+                    ret.error = Z_OK;
+                    if ( NULL != index ) {
+                        ret.value = index->have;
+                    }
+                    goto build_index_error;
+                }
+
+                // continue extracting as usual:
+                indx_n_extraction_opts = EXTRACT_FROM_BYTE;
+                offset = 0;
+
+            }
 
             // sleep and retry
             sleep( WAITING_TIME );
@@ -1094,7 +1152,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = WINSIZE - strm.avail_out;
-                if ( ( offset > 0 && offset - have <= 0 ) ||
+                if ( ( offset > 0 && offset <= have ) ||
                     offset == 0 ) {
                     offset = 0;
                     // print offset - have bytes
@@ -1105,24 +1163,28 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                         ret.error = Z_ERRNO;
                         goto build_index_error;
                     }
+                    fflush(stdout);
                 }
-            }
-            // TODO: delete this block when -T && -t are converted to EXTRACT_FROM_BYTE
-            // SUPERVISE_DO_AND_EXTRACT_FROM_TAIL: beginning from a tail "feasible" value, and on:
-            if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
-                tail_reached == 1) {
-                unsigned have = WINSIZE - strm.avail_out;
-//fprintf(stderr, "2. strm.avail_out = %d\n", strm.avail_out);
-//fprintf(stderr, "2. have = %d\n", have);
-                int fwrite_output = fwrite(window, 1, have, stdout);
-//fprintf(stderr, "2. strm.next_out = %p ???\n", strm.next_out);
-//fprintf(stderr, "2. %d ???\n", fwrite_output);
-                if ( fwrite_output != have || ferror(stdout)) {
-                //if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
-                    (void)inflateEnd(&strm);
-                    ret.error = Z_ERRNO;
-                    goto build_index_error;
-//fprintf(stderr, "2. %d END\n", fwrite_output);
+            } else {
+                // continue_extraction in practice marks the use of "offset_in"
+                if ( continue_extraction == 1 ) {
+                    unsigned have = WINSIZE - strm.avail_out;
+                    unsigned have_in = CHUNK - strm.avail_in;
+                    if ( ( offset_in > 0 && offset_in <= have_in ) ||
+                        offset_in == 0 ) {
+                        offset_in = 0;
+                        // print all "have" bytes as with offset_in it is not possible
+                        // to know how much output discard (uncompressed != compressed)
+                        if (fwrite(window, 1, have, stdout) != have ||
+                            ferror(stdout)) {
+                            (void)inflateEnd(&strm);
+                            ret.error = Z_ERRNO;
+                            goto build_index_error;
+                        }
+                        fflush(stdout);
+                        indx_n_extraction_opts = EXTRACT_FROM_BYTE;
+                        offset = 0;
+                    }
                 }
             }
 
@@ -1152,19 +1214,19 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                     // addpoint() only if index doesn't yet exist or it is incomplete
                     ( NULL == index || index->index_complete == 0 )
                     ) { // TODO or finished ?
-if ( NULL != index )
+/*if ( NULL != index )
     fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
 fprintf(stderr, "totin=%ld, totout=%ld\n", totin, totout);
 if ( NULL != index )
-fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-1,index->list[index->have-1].window_size);
+    fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-1,index->list[index->have-1].window_size);
 if ( NULL != index )
-fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-2,index->list[index->have-2].window_size);
+    fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-2,index->list[index->have-2].window_size);*/
                     index = addpoint(index, strm.data_type & 7, totin,
                                      totout, strm.avail_out, window, 0);
-if ( NULL != index )
+/*if ( NULL != index )
 fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-2,index->list[index->have-2].window_size);
 if ( NULL != index )
-fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-1,index->list[index->have-1].window_size);
+    fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-1,index->list[index->have-1].window_size);*/
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
                         goto build_index_error;
@@ -1174,8 +1236,8 @@ fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-1,index->list[i
                     // write added point!
                     // note that points written are automatically emptied of its window values
                     // in order to use as less memory a s possible
-if ( NULL != index )
-    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
+/*if ( NULL != index )
+    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);*/
                     if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
                         goto build_index_error;
                     index_last_written_point = index->have;
@@ -1184,30 +1246,6 @@ if ( NULL != index )
             }
 
         } while (strm.avail_in != 0);
-
-        //
-        // TODO : tail is referred to gzip contents, not to end of index (in/complete) file
-        //
-        // if required by passed indx_n_extraction_opts option, extract to stdout
-        // beginning from a tail "feasible" value and on
-        if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
-            tail_reached == 0 &&
-            strm.avail_out > 0 ) {
-            // we still have all the values of output intact
-            // in the last just-finished cycle strm structure,
-            // so use them to output the last read/uncompressed block:
-            unsigned have = WINSIZE - strm.avail_out;
-//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-fprintf(stderr, "have = %d\n", have);
-            if (fwrite(window, 1, have, stdout) != have || ferror(stdout)) {
-                (void)inflateEnd(&strm);
-                ret.error = Z_ERRNO;
-                goto build_index_error;
-            }
-//fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-            fflush(stdout);
-            tail_reached = 1;
-        }
 
     } while (ret.error != Z_STREAM_END);
 
@@ -1574,7 +1612,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.in),   sizeof(here.in),   input_file);
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
-fprintf(stderr, "READ window_size = %d\n", here.window_size);
+//fprintf(stderr, "READ window_size = %d\n", here.window_size);
         if ( here.window_size == 0 ) {
             fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
                     file_name, ftello(input_file), index->have + 1);
@@ -1903,7 +1941,16 @@ wait_for_file_creation:
         }
     }
 
-    ret = build_index( in, span_between_points, index, indx_n_extraction_opts, offset, index_filename );
+    // stdout to binary mode if needed
+    if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+         indx_n_extraction_opts == EXTRACT_TAIL ||
+         indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL
+         ) {
+        SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
+    }
+
+    ret = build_index( in, file_name, span_between_points,
+        index, indx_n_extraction_opts, offset, index_filename );
     fclose(in);
 
     if ( ret.error < 0 ) {
