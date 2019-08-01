@@ -2475,6 +2475,8 @@ int main(int argc, char **argv)
 
             file_name = argv[i];
 
+            ret_value = EXIT_OK;
+
             // if no index filename is set (`-I`), it is derived from each <FILE> parameter
             if ( 0 == index_filename_indicated ) {
                 if ( NULL != index_filename ) {
@@ -2519,12 +2521,20 @@ int main(int argc, char **argv)
                     // delete it
                     if ( remove( index_filename ) != 0 ) {
                         fprintf( stderr, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
-                        return EXIT_GENERIC_ERROR;
+                        ret_value = EXIT_GENERIC_ERROR;
                     }
                 }
 
             }
 
+            // check possible errors and `-e` before proceed
+            if ( ret_value != EXIT_OK ) {
+                if ( continue_on_error == 1 ) {
+                    continue;
+                } else {
+                    break; // breaks for loop
+                }
+            }
 
             // TODO: if force_action==1, delete index first...
 

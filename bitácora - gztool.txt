@@ -1,0 +1,575 @@
+[[RSG]] [[20190720]] [[gcc]] [[gztool]] :<#compilar estáticamente en windows y linux> 
+
+
+odroid@odroid64:~/SD/dev/zlib/examples$ gcc -g -O0 -o gztool gztool.c -L.. ../libz.so.1.2.11 -I..
+
+
+.................................................
+
+
+++++++++++++++++++++++++
+#include <zlib.h>
+++++++++++++++++++++++++
+
+
+odroid@odroid64:~/SD/dev/zlib/examples$ gcc -g -O0 -o gztool2 gztool.c -lz
+odroid@odroid64:~/SD/dev/zlib/examples$ ls -l gztool2 gztool
+    -rwxrwxr-x 1 odroid odroid 45000 Jul 20 03:08 gztool
+    -rwxrwxr-x 1 odroid odroid 45008 Jul 20 12:50 gztool2
+odroid@odroid64:~/SD/dev/zlib/examples$ ldd -d gztool2 gztool
+    gztool2:
+            linux-vdso.so.1 =>  (0x0000007f7cbd8000)
+            libz.so.1 => /lib/aarch64-linux-gnu/libz.so.1 (0x0000007f7cb92000)
+            libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000007f7ca4b000)
+            /lib/ld-linux-aarch64.so.1 (0x000000558fd2e000)
+    gztool:
+            linux-vdso.so.1 =>  (0x0000007f81772000)
+            libz.so.1 => /lib/aarch64-linux-gnu/libz.so.1 (0x0000007f8172c000)
+            libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000007f815e5000)
+            /lib/ld-linux-aarch64.so.1 (0x000000557eafe000)
+
+No parece que el comando de compilación original usara la librería compilada en ..,
+sino la del sistema
+:-o
+
+.................................................
+
+
+roberto@murgen  /d/temporal/zlib/examples
+$ gcc -g -O0 -L. ../libz.so.1.2.11 -I.. -o gztool gztool.c
+
+roberto@murgen  /d/temporal/zlib/examples
+$ ldd gztool.exe
+        ntdll.dll => /c/Windows/SYSTEM32/ntdll.dll (0x76e10000)
+        kernel32.dll => /c/Windows/system32/kernel32.dll (0x76cf0000)
+        KERNELBASE.dll => /c/Windows/system32/KERNELBASE.dll (0x7fefcae0000)
+        libz.so.1.2.11 => /d/temporal/zlib/examples/libz.so.1.2.11 (0x6fbc0000)
+        msvcrt.dll => /c/Windows/system32/msvcrt.dll (0x7fefee90000)
+        USER32.dll => /c/Windows/system32/USER32.dll (0x76bf0000)
+        GDI32.dll => /c/Windows/system32/GDI32.dll (0x7fefdc00000)
+        LPK.dll => /c/Windows/system32/LPK.dll (0x7fefd300000)
+        USP10.dll => /c/Windows/system32/USP10.dll (0x7fefcdb0000)
+        IMM32.DLL => /c/Windows/system32/IMM32.DLL (0x7fefd310000)
+        MSCTF.dll => /c/Windows/system32/MSCTF.dll (0x7fefda50000)
+        ConEmuHk64.dll => /c/Program Files/ConEmu/ConEmu/ConEmuHk64.dll (0x7e110000)
+        ADVAPI32.dll => /c/Windows/system32/ADVAPI32.dll (0x7feff020000)
+        sechost.dll => /c/Windows/SYSTEM32/sechost.dll (0x7fefcd90000)
+        RPCRT4.dll => /c/Windows/system32/RPCRT4.dll (0x7fefd1d0000)
+        api-ms-win-core-synch-l1-2-0.DLL => /c/Windows/system32/api-ms-win-core-synch-l1-2-0.DLL (0x7fef5d80000)
+
+roberto@murgen  /d/temporal/zlib/examples
+$ gcc -static -g -O0 -I.. -o gztool2 gztool.c libz.a
+
+Al parecer la posición donde se pone el libz.a importa (entre medias no funciona).
+
+roberto@murgen  /d/temporal/zlib/examples
+$ ls -l gztool2.exe
+-rwxr-xr-x 1 roberto None 178802 Jul 20 13:08 gztool2.exe
+
+roberto@murgen  /d/temporal/zlib/examples
+$ ldd gztool2.exe
+        ntdll.dll => /c/Windows/SYSTEM32/ntdll.dll (0x76e10000)
+        kernel32.dll => /c/Windows/system32/kernel32.dll (0x76cf0000)
+        KERNELBASE.dll => /c/Windows/system32/KERNELBASE.dll (0x7fefcae0000)
+        msvcrt.dll => /c/Windows/system32/msvcrt.dll (0x7fefee90000)
+        USER32.dll => /c/Windows/system32/USER32.dll (0x76bf0000)
+        GDI32.dll => /c/Windows/system32/GDI32.dll (0x7fefdc00000)
+        LPK.dll => /c/Windows/system32/LPK.dll (0x7fefd300000)
+        USP10.dll => /c/Windows/system32/USP10.dll (0x7fefcdb0000)
+        IMM32.DLL => /c/Windows/system32/IMM32.DLL (0x7fefd310000)
+        MSCTF.dll => /c/Windows/system32/MSCTF.dll (0x7fefda50000)
+        ConEmuHk64.dll => /c/Program Files/ConEmu/ConEmu/ConEmuHk64.dll (0x7e110000)
+        ADVAPI32.dll => /c/Windows/system32/ADVAPI32.dll (0x7feff020000)
+        sechost.dll => /c/Windows/SYSTEM32/sechost.dll (0x7fefcd90000)
+        RPCRT4.dll => /c/Windows/system32/RPCRT4.dll (0x7fefd1d0000)
+        api-ms-win-core-synch-l1-2-0.DLL => /c/Windows/system32/api-ms-win-core-synch-l1-2-0.DLL (0x7fef5d80000)
+
+
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190720]] 
+
+
+D:\Instalaciones\GitHub reps\gztool>git commit
+[master (root-commit) baac788] v0.1 initial release
+ 2 files changed, 2052 insertions(+)
+ create mode 100644 README.md
+ create mode 100644 gztool.c
+
+D:\Instalaciones\GitHub reps\gztool>git push origin master
+Counting objects: 4, done.
+Delta compression using up to 8 threads.
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (4/4), 17.98 KiB | 1.38 MiB/s, done.
+Total 4 (delta 0), reused 0 (delta 0)
+To https://github.com/circulosmeos/gztool.git
+ * [new branch]      master -> master
+
+D:\Instalaciones\GitHub reps\gztool>git tag -a "v0.1" -m "v0.1"
+
+D:\Instalaciones\GitHub reps\gztool>git tag
+v0.1
+
+D:\Instalaciones\GitHub reps\gztool>git push origin master --tags
+Counting objects: 1, done.
+Writing objects: 100% (1/1), 162 bytes | 81.00 KiB/s, done.
+Total 1 (delta 0), reused 0 (delta 0)
+To https://github.com/circulosmeos/gztool.git
+ * [new tag]         v0.1 -> v0.1
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190722]] [[valgrind]] [[massif]] [[memoria]] 
+
+Consumo de memoria: puedo bajarlo considerablemente.
+
+odroid@odroid64:~/SD/dev/zlib/examples$ valgrind --tool=massif ./gztool -fi TEST.gz blank.gz.gzi.gz output_file.gz bgzip_project.20190530.2.tar.gz
+
+El fichero generado puede verse online en 
+<http://flyingblindstudios.de/massifViz> 
+(<http://boutglay.com/massifjs/>)
+
+La salida es correcta con varios ficheros, y consume los esperados <2MiB (igual al mayor .gzi generado).
+Y esos errores intermedios no sé si deben a sprintf o no ...
+
+odroid@odroid64:~/SD/dev/zlib/examples$ valgrind ./gztool -fi TEST.gz blank.gz.gzi.gz output_file.gz bgzip_project.20190530.2.tar.gz
+    ==22183== Memcheck, a memory error detector
+    ==22183== Copyright (C) 2002-2015, and GNU GPL'd, by Julian Seward et al.
+    ==22183== Using Valgrind-3.11.0 and LibVEX; rerun with -h for copyright info
+    ==22183== Command: ./gztool -fi TEST.gz blank.gz.gzi.gz output_file.gz bgzip_project.20190530.2.tar.gz
+    ==22183==
+
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x484C5A4: strstr (in /usr/lib/valgrind/vgpreload_memcheck-arm64-linux.so)
+    ==22183==
+    Processing 'TEST.gz' ...
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x487FD84: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x487FF94: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EDB4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EDC4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EDD4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EDE4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE78: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE04: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE14: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE24: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE34: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE44: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE54: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Conditional jump or move depends on uninitialised value(s)
+    ==22183==    at 0x487EE68: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x487FEB4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x4889130: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x4889438: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    ==22183== Use of uninitialised value of size 8
+    ==22183==    at 0x4889140: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+    ==22183==
+    Built index with 1 access points.
+    ==22183== Syscall param write(buf) points to uninitialised byte(s)
+    ==22183==    at 0x495D1C8: __write_nocancel (syscall-template.S:84)
+    ==22183==    by 0x490D1B7: _IO_file_write@@GLIBC_2.17 (fileops.c:1263)
+    ==22183==    by 0x490C7DB: new_do_write (fileops.c:518)
+    ==22183==    by 0x490E0D3: _IO_do_write@@GLIBC_2.17 (fileops.c:494)
+    ==22183==    by 0x490D9F7: _IO_file_close_it@@GLIBC_2.17 (fileops.c:165)
+    ==22183==    by 0x4901A2F: fclose@@GLIBC_2.17 (iofclose.c:58)
+    ==22183==    by 0x403CD3: action_create_index (gztool.c:1413)
+    ==22183==    by 0x404C83: main (gztool.c:1836)
+    ==22183==  Address 0x4a4c059 is 2,233 bytes inside a block of size 4,096 alloc'd
+    ==22183==    at 0x4844B88: malloc (in /usr/lib/valgrind/vgpreload_memcheck-arm64-linux.so)
+    ==22183==
+    Index written to 'TEST.gz.gzi'.
+
+    Processing 'blank.gz.gzi.gz' ...
+    Built index with 1 access points.
+    Index written to 'blank.gz.gzi.gz.gzi'.
+
+    Processing 'output_file.gz' ...
+    Built index with 1 access points.
+    Index written to 'output_file.gz.gzi'.
+
+    Processing 'bgzip_project.20190530.2.tar.gz' ...
+    Built index with 131 access points.
+    ==22183== Syscall param write(buf) points to uninitialised byte(s)
+    ==22183==    at 0x495D1C8: __write_nocancel (syscall-template.S:84)
+    ==22183==    by 0x490D1B7: _IO_file_write@@GLIBC_2.17 (fileops.c:1263)
+    ==22183==    by 0x490C7DB: new_do_write (fileops.c:518)
+    ==22183==    by 0x490D7F3: _IO_file_xsputn@@GLIBC_2.17 (fileops.c:1342)
+    ==22183==    by 0x4902DFF: fwrite (iofwrite.c:39)
+    ==22183==    by 0x402E97: serialize_index_to_file (gztool.c:1035)
+    ==22183==    by 0x403C97: action_create_index (gztool.c:1409)
+    ==22183==    by 0x404C83: main (gztool.c:1836)
+    ==22183==  Address 0x4b72ab8 is 4,040 bytes inside a block of size 31,571 alloc'd
+    ==22183==    at 0x4846F14: realloc (in /usr/lib/valgrind/vgpreload_memcheck-arm64-linux.so)
+    ==22183==
+    Index written to 'bgzip_project.20190530.2.tar.gz.gzi'.
+
+    ==22183==
+    ==22183== HEAP SUMMARY:
+    ==22183==     in use at exit: 0 bytes in 0 blocks
+    ==22183==   total heap usage: 2,095 allocs, 2,095 frees, 49,095,648 bytes allocated
+    ==22183==
+    ==22183== All heap blocks were freed -- no leaks are possible
+    ==22183==
+    ==22183== For counts of detected and suppressed errors, rerun with: -v
+    ==22183== Use --track-origins=yes to see where uninitialised values come from
+    ==22183== ERROR SUMMARY: 807268 errors from 21 contexts (suppressed: 0 from 0)
+
+
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190724]] 
+
+
+odroid@odroid64:~/SD/dev/zlib/examples$ valgrind ./gztool -f -S bbbbb
+==22427== Memcheck, a memory error detector
+==22427== Copyright (C) 2002-2015, and GNU GPL'd, by Julian Seward et al.
+==22427== Using Valgrind-3.11.0 and LibVEX; rerun with -h for copyright info
+==22427== Command: ./gztool -f -S bbbbb
+==22427==
+
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x484C5A4: strstr (in /usr/lib/valgrind/vgpreload_memcheck-arm64-linux.so)
+==22427==
+Waiting for creation of file 'bbbbb'
+Processing 'bbbbb' ...
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x487FD84: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x487FF94: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EDB4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EDC4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EDD4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EDE4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE78: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE04: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE14: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE24: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE34: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE44: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE54: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Conditional jump or move depends on uninitialised value(s)
+==22427==    at 0x487EE68: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x487FEB4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x4889130: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x4889140: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x487FEB4: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x4889130: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x4889140: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Use of uninitialised value of size 8
+==22427==    at 0x4889438: ??? (in /lib/aarch64-linux-gnu/libz.so.1.2.8)
+==22427==
+==22427== Syscall param write(buf) points to uninitialised byte(s)
+==22427==    at 0x495D1C8: __write_nocancel (syscall-template.S:84)
+==22427==    by 0x490D1B7: _IO_file_write@@GLIBC_2.17 (fileops.c:1263)
+==22427==    by 0x490C7DB: new_do_write (fileops.c:518)
+==22427==    by 0x490E0D3: _IO_do_write@@GLIBC_2.17 (fileops.c:494)
+==22427==    by 0x490C6C7: _IO_file_sync@@GLIBC_2.17 (fileops.c:874)
+==22427==    by 0x4901DAF: fflush (iofflush.c:40)
+==22427==    by 0x40242F: serialize_index_to_file (gztool.c:719)
+==22427==    by 0x40275F: build_index (gztool.c:854)
+==22427==    by 0x403CFF: action_create_index (gztool.c:1509)
+==22427==    by 0x40522F: main (gztool.c:2015)
+==22427==  Address 0x4a4446e is 2,222 bytes inside a block of size 4,096 alloc'd
+==22427==    at 0x4844B88: malloc (in /usr/lib/valgrind/vgpreload_memcheck-arm64-linux.so)
+==22427==
+
+
+
+
+
+Index written to 'bbbbb.gzi'.
+Built index with 64 access points.
+
+==22427==
+==22427== HEAP SUMMARY:
+==22427==     in use at exit: 3,122 bytes in 3 blocks
+==22427==   total heap usage: 981 allocs, 978 frees, 22,466,360 bytes allocated
+==22427==
+==22427== LEAK SUMMARY:
+==22427==    definitely lost: 50 bytes in 2 blocks
+==22427==    indirectly lost: 3,072 bytes in 1 blocks
+==22427==      possibly lost: 0 bytes in 0 blocks
+==22427==    still reachable: 0 bytes in 0 blocks
+==22427==         suppressed: 0 bytes in 0 blocks
+==22427== Rerun with --leak-check=full to see details of leaked memory
+==22427==
+==22427== For counts of detected and suppressed errors, rerun with: -v
+==22427== Use --track-origins=yes to see where uninitialised values come from
+==22427== ERROR SUMMARY: 148801 errors from 20 contexts (suppressed: 0 from 0)
+
+
+.................................................
+
+
+Resuelto: había un return en ACT_SUPERVISE, en vez de un break que permite llegar
+al final de main() y hacer free() de varios recursos.
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190726]] :<#ignorar permisos de los ficheros en git> 
+
+Es muy útil al mover el repositorio entre Windows y linux <#ignorar permisos de los ficheros en git>,
+ya que si no, fallan muchos comandos porque los cambios de permisos se detectan como cambios aún
+no commiteados, y un stash (ni en realidad nada) puede arreglar este warning bloqueante.
+
+<https://stackoverflow.com/questions/1580596/how-do-i-make-git-ignore-file-mode-chmod-changes>
+
+
+git config core.fileMode false
+
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190728]] [[TODO]] 
+
+
+TODO: gztool
+.................................................
+
+build_index() 
+// TODO : tail is referred to gzip contents, not to end of index (in/complete) file
+    dos bloques: uno en el sleep() para extraer el último bloque descomprimido y marcar extracción a partir de entonces (-T)
+    otro el del final, pasado bajo "} while (ret.error != Z_STREAM_END);" para el caso de ficheros completos, si no ha saltado el bloque anterior (-T, -t)
+o
+    convertir el -T y -t en (un análogo de) EXTRACT_FROM_BYTE y entonces NO HAY NINGÚN PROBLEMA YA.
+    Si -t y el índice está incompleto, pasar el caso a -T: no, porque -t implica siempre solo sacar el final, no más.
+    Para el único que no vale esto es si in=stdin porque no se conoce 
+    de antemano (a menos que el índice esté completo) la longitud de la entrada: 
+    en cuyo caso los dos anteriores son necesarios: (-T y -t son diferentes) -T puesto antes del sleep, activa -t, y -t al final fuera del bucle.
+o:
+
+INDEX_AND_EXTRACTION_OPTIONS        |  index complete   |            index incomplete           |      no index     |
+                                    |                   |       stdin       |    gz file        |  stdin  | gz file |
+------------------------------------+-------------------+-------------------+-------------------+---------+---------+
+JUST_CREATE_INDEX                   |     last here     |               last here               |         -         | these don't
+SUPERVISE_DO                        |     last here     |               last here               |         -         | extract data
+------------------------------------+-------------------+-------------------+-------------------+---------+---------+
+SUPERVISE_DO_AND_EXTRACT_FROM_TAIL  | last here, offset |   last here,[2]   |   last here,[1]   |   [2]   |   [1]   | these do
+EXTRACT_FROM_BYTE                   |       offset*     |                offset*                |       offset*     | extract data
+EXTRACT_TAIL                        | last here, offset |   last here,[4]   |   last here,[3]   |   [4]   |   [3]   |
+------------------------------------+-------------------+-------------------+-------------------+---------+---------+
+
+*: offset value comes from caller as parameter
+
+offset: is in practice only use with indx_n_extraction_opts set to EXTRACT_FROM_BYTE
+    offset (and offset_in) will be decremented until offset(_in)==0 (offset_in decremented IIF continue_extraction == 1)
+    in which case uncompressed output to stdout will begin
+
+"last here" sets actual_index_point = "here".
+    TODO: this may be needed no more.
+
+[1]: size of gzip file => offset_in (nueva variable, a chequear como offset)
+[3]: size of gzip file => offset_in, extract until 
+    first depletion, or 
+    EOF, or 
+    .in>(size of gzip file)_0
+
+[2]: on first fread depletion, start extraction: how to mark this?: continue_extraction = 1
+[4]: on first fread depletion, extract and stop
+
+two new parameters needed:
+continue_extraction = 1 when to extract inconditionally (offset<=0 sets this one): in practice marks the use of "offset_in"
+start_extraction_on_first_depletion = 1 for [2] and [4]
+
+Nota that EXTRACT_FROM_BYTE 0 may have a "continue_extraction = 0"
+This doesn't matter as it is not checked on EXTRACT_FROM_BYTE extraction block.
+
+20190730: creo que he acabado de implementar las condiciones de la tabla.
+
+TODO: falta ahora toda la parte de implementación nueva y reescritura de los fwrite(stdout...)
+20190731: DONE.
+
+
+20190731: ¡chequear!
+
+
+.................................................
+
+
+
+build_index() lacks indx_n_extraction_opts management, when NULL == built (index do not exist)
+
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ gcc -g -O0 -o gztool gztool.c -lz; rm bbbbb.gzi; rm bbbbb; ./gztool -T bbbbb | tee /dev/stderr | wc
+
+Waiting for creation of file 'bbbbb'
+Processing 'bbbbb' ...
+Index written to 'bbbbb.gzi'.
+Built index with 64 access points.
+
+
+      0       0 970934774
+
+
+???
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ ./gztool -T
+
+odroid@odroid64:~/SD/dev/zlib/gztool$
+odroid@odroid64:~/SD/dev/zlib/gztool$
+odroid@odroid64:~/SD/dev/zlib/gztool$
+odroid@odroid64:~/SD/dev/zlib/gztool$ ./gztool -t
+
+    Extracting tail data from stdin,
+    using index '(null)'...
+    Index file '(null)' not found.
+odroid@odroid64:~/SD/dev/zlib/gztool$
+
+
+
+
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+.................................................
+
+
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ ./gztool -T bbbbb | wc
+
+    Processing 'bbbbb' ...
+    gztool: gztool.c:808: build_index: Assertion `index->index_incomplete == 1' failed.
+          0       0       0
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ ./gztool -T bbbbb
+
+    Processing 'bbbbb' ...
+    Segmentation fault
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$
+odroid@odroid64:~/SD/dev/zlib/gztool$ ./gztool -T bbbbb
+
+Processing 'bbbbb' ...
+Index file is still growing!
+*built = 0x41a4a0
+NULL != *built
+Error while reading index file. Extraction aborted.
+ERROR: Read error on 'bbbbb'.
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ ls -l bbbbb*
+-rw-rw-r-- 1 odroid odroid 204800 Jul 27 01:02 bbbbb
+-rw-rw-r-- 1 odroid odroid      0 Jul 27 12:14 bbbbb.gzi
+
+
+
+if `-T` but gzip file is finished, nothing is printed,
+because print block is at the beginning of the do{} loop.
+
+
+
+2. strm.next_out = 0x7ff84bb258 ???
+2. 32768 ???
+0. strm.next_out = 0x7ff84b3258 ???
+Index written to 'bbbbb.gzi'.
+Built index with 64 access points.
+
+
+      0       0 970934774
+
+
+
+2. strm.next_out = 0x7ff58d95a8 ???
+2. 32768 ???
+0. strm.next_out = 0x7ff58d15a8 ???
+Index written to 'bbbbb.gzi'.
+Built index with 64 access points.
+
+
+      0       0 970914626
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------
