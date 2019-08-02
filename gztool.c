@@ -781,14 +781,20 @@ int check_index_file( struct access *index, unsigned char *index_filename, unsig
 }
 
 
-/* Make one entire pass through the compressed stream and build an index, with
-   access points about every span bytes of uncompressed output -- span is
-   chosen to balance the speed of random access against the memory requirements
-   of the list, about 32K bytes per access point.  Note that data after the end
-   of the first zlib or gzip stream in the file is ignored.  build_index()
-   returns the number of access points on success (>= 1), Z_MEM_ERROR for out
-   of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
-   file read error.  On success, *built points to the resulting index. */
+// Creates index for a gzip stream (file or STDIN);
+// This function is not called from action_create_index() if an index file
+// already exists and it is complete.
+// If an incomplete index is passed, it will be completed from the last
+// available index point so the whole gzip stream is not processed again.
+// Original (zran.c) comments:
+    /* Make one entire pass through the compressed stream and build an index, with
+       access points about every span bytes of uncompressed output -- span is
+       chosen to balance the speed of random access against the memory requirements
+       of the list, about 32K bytes per access point.  Note that data after the end
+       of the first zlib or gzip stream in the file is ignored.  build_index()
+       returns the number of access points on success (>= 1), Z_MEM_ERROR for out
+       of memory, Z_DATA_ERROR for an error in the input file, or Z_ERRNO for a
+       file read error.  On success, *built points to the resulting index. */
 // INPUT:
 // FILE *in                 : input stream
 // unsigned char *file_name : name of the input file associated with FILE *in.
@@ -845,8 +851,19 @@ local struct returned_output build_index(
     ret.value = 0;
     ret.error = Z_OK;
 
-    /* open index_filename for binary writing */
-    // write index to index file:
+    // previous condition: if passed index is complete, do not process anything!
+    if ( NULL != (*built) &&
+        // if index->have == 0 index is superfluous
+        (*built)->have > 0 &&
+        (*built)->index_complete == 1 ) {
+        fprintf( stderr, "Index already complete. Directly using it.\n" );
+        ret.value = index->have;
+        return ret;
+    } else {
+        fprintf( stderr, "Processing index ...\n" );
+    }
+
+    /* open index_filename for binary reading & writing */
     if ( strlen(index_filename) > 0 &&
         ( NULL == index || index->index_complete == 0 )
         ) {
@@ -877,12 +894,11 @@ local struct returned_output build_index(
 
     // if and index is already passed, use it:
 //fprintf(stderr, "*built = %p\n", *built);
-    if ( NULL != *built &&
+    if ( NULL != (*built) &&
         // if index->have == 0 index is superfluous
         (*built)->have > 0 ) {
         // NULL != *built (there is a previous index available: use it!)
-        // Also, there's sense in calling build_index() with an already complete index,
-        // because build_index can be called without knowing if index is complete or not
+
 //fprintf(stderr, "NULL != *built\n");
 
         index = *built;
@@ -1682,7 +1698,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 goto deserialize_index_from_file_error;
             }
         }
-
+//fprintf(stderr, "%p, %d, %ld, %ld, %d\n", index, here.bits, here.in, here.out, here.window_size);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
         index = addpoint( index, here.bits, here.in, here.out, 0, NULL, here.window_size );
@@ -1887,7 +1903,9 @@ local int decompress_file(FILE *source, FILE *dest)
 }
 
 
-// write index for a gzip file
+// Creates an index for a gzip file.
+// If index file already exists, it is completed if it weren't complete,
+// or directly used if it is complete.
 // INPUT:
 // unsigned char *file_name     : file name of gzip file for which index will be calculated,
 //                                If strlen(file_name) == 0 stdin is used as gzip file.
@@ -1971,8 +1989,16 @@ wait_for_file_creation:
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
     }
 
-    ret = build_index( in, file_name, span_between_points,
-        index, indx_n_extraction_opts, offset, index_filename );
+    if ( NULL != (*index) &&
+         // if (*index)->have == 0 index is superfluous
+         (*index)->have > 0 &&
+         (*index)->index_complete == 1 ) {
+        // index is already complete, so just use it
+        fprintf( stderr, "Index already complete. Directly using it.\n" );
+    } else {
+        ret = build_index( in, file_name, span_between_points,
+            index, indx_n_extraction_opts, offset, index_filename );
+    }
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -2010,7 +2036,8 @@ wait_for_file_creation:
 }
 
 
-// extract data from a gzip file using its index file (creates it if it doesn't exist)
+// extract data from a gzip file using its index file if it exists,
+// or FIRST creates the index if it doesn't exist, and then extract the data.
 // INPUT:
 // unsigned char *file_name     : gzip file name
 // unsigned char *index_filename: index file name
@@ -2532,7 +2559,7 @@ int main(int argc, char **argv)
                 if ( continue_on_error == 1 ) {
                     continue;
                 } else {
-                    break; // breaks for loop
+                    break; // breaks for() loop
                 }
             }
 
