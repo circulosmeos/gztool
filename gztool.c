@@ -851,14 +851,20 @@ local struct returned_output build_index(
     ret.value = 0;
     ret.error = Z_OK;
 
-    // previous condition: if passed index is complete, do not process anything!
+    // previous condition: if passed index is complete end processing
+    // if indx_n_extraction_opts allows it.
     if ( NULL != (*built) &&
         // if index->have == 0 index is superfluous
         (*built)->have > 0 &&
         (*built)->index_complete == 1 ) {
-        fprintf( stderr, "Index already complete. Directly using it.\n" );
-        ret.value = index->have;
-        return ret;
+        if ( indx_n_extraction_opts == SUPERVISE_DO ||
+             indx_n_extraction_opts == JUST_CREATE_INDEX ) {
+            fprintf( stderr, "Index already complete. Nothing to do.\n" );
+            ret.value = (*built)->have;
+            return ret;
+        } else {
+            fprintf( stderr, "Index already complete - using it.\n" );
+        }
     } else {
         fprintf( stderr, "Processing index ...\n" );
     }
@@ -1989,16 +1995,8 @@ wait_for_file_creation:
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
     }
 
-    if ( NULL != (*index) &&
-         // if (*index)->have == 0 index is superfluous
-         (*index)->have > 0 &&
-         (*index)->index_complete == 1 ) {
-        // index is already complete, so just use it
-        fprintf( stderr, "Index already complete. Directly using it.\n" );
-    } else {
-        ret = build_index( in, file_name, span_between_points,
+    ret = build_index( in, file_name, span_between_points,
             index, indx_n_extraction_opts, offset, index_filename );
-    }
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -2392,6 +2390,39 @@ int main(int argc, char **argv)
             return EXIT_INVALID_OPTION;
         }
     }
+
+
+    {   // inform action on stderr:
+        unsigned char *action_string;
+        switch ( action ) {
+            case ACT_EXTRACT_FROM_BYTE:
+                action_string = "Extract from byte";
+                break;
+            case ACT_COMPRESS_CHUNK:
+                action_string = "Compress chunk";
+                break;
+            case ACT_DECOMPRESS_CHUNK:
+                action_string = "Decompress chunk";
+                break;
+            case ACT_CREATE_INDEX:
+                action_string = "Create index";
+                break;
+            case ACT_SUPERVISE:
+                action_string = "Supervise still-growing file";
+                break;
+            case ACT_LIST_INFO:
+                action_string = "List info of index file";
+                break;
+            case ACT_EXTRACT_TAIL:
+                action_string = "Extract tail data";
+                break;
+            case ACT_EXTRACT_TAIL_AND_CONTINUE:
+                action_string = "Extract from tail data on";
+                break;
+        }
+        fprintf( stderr, "ACTION: %s\n\n", action_string );
+    }
+
 
     if (optind == argc || argc == 1) {
 
