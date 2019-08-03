@@ -1951,7 +1951,8 @@ int main(int argc, char **argv)
                     index_filename = NULL;
                 }
                 index_filename = malloc( strlen(argv[i]) + 4 + 1 );
-                if ( strstr(index_filename, ".gz") == (argv[i] + strlen(argv[i]) - 3) )
+                sprintf( index_filename, "%s", argv[i] );
+                if ( (unsigned char *)strstr(index_filename, ".gz") == (unsigned char *)(index_filename + strlen(argv[i]) - 3) )
                     // if gzip-file name is 'FILE.gz', index file name will be 'FILE.gzi'
                     sprintf(index_filename, "%si", argv[i]);
                 else
