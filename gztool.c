@@ -846,10 +846,10 @@ local struct returned_output build_index(
     size_t index_last_written_point = 0;
     int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
-                                                 // 1: start on first depletion.
+                                                 // 1: start extraction on first depletion.
     unsigned char input[CHUNK]; // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
-    unsigned char window2[WINSIZE]; // TODO: convert to malloc
+    unsigned char window2[WINSIZE];// TODO: convert to malloc
     uint64_t window2_size;      // size of data stored in window2 buffer
 
     ret.value = 0;
@@ -1353,21 +1353,18 @@ if ( NULL != index )
 
     // last opportunity to output tail data
     // before deleting strm object
-fprintf(stderr, "+++++++\n");
     if ( output_data_counter == 0 &&
         ( indx_n_extraction_opts == EXTRACT_TAIL ||
           indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
 
         unsigned have = WINSIZE - strm.avail_out;
-fprintf(stderr, "+++++++ %d, %ld\n", have, output_data_counter);
         if ( have > 0 ) {
             if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
         } else {
             // use backup window
-            have = window2_size;
-            if (fwrite(window2, 1, have, stdout) != have || ferror(stdout)) {
+            if (fwrite(window2, 1, window2_size, stdout) != have || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
 
@@ -2786,8 +2783,10 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_EXTRACT_TAIL:
-                    ret_value = action_extract_from_byte(
-                        file_name, index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
+                    /*ret_value = action_extract_from_byte(
+                        file_name, index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );*/
+                    ret_value = action_create_index( file_name, &index, index_filename,
+                        EXTRACT_TAIL, 0, span_between_points );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:

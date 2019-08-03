@@ -438,7 +438,7 @@ offset: is in practice only use with indx_n_extraction_opts set to EXTRACT_FROM_
 
 [2]: on first fread depletion, start extraction: how to mark this?: continue_extraction = 1
 [4]: on first fread depletion, extract and stop
-But if no fread depletion occurs, then last strm. data.
+But if no fread depletion occurs, then last strm. data (This needs window2[WINSIZE] and window2_size).
 
 
 two new parameters needed:
