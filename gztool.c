@@ -2576,8 +2576,10 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_extract_from_byte(
-                        "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
+                    /*ret_value = action_extract_from_byte(
+                        "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );*/
+                    ret_value = action_create_index( "", &index, index_filename,
+                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
                     fprintf( stderr, "\n" );
                     break;
                 } else {
