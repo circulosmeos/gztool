@@ -835,6 +835,7 @@ local struct returned_output build_index(
     off_t totout = 0;           /* our own total counters to avoid 4GB limit */
     off_t last;                 /* totout value of last access point */
     off_t offset_in;
+    off_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
@@ -959,7 +960,7 @@ local struct returned_output build_index(
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
                  indx_n_extraction_opts == EXTRACT_TAIL ) {
 
-                offset = ( index->file_size - here->out ) /4*3;
+                offset = ( index->file_size - totout ) /4*3;
                 indx_n_extraction_opts = EXTRACT_FROM_BYTE;
                 continue_extraction = 1;
 
@@ -1025,9 +1026,13 @@ local struct returned_output build_index(
 
 
     // more decisions for extracting uncompressed data
-    if ( ( NULL != *built && stdin == in ) ||
-         NULL == *built ) {
-         // no index, or index available and stdin is used as gzip data input
+    if ( ( NULL != (*built) && stdin == in ) ||
+         NULL == (*built) ||
+         ( NULL != (*built) && (*built)->index_complete == 0 )
+         ) {
+        // index available and stdin is used as gzip data input,
+        // or no index is available,
+        // or index exists but it is incomplete:
 
         if ( stdin == in ) {
             // stdin is used as input for gzip data
@@ -1056,8 +1061,7 @@ local struct returned_output build_index(
                         if ( st.st_size <= CHUNK ) {
                             // gzip file is really small:
                             // change operation mode to extract from byte 0
-                            // (continue_extraction is set to correct value later) TODO: think this line isn't true
-                            indx_n_extraction_opts = EXTRACT_FROM_BYTE; // offset = 0
+                            offset_in = 0;
                         } else {
                             offset_in = st.st_size - CHUNK;
                         }
@@ -1077,13 +1081,22 @@ fprintf(stderr, "offset_in=%ld\n", offset_in);
         } // end if ( stdin == in )
 
     } // end if ( ( NULL != *built && stdin == in ) ||
-      //          NULL == *built )
+      //          NULL == *built ) ||
+      //          ( NULL != (*built) && (*built)->index_complete == 0 ) )
 
-
+    // as offset_in is a global position,
+    // decrement it by actual position:
+    if ( offset_in > 0 &&
+        NULL != here ) {
+        if ( here->in > offset_in )
+            offset_in = 0;
+        else
+            offset_in -= here->in;
+    }
 
     // default zlib initialization
     // when no index entry points has been found:
-    if ( NULL == *built ||
+    if ( NULL == (*built) ||
         NULL == here ) {
         // NULL != *built (there is no previous index available: build it from scratch)
 
@@ -1111,11 +1124,14 @@ fprintf(stderr, "totout = %ld\n", totout);
 fprintf(stderr, "ftello = %ld\n", ftello(in));*/
         strm.avail_in = fread(input, 1, CHUNK, in);
 
+        avail_in_0 = strm.avail_in;
+
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
               indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
              strm.avail_in == 0 ) {
 
             // check conditions to start output of uncompressed data
+fprintf(stderr, "> > %d, %d, %d", continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
 
@@ -1138,9 +1154,11 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                     goto build_index_error;
                 }
 
-                // continue extracting as usual:
-                indx_n_extraction_opts = EXTRACT_FROM_BYTE;
+                // continue extracting data as usual,
                 offset = 0;
+                offset_in = 0;
+                // though as indx_n_extraction_opts != EXTRACT_FROM_BYTE it'll
+                // patiently waits if data exhausts.
 
             }
 
@@ -1195,7 +1213,10 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             //
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
+//fprintf(stderr, ">1> %ld, %d, %d, %d", offset_in, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
                 unsigned have = WINSIZE - strm.avail_out;
+                if ( offset > 0 )
+                    offset -= have;
                 if ( ( offset > 0 && offset <= have ) ||
                     offset == 0 ) {
                     offset = 0;
@@ -1212,8 +1233,12 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
                 if ( continue_extraction == 1 ) {
+//fprintf(stderr, ">2> %ld, %d, %d, %d", offset_in, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
                     unsigned have = WINSIZE - strm.avail_out;
-                    unsigned have_in = CHUNK - strm.avail_in;
+                    unsigned have_in = avail_in_0 - strm.avail_in;
+                    avail_in_0 = strm.avail_in;
+                    if ( offset_in > 0 )
+                        offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
                         offset_in == 0 ) {
                         offset_in = 0;
@@ -1226,8 +1251,9 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                             goto build_index_error;
                         }
                         fflush(stdout);
-                        indx_n_extraction_opts = EXTRACT_FROM_BYTE;
+                        // continue extracting data as usual
                         offset = 0;
+                        // though indx_n_extraction_opts != EXTRACT_FROM_BYTE
                     }
                 }
             }
@@ -2417,7 +2443,7 @@ int main(int argc, char **argv)
                 action_string = "Extract tail data";
                 break;
             case ACT_EXTRACT_TAIL_AND_CONTINUE:
-                action_string = "Extract from tail data on";
+                action_string = "Extract from tail data on a still-growing file";
                 break;
         }
         fprintf( stderr, "ACTION: %s\n\n", action_string );
