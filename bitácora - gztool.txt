@@ -438,6 +438,7 @@ offset: is in practice only use with indx_n_extraction_opts set to EXTRACT_FROM_
 
 [2]: on first fread depletion, start extraction: how to mark this?: continue_extraction = 1
 [4]: on first fread depletion, extract and stop
+20190803: But if no fread depletion occurs, then last strm. data.
 
 two new parameters needed:
 continue_extraction = 1 when to extract inconditionally (offset<=0 sets this one): in practice marks the use of "offset_in"

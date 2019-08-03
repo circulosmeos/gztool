@@ -819,7 +819,7 @@ int check_index_file( struct access *index, unsigned char *index_filename, unsig
 // off_t offset         : if indx_n_extraction_opts == EXTRACT_FROM_BYTE, this is the offset byte in
 //                        in the uncompressed stream from which to extract to stdout.
 //                        0 otherwise.
-// unsigned char *index_filename    : in case SUPERVISE_DO, index will be written on-the-fly
+// unsigned char *index_filename    : in case of SUPERVISE_DO, index will be written on-the-fly
 //                                    to this index file name.
 // OUTPUT:
 // struct returned_output: contains two values:
@@ -971,7 +971,21 @@ local struct returned_output build_index(
 
         // fseek in data for correct position
         // using here index data:
-        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+        if ( stdin == in ) {
+            // read input until here->in - (here->bits ? 1 : 0)
+            uint64_t pos = 0;
+            uint64_t position = here->in - (here->bits ? 1 : 0);
+            ret.error = 0;
+            while ( pos < position ) {
+                if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), in) ) {
+                    ret.error = -1;
+                    break;
+                }
+                pos += CHUNK;
+            }
+        } else {
+            ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
+        }
         if (ret.error == -1)
             goto build_index_error;
         if (here->bits) {
@@ -989,10 +1003,16 @@ local struct returned_output build_index(
             /* index' window data is not on memory,
             but we have position and size on index file, so we load it now */
             FILE *index_file;
+            if ( index->file_name == NULL ||
+                strlen(index->file_name) == 0 ) {
+                fprintf(stderr, "Error while opening index file.\nAborted.\n");
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
             if (NULL == (index_file = fopen(index->file_name, "rb")) ||
                 0 != fseeko(index_file, here->window_beginning, SEEK_SET)
                 ) {
-                fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
+                fprintf(stderr, "Error while opening index file.\nAborted.\n");
                 ret.error = Z_ERRNO;
                 goto build_index_error;
             }
@@ -1000,7 +1020,7 @@ local struct returned_output build_index(
             if ( NULL == (here->window = malloc(here->window_size)) ||
                 !fread(here->window, here->window_size, 1, index_file)
                 ) {
-                fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
+                fprintf(stderr, "Error while reading index file.\nAborted.\n");
                 ret.error = Z_ERRNO;
                 goto build_index_error;
             }
@@ -1964,6 +1984,20 @@ local int action_create_index(
     uint64_t number_of_index_points = 0;
     int waiting = 0;
 
+    // First of all, check that data output and index output do not collide:
+    if ( strlen(file_name) == 0 &&
+         strlen(index_filename) == 0 &&
+         ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+           indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+           indx_n_extraction_opts == EXTRACT_TAIL )
+        ) {
+        // input is stdin, output is stdout, and no file name has been
+        // indicated for index output, so action is not possible:
+        fprintf( stderr, "ERROR: Please, note that extracted data will be output to STDOUT\n" );
+        fprintf( stderr, "       so an index file name is needed (`-I`).\nAborted.\n" );
+        return EXIT_GENERIC_ERROR;
+    }
+
     // open <FILE>:
     if ( strlen(file_name) > 0 ) {
 wait_for_file_creation:
@@ -2541,6 +2575,17 @@ int main(int argc, char **argv)
                     fprintf( stderr, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
                     ret_value = EXIT_INVALID_OPTION;
                 }
+                break;
+
+            case ACT_EXTRACT_TAIL_AND_CONTINUE:
+                if ( index_filename_indicated == 1 ) {
+                    ret_value = action_create_index( "", &index, index_filename,
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
+                } else {
+                    ret_value = action_create_index( "", &index, "",
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
+                }
+                fprintf( stderr, "\n" );
                 break;
 
         }
