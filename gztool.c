@@ -839,6 +839,7 @@ local struct returned_output build_index(
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
+    uint64_t output_data_counter = 0;// counts uncompressed bytes output
     unsigned char *decompressed_window;
     z_stream strm;
     FILE *index_file = NULL;
@@ -848,6 +849,8 @@ local struct returned_output build_index(
                                                  // 1: start on first depletion.
     unsigned char input[CHUNK]; // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
+    unsigned char window2[WINSIZE]; // TODO: convert to malloc
+    uint64_t window2_size;      // size of data stored in window2 buffer
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -1157,6 +1160,7 @@ fprintf(stderr, "> > %d, %d, %d", continue_extraction, start_extraction_on_first
 
                 // output uncompressed data
                 unsigned have = WINSIZE - strm.avail_out;
+                output_data_counter += have;
                 if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                     (void)inflateEnd(&strm);
                     ret.error = Z_ERRNO;
@@ -1228,6 +1232,11 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             if (ret.error == Z_STREAM_END)
                 break;
 
+            // maintain a backup window for the case of Z_STREAM_END
+            // and indx_n_extraction_opts == *_TAIL
+            window2_size = WINSIZE - strm.avail_out;
+            memcpy( window2, window, window2_size );
+
             //
             // if required by passed indx_n_extraction_opts option, extract to stdout:
             //
@@ -1242,6 +1251,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                     offset = 0;
                     // print offset - have bytes
                     // If offset==0 (from offset byte on) this prints always all bytes:
+                    output_data_counter += have;
                     if (fwrite(window + offset, 1, have - offset, stdout) != (have - offset) ||
                         ferror(stdout)) {
                         (void)inflateEnd(&strm);
@@ -1264,6 +1274,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                         offset_in = 0;
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
+                        output_data_counter += have;
                         if (fwrite(window, 1, have, stdout) != have ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
@@ -1338,6 +1349,38 @@ if ( NULL != index )
         } while (strm.avail_in != 0);
 
     } while (ret.error != Z_STREAM_END);
+
+
+    // last opportunity to output tail data
+    // before deleting strm object
+fprintf(stderr, "+++++++\n");
+    if ( output_data_counter == 0 &&
+        ( indx_n_extraction_opts == EXTRACT_TAIL ||
+          indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
+
+        unsigned have = WINSIZE - strm.avail_out;
+fprintf(stderr, "+++++++ %d, %ld\n", have, output_data_counter);
+        if ( have > 0 ) {
+            if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
+                ret.error = Z_ERRNO;
+            }
+        } else {
+            // use backup window
+            have = window2_size;
+            if (fwrite(window2, 1, have, stdout) != have || ferror(stdout)) {
+                ret.error = Z_ERRNO;
+            }
+
+        }
+
+        output_data_counter += have;
+        fflush(stdout);
+
+    }
+
+    // print output_data_counter info
+    if ( output_data_counter > 0 )
+        fprintf(stderr, "%ld bytes of data extracted.\n", output_data_counter);
 
     /* clean up and return index (release unused entries in list) */
     (void)inflateEnd(&strm);
@@ -2477,7 +2520,7 @@ int main(int argc, char **argv)
                 action_string = "Extract tail data";
                 break;
             case ACT_EXTRACT_TAIL_AND_CONTINUE:
-                action_string = "Extract from tail data on a still-growing file";
+                action_string = "Extract from tail data from a still-growing file";
                 break;
         }
         fprintf( stderr, "ACTION: %s\n\n", action_string );
@@ -2485,6 +2528,30 @@ int main(int argc, char **argv)
 
 
     if (optind == argc || argc == 1) {
+
+
+        // check `-f` and execute delete if index file exists
+        if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
+                ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+             index_filename_indicated == 1 &&
+             access( index_filename, F_OK ) != -1 ) {
+            // index file already exists
+
+            if ( force_action == 0 ) {
+                fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
+                fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
+            } else {
+                // force_action == 1 => delete index file
+                fprintf( stderr, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                // delete it
+                if ( remove( index_filename ) != 0 ) {
+                    fprintf( stderr, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                    ret_value = EXIT_GENERIC_ERROR;
+                }
+            }
+
+        }
+
 
         // file input is stdin
         switch ( action ) {
