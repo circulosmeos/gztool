@@ -1185,8 +1185,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     //    struct point *list; /* allocated list */
     //};
 
-    fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file);
-    if (*((uint64_t *)header) != 0 ||
+    if (fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file) < GZIP_INDEX_HEADER_SIZE ||
+        *((uint64_t *)header) != 0 ||
         strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
         fprintf(stderr, "File is not a valid gzip index file.\n");
         return NULL;
