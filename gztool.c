@@ -836,6 +836,7 @@ local struct returned_output build_index(
     off_t last;                 /* totout value of last access point */
     off_t offset_in;
     off_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
+    off_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
@@ -1055,7 +1056,7 @@ local struct returned_output build_index(
          ) {
         // index available and stdin is used as gzip data input,
         // or no index is available,
-        // or index exists but it is incomplete:
+        // or index exists but it is incomplete.
 
         if ( stdin == in ) {
             // stdin is used as input for gzip data
@@ -1107,8 +1108,8 @@ fprintf(stderr, "offset_in=%ld\n", offset_in);
       //          NULL == *built ) ||
       //          ( NULL != (*built) && (*built)->index_complete == 0 ) )
 
-    // as offset_in is a global position,
-    // decrement it by actual position:
+
+    // decrement offset_in and offset by actual position:
     if ( offset_in > 0 &&
         NULL != here ) {
         if ( here->in > offset_in )
@@ -1116,6 +1117,14 @@ fprintf(stderr, "offset_in=%ld\n", offset_in);
         else
             offset_in -= here->in;
     }
+    if ( offset > 0 &&
+        NULL != here ) {
+        if ( here->out > offset )
+            offset = 0;
+        else
+            offset -= here->out;
+    }
+
 
     // default zlib initialization
     // when no index entry points has been found:
@@ -1208,6 +1217,7 @@ fprintf(stderr, "> > %d, %d, %d", continue_extraction, start_extraction_on_first
             if (strm.avail_out == 0) {
                 strm.avail_out = WINSIZE;
                 strm.next_out = window;
+                avail_out_0 = strm.avail_out;
             }
 //fprintf(stderr, "0. strm.next_out = %p ???\n", strm.next_out);
 
@@ -1232,33 +1242,43 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             if (ret.error == Z_STREAM_END)
                 break;
 
-            // maintain a backup window for the case of Z_STREAM_END
+            // maintain a backup window for the case of sudden Z_STREAM_END
             // and indx_n_extraction_opts == *_TAIL
-            window2_size = WINSIZE - strm.avail_out;
-            memcpy( window2, window, window2_size );
+            if ( ( NULL == index || index->index_complete == 0 ) &&
+                 ( indx_n_extraction_opts == EXTRACT_TAIL ||
+                   indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
+                window2_size = WINSIZE - strm.avail_out;
+                memcpy( window2, window, window2_size );
+                // TODO: change to pointer flip at the end of loop
+            }
 
             //
             // if required by passed indx_n_extraction_opts option, extract to stdout:
             //
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
-//fprintf(stderr, ">1> %ld, %d, %d, %d", offset_in, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
-                unsigned have = WINSIZE - strm.avail_out;
-                if ( offset > 0 )
+//fprintf(stderr, ">1> %ld, %d, %d, %d", offset, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
+                unsigned have = avail_out_0 - strm.avail_out;
+                avail_out_0 = strm.avail_out;
+                //unsigned have = WINSIZE - strm.avail_out;
+//fprintf(stderr, ">1> %ld, %d, %d", offset, have, strm.avail_out);
+                if ( offset > have ) {
                     offset -= have;
-                if ( ( offset > 0 && offset <= have ) ||
-                    offset == 0 ) {
-                    offset = 0;
-                    // print offset - have bytes
-                    // If offset==0 (from offset byte on) this prints always all bytes:
-                    output_data_counter += have;
-                    if (fwrite(window + offset, 1, have - offset, stdout) != (have - offset) ||
-                        ferror(stdout)) {
-                        (void)inflateEnd(&strm);
-                        ret.error = Z_ERRNO;
-                        goto build_index_error;
+                } else {
+                    if ( ( offset > 0 && offset <= have ) ||
+                        offset == 0 ) {
+                        // print offset - have bytes
+                        // If offset==0 (from offset byte on) this prints always all bytes:
+                        output_data_counter += have - offset;
+                        if (fwrite(window + offset, 1, have - offset, stdout) != (have - offset) ||
+                            ferror(stdout)) {
+                            (void)inflateEnd(&strm);
+                            ret.error = Z_ERRNO;
+                            goto build_index_error;
+                        }
+                        offset = 0;
+                        fflush(stdout);
                     }
-                    fflush(stdout);
                 }
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
@@ -2737,8 +2757,10 @@ int main(int argc, char **argv)
             switch ( action ) {
 
                 case ACT_EXTRACT_FROM_BYTE:
-                    ret_value = action_extract_from_byte(
-                        file_name, index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );
+                    /*ret_value = action_extract_from_byte(
+                        file_name, index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );*/
+                    ret_value = action_create_index( file_name, &index, index_filename,
+                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
