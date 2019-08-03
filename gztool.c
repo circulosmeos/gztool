@@ -2631,8 +2631,10 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_TAIL:
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_extract_from_byte(
-                        "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );
+                    /*ret_value = action_extract_from_byte(
+                        "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );*/
+                    ret_value = action_create_index( "", &index, index_filename,
+                        EXTRACT_TAIL, 0, span_between_points );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
