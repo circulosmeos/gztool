@@ -192,6 +192,10 @@ enum ACTION
       ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL,
       ACT_EXTRACT_TAIL_AND_CONTINUE };
 
+enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESIVE = 2, VERBOSITY_MANIAC = 3 };
+
+enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
+
 
 /**************
  * Endianness *
@@ -2395,6 +2399,7 @@ int main(int argc, char **argv)
     int index_filename_indicated = 0;
     int force_action = 0;
     int force_strict_order = 0;
+    enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
@@ -2407,7 +2412,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StT")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StTv:")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -2479,6 +2484,14 @@ int main(int argc, char **argv)
             case 'T':
                 action = ACT_EXTRACT_TAIL_AND_CONTINUE;
                 actions_set++;
+                break;
+            case 'v':
+                verbosity_level = atoi(optarg);
+                if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
+                    verbosity_level > VERBOSITY_EXCESIVE ) {
+                    fprintf( stderr, "Option `-v %s` ignored.\n", );
+                    verbosity_level = VERBOSITY_NORMAL;
+                }
                 break;
             case '?':
                 if ( isprint (optopt) ) {
