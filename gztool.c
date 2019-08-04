@@ -2425,9 +2425,9 @@ local void print_help() {
     fprintf( stderr, "     Default is `1` (normal).\n" );
     fprintf( stderr, "\n" );
     fprintf( stderr, "  Example: Extract data from 1000000000 byte (1 GB) on,\n" );
-    fprintf( stderr, "  from `myfile.gz`: the extraction will create (or reuse, or\n" );
-    fprintf( stderr, "  complete) an index file named `myfile.gzi`:\n" );
-    fprintf( stderr, "  $ gztool -b 1000000000 myfile.gz\n" );
+    fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
+    fprintf( stderr, "  create (or reuse, or complete) an index file named `myfile.gzi`:\n" );
+    fprintf( stderr, "  $ gztool -b 1000000000 myfile.gz > myfile.txt\n" );
     fprintf( stderr, "\n" );
 
 }
