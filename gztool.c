@@ -125,6 +125,7 @@
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
 #include <stdio.h>
+#include <stdarg.h> // va_start, va_list, va_end
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -192,9 +193,23 @@ enum ACTION
       ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL,
       ACT_EXTRACT_TAIL_AND_CONTINUE };
 
-enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESIVE = 2, VERBOSITY_MANIAC = 3 };
+enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESSIVE = 2, VERBOSITY_MANIAC = 3 };
 
 enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
+
+
+// `fprintf` substitute for printing with VERBOSITY_LEVEL
+void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) {
+
+    // if verbosity of message is above general verbosity_level, ignore message
+    if ( verbosity <= verbosity_level ) {
+        va_list args;
+        va_start (args, format);
+        vfprintf ( stderr, format, args );
+        va_end (args);
+    }
+
+}
 
 
 /**************
@@ -474,7 +489,7 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
     free(in);
     free(out);
     if (ret != Z_OK && ret != Z_STREAM_END) {
-        fprintf(stderr, "Decompression of index' chunk terminated with error (%d).\n", ret);
+        printToStderr( VERBOSITY_NORMAL, "Decompression of index' chunk terminated with error (%d).\n", ret);
     }
     // return size of returned char array in size pointer parameter
     *size = output_size;
@@ -608,14 +623,14 @@ local struct access *addpoint(struct access *index, uint32_t bits,
         // compress window
         compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
         if (compressed_chunk == NULL) {
-            fprintf(stderr, "Error whilst compressing index chunk\nProcess aborted\n.");
+            printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
             return NULL;
         }
         free(next->window);
         next->window = compressed_chunk;
         /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
         next->window_size = size;
-fprintf(stderr, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
+        printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
     } else {
         if ( window == NULL ) {
             // create a NULL window: it resides on file,
@@ -710,15 +725,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         offset += sizeof(here->out) + sizeof(here->in) +
                   sizeof(here->bits) + sizeof(here->window_size) +
                   ((here->window_size==UNCOMPRESSED_WINDOW)? WINSIZE: (here->window_size));
-if (i>=63)
-    fprintf(stderr, ">>> %d->window_size = %d\n", i, here->window_size);
     }
     fseeko( output_file, offset, SEEK_SET);
-fprintf(stderr, "index_last_written_point = %ld\n", index_last_written_point);
-if (NULL!=here) {
-    fprintf(stderr, "%d->window_size = %d\n", i, here->window_size);
-}
-fprintf(stderr, "offset = %ld\n", offset);
+    printToStderr( VERBOSITY_MANIAC, "index_last_written_point = %ld\n", index_last_written_point );
+    if (NULL!=here) {
+        printToStderr( VERBOSITY_MANIAC, "%d->window_size = %d\n", i, here->window_size );
+    }
+    printToStderr( VERBOSITY_MANIAC, "offset = %ld\n", offset );
 
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
@@ -734,7 +747,7 @@ fprintf(stderr, "offset = %ld\n", offset);
             }
             here->window_beginning = ftello(output_file);
             if (NULL == here->window) {
-                fprintf(stderr, "Index incomplete! - index writing aborted.\n");
+                printToStderr( VERBOSITY_NORMAL, "Index incomplete! - index writing aborted.\n" );
                 return 0;
             } else {
                 fwrite(here->window, here->window_size, 1, output_file);
@@ -776,7 +789,7 @@ int check_index_file( struct access *index, unsigned char *index_filename, unsig
                 st.st_size > index->list[index->have - 1].in +
                     2*( index->list[index->have - 1].in - index->list[index->have - 2].in )
                 ) {
-                fprintf( stderr, "WARNING: Index file '%s' seems to be for a file bigger than '%s'\n",
+                printToStderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' seems to be for a file bigger than '%s'\n",
                     index_filename, file_name );
             }
         }
@@ -868,14 +881,14 @@ local struct returned_output build_index(
         (*built)->index_complete == 1 ) {
         if ( indx_n_extraction_opts == SUPERVISE_DO ||
              indx_n_extraction_opts == JUST_CREATE_INDEX ) {
-            fprintf( stderr, "Index already complete. Nothing to do.\n" );
+            printToStderr( VERBOSITY_NORMAL, "Index already complete. Nothing to do.\n" );
             ret.value = (*built)->have;
             return ret;
         } else {
-            fprintf( stderr, "Index already complete - using it.\n" );
+            printToStderr( VERBOSITY_NORMAL, "Index already complete - using it.\n" );
         }
     } else {
-        fprintf( stderr, "Processing index ...\n" );
+        printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
     }
 
     /* open index_filename for binary reading & writing */
@@ -899,7 +912,7 @@ local struct returned_output build_index(
         index_file = stdout;
     }
     if ( NULL == index_file ) {
-        fprintf( stderr, "Could not write index to file '%s'.\n", index_filename );
+        printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
         goto build_index_error;
     }
 
@@ -908,13 +921,10 @@ local struct returned_output build_index(
        information at the end of the gzip or zlib stream */
 
     // if and index is already passed, use it:
-//fprintf(stderr, "*built = %p\n", *built);
     if ( NULL != (*built) &&
-        // if index->have == 0 index is superfluous
         (*built)->have > 0 ) {
         // NULL != *built (there is a previous index available: use it!)
-
-//fprintf(stderr, "NULL != *built\n");
+        // if index->have == 0 index is superfluous
 
         index = *built;
         /* initialize file and inflate state to start there */
@@ -1013,14 +1023,14 @@ local struct returned_output build_index(
             FILE *index_file;
             if ( index->file_name == NULL ||
                 strlen(index->file_name) == 0 ) {
-                fprintf(stderr, "Error while opening index file.\nAborted.\n");
+                printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto build_index_error;
             }
             if (NULL == (index_file = fopen(index->file_name, "rb")) ||
                 0 != fseeko(index_file, here->window_beginning, SEEK_SET)
                 ) {
-                fprintf(stderr, "Error while opening index file.\nAborted.\n");
+                printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto build_index_error;
             }
@@ -1028,7 +1038,7 @@ local struct returned_output build_index(
             if ( NULL == (here->window = malloc(here->window_size)) ||
                 !fread(here->window, here->window_size, 1, index_file)
                 ) {
-                fprintf(stderr, "Error while reading index file.\nAborted.\n");
+                printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto build_index_error;
             }
@@ -1093,7 +1103,7 @@ local struct returned_output build_index(
                         } else {
                             offset_in = st.st_size - CHUNK;
                         }
-fprintf(stderr, "offset_in=%ld\n", offset_in);
+                        printToStderr( VERBOSITY_MANIAC, "offset_in=%ld\n", offset_in );
                     } else {
                         start_extraction_on_first_depletion = 1;
                     }
@@ -1142,22 +1152,22 @@ fprintf(stderr, "offset_in=%ld\n", offset_in);
         strm.opaque = Z_NULL;
         strm.avail_in = 0;
         strm.next_in = Z_NULL;
-//fprintf(stderr, "strm\n");
         ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
-//fprintf(stderr, "ret.error = %d\n", ret.error);
+        printToStderr( VERBOSITY_MANIAC, "ret.error = %d\n", ret.error );
         if (ret.error != Z_OK)
             return ret;
         totin = totout = last = 0;
         index = NULL;               /* will be allocated by first addpoint() */
     }
 
-//fprintf(stderr, "index = %p\n", index);
     strm.avail_out = 0;
     do {
         /* get some compressed data from input file */
-/*fprintf(stderr, "totin = %ld\n", totin);
-fprintf(stderr, "totout = %ld\n", totout);
-fprintf(stderr, "ftello = %ld\n", ftello(in));*/
+
+        printToStderr( VERBOSITY_MANIAC, "totin = %ld\n", totin );
+        printToStderr( VERBOSITY_MANIAC, "totout = %ld\n", totout );
+        printToStderr( VERBOSITY_MANIAC, "ftello = %ld\n", ftello(in) );
+
         strm.avail_in = fread(input, 1, CHUNK, in);
 
         avail_in_0 = strm.avail_in;
@@ -1167,7 +1177,8 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
              strm.avail_in == 0 ) {
 
             // check conditions to start output of uncompressed data
-fprintf(stderr, "> > %d, %d, %d", continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
+            printToStderr( VERBOSITY_MANIAC, ">>> %d, %d, %d",
+                continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts );
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
 
@@ -1223,24 +1234,20 @@ fprintf(stderr, "> > %d, %d, %d", continue_extraction, start_extraction_on_first
                 strm.next_out = window;
                 avail_out_0 = strm.avail_out;
             }
-//fprintf(stderr, "0. strm.next_out = %p ???\n", strm.next_out);
 
             /* inflate until out of input, output, or at end of block --
                update the total input and output counters */
             totin += strm.avail_in;
             totout += strm.avail_out;
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
-/*fprintf(stderr, "strm.avail_in = %d\n", strm.avail_in);
-fprintf(stderr, "strm.avail_out = %d\n", strm.avail_out);
-fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             totin -= strm.avail_in;
             totout -= strm.avail_out;
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-/*fprintf(stderr, "totin = %ld\n", totin);
-fprintf(stderr, "totout = %ld\n", totout);
-fprintf(stderr, "ftello = %ld\n", ftello(in));*/
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR totin = %ld\n", totin );
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR totout = %ld\n", totout );
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR ftello = %ld\n", ftello(in) );
                 goto build_index_error;
             }
             if (ret.error == Z_STREAM_END)
@@ -1261,11 +1268,9 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             //
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
-//fprintf(stderr, ">1> %ld, %d, %d, %d", offset, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
                 unsigned have = avail_out_0 - strm.avail_out;
                 avail_out_0 = strm.avail_out;
-                //unsigned have = WINSIZE - strm.avail_out;
-//fprintf(stderr, ">1> %ld, %d, %d", offset, have, strm.avail_out);
+                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d ", offset, have, strm.avail_out );
                 if ( offset > have ) {
                     offset -= have;
                 } else {
@@ -1287,10 +1292,10 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
                 if ( continue_extraction == 1 ) {
-//fprintf(stderr, ">2> %ld, %d, %d, %d", offset_in, continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts);
                     unsigned have = WINSIZE - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
+                    printToStderr( VERBOSITY_MANIAC, ">2> %ld, %d, %d ", offset_in, have_in, strm.avail_in );
                     if ( offset_in > 0 )
                         offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
@@ -1328,7 +1333,7 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
-//fprintf(stderr, "actual_index_point = %ld\n", actual_index_point);
+                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld\n", actual_index_point );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -1339,19 +1344,13 @@ fprintf(stderr, "ftello = %ld\n", ftello(in));*/
                     // addpoint() only if index doesn't yet exist or it is incomplete
                     ( NULL == index || index->index_complete == 0 )
                     ) { // TODO or finished ?
-/*if ( NULL != index )
-    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);
-fprintf(stderr, "totin=%ld, totout=%ld\n", totin, totout);
-if ( NULL != index )
-    fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-1,index->list[index->have-1].window_size);
-if ( NULL != index )
-    fprintf(stderr, "index->list[%ld].window_size=%d    >>>\n", index->have-2,index->list[index->have-2].window_size);*/
+                    if ( NULL != index )
+                        printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
+                            index->have, index_last_written_point );
+
                     index = addpoint(index, strm.data_type & 7, totin,
                                      totout, strm.avail_out, window, 0);
-/*if ( NULL != index )
-fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-2,index->list[index->have-2].window_size);
-if ( NULL != index )
-    fprintf(stderr, "index->list[%ld].window_size=%d\n", index->have-1,index->list[index->have-1].window_size);*/
+
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
                         goto build_index_error;
@@ -1361,8 +1360,6 @@ if ( NULL != index )
                     // write added point!
                     // note that points written are automatically emptied of its window values
                     // in order to use as less memory a s possible
-/*if ( NULL != index )
-    fprintf(stderr, "addpoint index->have = %ld, index_last_written_point = %ld\n", index->have, index_last_written_point);*/
                     if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
                         goto build_index_error;
                     index_last_written_point = index->have;
@@ -1401,7 +1398,7 @@ if ( NULL != index )
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
-        fprintf(stderr, "%ld bytes of data extracted.\n", output_data_counter);
+        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
 
     /* clean up and return index (release unused entries in list) */
     (void)inflateEnd(&strm);
@@ -1419,9 +1416,9 @@ if ( NULL != index )
 
     if ( index->index_complete == 0 )
         if ( strlen(index_filename) > 0 )
-            fprintf(stderr, "Index written to '%s'.\n", index_filename);
+            printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
-            fprintf(stderr, "Index written to stdout.\n");
+            printToStderr( VERBOSITY_NORMAL, "Index written to stdout.\n" );
 
     index->index_complete = 1; /* index is now complete */
 
@@ -1557,7 +1554,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
         if (NULL == (index_file = fopen(index->file_name, "rb")) ||
             0 != fseeko(index_file, here->window_beginning, SEEK_SET)
             ) {
-            fprintf(stderr, "Error while opening index file. Extraction aborted.\n");
+            printToStderr( VERBOSITY_NORMAL, "Error while opening index file. Extraction aborted.\n" );
             fclose(index_file);
             ret.error = Z_ERRNO;
             goto extract_ret;
@@ -1566,7 +1563,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
         if ( NULL == (here->window = malloc(here->window_size)) ||
             !fread(here->window, here->window_size, 1, index_file)
             ) {
-            fprintf(stderr, "Error while reading index file. Extraction aborted.\n");
+            printToStderr( VERBOSITY_NORMAL, "Error while reading index file. Extraction aborted.\n" );
             fclose(index_file);
             ret.error = Z_ERRNO;
             goto extract_ret;
@@ -1742,7 +1739,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     if (fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file) < GZIP_INDEX_HEADER_SIZE ||
         *((uint64_t *)header) != 0 ||
         strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
-        fprintf(stderr, "File is not a valid gzip index file.\n");
+        printToStderr( VERBOSITY_NORMAL, "File is not a valid gzip index file.\n" );
         return NULL;
     }
 
@@ -1754,7 +1751,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     // index->size equals index->have when the index file is correctly closed
     // and index->have == UINT64_MAX when the index is still growing
     if (index_have == 0 && index_size == UINT64_MAX) {
-        fprintf(stderr, "Index file is incomplete.\n");
+        printToStderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
         index_complete = 0;
     }
 
@@ -1766,10 +1763,10 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.in),   sizeof(here.in),   input_file);
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
-//fprintf(stderr, "READ window_size = %d\n", here.window_size);
+        printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
         if ( here.window_size == 0 ) {
-            fprintf(stderr, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
-                    file_name, ftello(input_file), index->have + 1);
+            printToStderr( VERBOSITY_NORMAL, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
+                    file_name, ftello(input_file), index->have + 1 );
             continue;
         }
 
@@ -1785,12 +1782,12 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 uint64_t position = here.window_size;
                 unsigned char *input = malloc(CHUNK);
                 if ( NULL == input ) {
-                    fprintf(stderr, "Not enough memory to load index from stdin.\n");
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from stdin.\n" );
                     goto deserialize_index_from_file_error;
                 }
                 while ( pos < position ) {
                     if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), input_file) ) {
-                        fprintf(stderr, "Could not read index from stdin.\n");
+                        printToStderr( VERBOSITY_NORMAL, "Could not read index from stdin.\n" );
                         goto deserialize_index_from_file_error;
                     }
                     pos += CHUNK;
@@ -1806,15 +1803,15 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
             // a here.window_beginning = 0 (which is impossible with gzipindx format)
             here.window_beginning = 0;
             if (here.window == NULL) {
-                fprintf(stderr, "Not enough memory to load index from file.\n");
+                printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
                 goto deserialize_index_from_file_error;
             }
             if ( !fread(here.window, here.window_size, 1, input_file) ) {
-                fprintf(stderr, "Error while reading index file.\n");
+                printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
                 goto deserialize_index_from_file_error;
             }
         }
-//fprintf(stderr, "%p, %d, %ld, %ld, %d\n", index, here.bits, here.in, here.out, here.window_size);
+        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d), ", index, here.bits, here.in, here.out, here.window_size);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
         index = addpoint( index, here.bits, here.in, here.out, 0, NULL, here.window_size );
@@ -1842,7 +1839,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
     index->file_name = malloc( strlen(file_name) + 1 );
     if ( NULL == memcpy( index->file_name, file_name, strlen(file_name) + 1 ) ) {
-        fprintf(stderr, "Not enough memory to load index from file.\n");
+        printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
         goto deserialize_index_from_file_error;
     }
 
@@ -2057,8 +2054,8 @@ local int action_create_index(
         ) {
         // input is stdin, output is stdout, and no file name has been
         // indicated for index output, so action is not possible:
-        fprintf( stderr, "ERROR: Please, note that extracted data will be output to STDOUT\n" );
-        fprintf( stderr, "       so an index file name is needed (`-I`).\nAborted.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Please, note that extracted data will be output to STDOUT\n" );
+        printToStderr( VERBOSITY_NORMAL, "       so an index file name is needed (`-I`).\nAborted.\n" );
         return EXIT_GENERIC_ERROR;
     }
 
@@ -2070,21 +2067,21 @@ wait_for_file_creation:
             if ( indx_n_extraction_opts == SUPERVISE_DO ||
                  indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
                 if ( waiting == 0 ) {
-                    fprintf( stderr, "Waiting for creation of file '%s'\n", file_name );
+                    printToStderr( VERBOSITY_NORMAL, "Waiting for creation of file '%s'\n", file_name );
                     waiting++;
                 }
                 sleep( WAITING_TIME );
                 goto wait_for_file_creation;
             }
-            fprintf( stderr, "Could not open '%s' for reading.\nAborted.\n", file_name );
+            printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
-        fprintf( stderr, "Processing '%s' ...\n", file_name );
+        printToStderr( VERBOSITY_NORMAL, "Processing '%s' ...\n", file_name );
     } else {
         // stdin
         SET_BINARY_MODE(STDIN); // sets binary mode for stdin in Windows
         in = stdin;
-        fprintf( stderr, "Processing stdin ...\n" );
+        printToStderr( VERBOSITY_NORMAL, "Processing stdin ...\n" );
     }
 
     // compute index:
@@ -2100,13 +2097,13 @@ wait_for_file_creation:
             *index = deserialize_index_from_file( index_file, 0, index_filename );
             fclose( index_file );
             if ( NULL == *index ) {
-                fprintf( stderr, "Could not load index from file '%s'.\nAborted.\n", index_filename );
+                printToStderr( VERBOSITY_NORMAL, "Could not load index from file '%s'.\nAborted.\n", index_filename );
                 return EXIT_GENERIC_ERROR;
             }
             // index ok, continue
             number_of_index_points = (*index)->have;
         } else {
-            fprintf( stderr, "Could not open '%s' for reading.\nAborted.\n", file_name );
+            printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
     }
@@ -2126,32 +2123,32 @@ wait_for_file_creation:
     if ( ret.error < 0 ) {
         switch ( ret.error ) {
         case Z_MEM_ERROR:
-            fprintf( stderr, "ERROR: Out of memory.\n" );
+            printToStderr( VERBOSITY_NORMAL, "ERROR: Out of memory.\n" );
             break;
         case Z_DATA_ERROR:
             if ( strlen(file_name) > 0 )
-                fprintf( stderr, "ERROR: Compressed data error in '%s'.\n", file_name );
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
             else
-                fprintf( stderr, "ERROR: Compressed data error in stdin.\n" );
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in stdin.\n" );
             break;
         case Z_ERRNO:
             if ( strlen(file_name) > 0 )
-                fprintf( stderr, "ERROR: Read error on '%s'.\n", file_name );
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
             else
-                fprintf( stderr, "ERROR: Read error on stdin.\n" );
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on stdin.\n" );
             break;
         default:
-           fprintf( stderr, "ERROR: Error %d while building index.\n", ret.error );
+           printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while building index.\n", ret.error );
        }
        return EXIT_GENERIC_ERROR;
     }
 
     if ( number_of_index_points != (*index)->have )
         if ( number_of_index_points > 0 ) {
-            fprintf(stderr, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
-            fprintf(stderr, "Now index have %ld access points.\n", ret.value);
+            printToStderr( VERBOSITY_NORMAL, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
+            printToStderr( VERBOSITY_NORMAL, "Now index have %ld access points.\n", ret.value);
         } else
-            fprintf(stderr, "Built index with %ld access points.\n", ret.value);
+            printToStderr( VERBOSITY_NORMAL, "Built index with %ld access points.\n", ret.value);
 
     return EXIT_OK;
 
@@ -2187,23 +2184,23 @@ local int action_extract_from_byte(
     // open <FILE>:
     if ( strlen(file_name) > 0 ) {
         if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
-            fprintf(stderr, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
+            printToStderr( VERBOSITY_NORMAL, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
                 extract_from_byte, file_name, index_filename);
         if ( type_of_extraction == ACT_EXTRACT_TAIL )
-            fprintf(stderr, "Extracting tail data from file '%s',\nusing index '%s'...\n",
+            printToStderr( VERBOSITY_NORMAL, "Extracting tail data from file '%s',\nusing index '%s'...\n",
                 file_name, index_filename);            
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            fprintf( stderr, "Could not open '%s' for reading.\n", file_name );
+            printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
     } else {
         // stdin
         if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
-            fprintf(stderr, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
+            printToStderr( VERBOSITY_NORMAL, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
                 extract_from_byte, index_filename);
         if ( type_of_extraction == ACT_EXTRACT_TAIL )
-            fprintf(stderr, "Extracting tail data from stdin,\nusing index '%s'...\n",
+            printToStderr( VERBOSITY_NORMAL, "Extracting tail data from stdin,\nusing index '%s'...\n",
                 index_filename);
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
@@ -2222,7 +2219,7 @@ open_index_file:
             mark_recursion = 1;
             goto open_index_file;
         } else {
-            fprintf( stderr, "Index file '%s' not found.\n", index_filename );
+            printToStderr( VERBOSITY_NORMAL, "Index file '%s' not found.\n", index_filename );
             ret_value = EXIT_GENERIC_ERROR;
             goto action_extract_from_byte_error;
         }
@@ -2231,7 +2228,7 @@ open_index_file:
     // deserialize_index_from_file
     index = deserialize_index_from_file( index_file, 0, index_filename );
     if ( ! index ) {
-        fprintf( stderr, "Could not read index from file '%s'\n", index_filename );
+        printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'\n", index_filename );
         ret_value = EXIT_GENERIC_ERROR;
         goto action_extract_from_byte_error;
     }
@@ -2257,19 +2254,19 @@ open_index_file:
         } else {
             extract_from_byte = 0;
         }
-        fprintf(stderr, "...extracting data from uncompressed byte @%ld...\n",
+        printToStderr( VERBOSITY_NORMAL, "...extracting data from uncompressed byte @%ld...\n",
             extract_from_byte);
     }
     ret = extract( in, index, extract_from_byte, NULL, 0 );
     if ( ret.error < 0 ) {
-        fprintf( stderr, "Data extraction failed: %s error\n",
+        printToStderr( VERBOSITY_NORMAL, "Data extraction failed: %s error\n",
                 ret.error == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
         ret_value = EXIT_GENERIC_ERROR;
     } else {
         if ( strlen(file_name) > 0 )
-            fprintf( stderr, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
+            printToStderr( VERBOSITY_NORMAL, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
         else
-            fprintf( stderr, "Extracted %ld bytes from stdin to stdout.\n", ret.value );
+            printToStderr( VERBOSITY_NORMAL, "Extracted %ld bytes from stdin to stdout.\n", ret.value );
         ret_value = EXIT_OK;
     }
 
@@ -2295,42 +2292,62 @@ local int action_list_info( unsigned char *file_name ) {
     FILE *in = NULL;
     struct access *index = NULL;
     uint64_t j;
-    int ret_value;
+    int ret_value = EXIT_OK;
+    struct stat st;
 
     // open index file:
-    if ( strlen(file_name) > 0 ) {
-        fprintf( stdout, "Checking index file '%s' ...\n", file_name );
+    if ( strlen( file_name ) > 0 ) {
+        if ( verbosity_level > VERBOSITY_NONE ) fprintf( stdout, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            fprintf( stderr, "Could not open %s for reading.\nAborted.\n", file_name );
+            printToStderr( VERBOSITY_NORMAL, "Could not open %s for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
     } else {
         // stdin
-        fprintf( stderr, "Checking index from stdin ...\n" );
+        printToStderr( VERBOSITY_NORMAL, "Checking index from stdin ...\n" );
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
     }
 
-    // in case in == stdin, file_name == "" but this doesn't matter as windows won't be deconmpressed
+    // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
     index = deserialize_index_from_file( in, 0, file_name );
+
+    if ( strlen( file_name ) > 0 ) {
+        stat( file_name, &st );
+        if ( verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
+        if ( NULL != index) {
+            if ( verbosity_level > VERBOSITY_NORMAL &&
+                 index->file_size > 0 )
+                fprintf( stdout, " (%.2f%%)", (double)st.st_size / (double)index->file_size * 100.0 );
+        }
+        if ( verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "\n" );
+    }
 
     if ( ! index ) {
 
-        fprintf(stderr, "Could not read index from file '%s'.\n", file_name);
+        printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'.\n", file_name);
         ret_value = EXIT_GENERIC_ERROR;
         goto action_list_info_error;
 
     } else {
 
-        fprintf( stdout, "\tNumber of index points:    %ld\n", index->have );
-        if (index->file_size != 0)
-            fprintf( stdout, "\tSize of uncompressed file: %ld\n", index->file_size );
-        fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
-        for (j=0; j<index->have; j++) {
-            fprintf( stdout, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
+        if ( verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "\tNumber of index points:    %ld\n", index->have );
+        if (index->file_size != 0) {
+            if ( verbosity_level > VERBOSITY_NONE )
+                fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
         }
-        fprintf( stdout, "\n" );
+        if ( verbosity_level > VERBOSITY_NORMAL ) {
+            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
+            for (j=0; j<index->have; j++) {
+                fprintf( stdout, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
+            }
+        }
+        if (verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "\n" );
 
     }
 
@@ -2399,7 +2416,6 @@ int main(int argc, char **argv)
     int index_filename_indicated = 0;
     int force_action = 0;
     int force_strict_order = 0;
-    enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
@@ -2408,7 +2424,6 @@ int main(int argc, char **argv)
     int i, j;
     int actions_set = 0;
 
-    fprintf( stderr, "\n" );
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
@@ -2488,8 +2503,9 @@ int main(int argc, char **argv)
             case 'v':
                 verbosity_level = atoi(optarg);
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
-                    verbosity_level > VERBOSITY_EXCESIVE ) {
-                    fprintf( stderr, "Option `-v %s` ignored.\n", );
+                     strlen( optarg ) > 1 ||
+                     verbosity_level > VERBOSITY_MANIAC ) {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..3]`).\n", optarg );
                     verbosity_level = VERBOSITY_NORMAL;
                 }
                 break;
@@ -2497,27 +2513,27 @@ int main(int argc, char **argv)
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
                     if ( NULL == strchr("bcdefhiIlSstT", optopt) ) {
-                        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+                        printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
                 } else
-                    fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
-                fprintf( stderr, "\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Unknown option character `\\x%x'.\n", optopt);
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 return EXIT_INVALID_OPTION;
             default:
-                fprintf( stderr, "\n" );
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 abort ();
         }
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        fprintf(stderr, "Please, do not merge parameters `-bcdilStT`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStT`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( span_between_points != SPAN &&
         action != ACT_CREATE_INDEX && action != ACT_SUPERVISE ) {
-        fprintf(stderr, "`-s` parameter will be ignored.\n" );
+        printToStderr( VERBOSITY_NORMAL, "`-s` parameter will be ignored.\n" );
     }
 
     if ( actions_set == 0 ) {
@@ -2526,11 +2542,11 @@ int main(int argc, char **argv)
             action = ACT_CREATE_INDEX;
             if ( (optind + 1) < argc ) {
                 // too much files indicated to use `-I`
-                fprintf(stderr, "`-I` is incompatible with multiple input files.\nAborted.\n\n" );
+                printToStderr( VERBOSITY_NORMAL, "`-I` is incompatible with multiple input files.\nAborted.\n\n" );
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            fprintf(stderr, "Please, indicate one parameter of `-bcdilStT`, or `-h` for help.\nAborted.\n\n" );
+            printToStderr( VERBOSITY_NORMAL, "Please, indicate one parameter of `-bcdilStT`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -2541,7 +2557,7 @@ int main(int argc, char **argv)
           action == ACT_LIST_INFO ||
           action == ACT_COMPRESS_CHUNK ||
           action == ACT_DECOMPRESS_CHUNK ) ) {
-        fprintf( stderr, "WARNING: There's no sense in using `-F` with `-cdlST`: ignoring `-F`.\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: There's no sense in using `-F` with `-cdlST`: ignoring `-F`.\n" );
         force_strict_order = 0;
     }
 
@@ -2565,7 +2581,7 @@ int main(int argc, char **argv)
                 action_string = "Supervise still-growing file";
                 break;
             case ACT_LIST_INFO:
-                action_string = "List info in index file";
+                action_string = "Check & list info in index file";
                 break;
             case ACT_EXTRACT_TAIL:
                 action_string = "Extract tail data";
@@ -2574,7 +2590,7 @@ int main(int argc, char **argv)
                 action_string = "Extract from tail data from a still-growing file";
                 break;
         }
-        fprintf( stderr, "ACTION: %s\n\n", action_string );
+        printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
     }
 
 
@@ -2589,14 +2605,14 @@ int main(int argc, char **argv)
             // index file already exists
 
             if ( force_action == 0 ) {
-                fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
-                fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
+                printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
+                printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
             } else {
                 // force_action == 1 => delete index file
-                fprintf( stderr, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
                 // delete it
                 if ( remove( index_filename ) != 0 ) {
-                    fprintf( stderr, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
                     ret_value = EXIT_GENERIC_ERROR;
                 }
             }
@@ -2605,7 +2621,7 @@ int main(int argc, char **argv)
 
         // `-F` has no sense with stdin
         if ( force_strict_order == 1 ) {
-            fprintf( stderr, "WARNING: There is no sense in using `-F` with stdin input: ignoring `F`.\n" );
+            printToStderr( VERBOSITY_NORMAL, "WARNING: There is no sense in using `-F` with stdin input: ignoring `F`.\n" );
             force_strict_order = 0;
         }
 
@@ -2617,10 +2633,10 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
-                    fprintf( stderr, "\n" );
+                    printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
-                    fprintf( stderr, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -2631,7 +2647,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                    fprintf( stderr, "Error while compressing stdin.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Error while compressing stdin.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -2644,7 +2660,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout ) ) {
-                    fprintf( stderr, "Error while decompressing stdin.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Error while decompressing stdin.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -2656,8 +2672,8 @@ int main(int argc, char **argv)
                      index_filename_indicated == 1 &&
                      access( index_filename, F_OK ) != -1 ) {
                     // index file already exists
-                    fprintf( stderr, "Index file '%s' already exists.\n", index_filename );
-                    fprintf( stderr, "Use `-f` to force overwriting.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists.\n", index_filename );
+                    printToStderr( VERBOSITY_NORMAL, "Use `-f` to force overwriting.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -2668,13 +2684,13 @@ int main(int argc, char **argv)
                 } else {
                     ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX, 0, span_between_points );
                 }
-                fprintf( stderr, "\n" );
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_LIST_INFO:
                 // stdin is an index file that must be checked
                 ret_value = action_list_info( "" );
-                fprintf( stderr, "\n" );
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_SUPERVISE:
@@ -2684,7 +2700,7 @@ int main(int argc, char **argv)
                 } else {
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0, span_between_points );
                 }
-                fprintf( stderr, "\n" );
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_EXTRACT_TAIL:
@@ -2695,7 +2711,7 @@ int main(int argc, char **argv)
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
-                    fprintf( stderr, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
                     ret_value = EXIT_INVALID_OPTION;
                 }
                 break;
@@ -2708,7 +2724,7 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
                 }
-                fprintf( stderr, "\n" );
+                printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
         }
@@ -2718,8 +2734,8 @@ int main(int argc, char **argv)
         if ( action == ACT_SUPERVISE &&
              ( argc - optind > 1 ) ) {
             // supervise only accepts one input gz file
-            fprintf( stderr, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
-            fprintf( stderr, "Aborted.\n" );
+            printToStderr( VERBOSITY_NORMAL, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
+            printToStderr( VERBOSITY_NORMAL, "Aborted.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
@@ -2765,15 +2781,15 @@ int main(int argc, char **argv)
                 // index file already exists
 
                 if ( force_action == 0 ) {
-                    fprintf( stderr, "Index file '%s' already exists and will be used.\n", index_filename );
-                    fprintf( stderr, "(Use `-f` to force overwriting.)\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
+                    printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 } else {
                     // force_action == 1
                     // delete idnex file
-                    fprintf( stderr, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
                     // delete it
                     if ( remove( index_filename ) != 0 ) {
-                        fprintf( stderr, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                 }
@@ -2811,13 +2827,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        fprintf( stderr, "Error while opening file '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "Error while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                        fprintf( stderr, "Error while compressing '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "Error while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
@@ -2826,13 +2842,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        fprintf( stderr, "Error while opening file '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "Error while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != decompress_file( in, stdout ) ) {
-                        fprintf( stderr, "Error while decompressing '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "Error while decompressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
@@ -2851,7 +2867,7 @@ int main(int argc, char **argv)
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO, 0, span_between_points );
-                    fprintf( stderr, "\n" );
+                    printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
@@ -2862,16 +2878,17 @@ int main(int argc, char **argv)
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
-                    fprintf( stderr, "\n" );
+                    printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
             }
 
-            fprintf( stderr, "\n" );
+            printToStderr( VERBOSITY_NORMAL, "\n" );
+            printToStderr( VERBOSITY_MANIAC, "ERROR code = %d\n", ret_value );
 
-            if ( continue_on_error = 0 &&
+            if ( continue_on_error == 0 &&
                  ret_value != EXIT_OK ) {
-                fprintf( stderr, "Aborted.\n" );
+                printToStderr( VERBOSITY_NORMAL, "Aborted.\n" );
                 // break the for loop
                 break;
             }
@@ -2879,6 +2896,9 @@ int main(int argc, char **argv)
         }
 
     }
+
+    if ( (i -optind) > 1 )
+        printToStderr( VERBOSITY_NORMAL, "%d files processed\n\n", (i -optind) );
 
     // final freeing of resources
     if ( NULL != in ) {
