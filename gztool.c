@@ -2387,29 +2387,47 @@ action_list_info_error:
 // print help
 local void print_help() {
 
-    fprintf( stderr, " gztool (v0.3.14)\n GZIP files indexer and data retriever.\n");
-    fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
-    fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
-    fprintf( stderr, " //github.com/circulosmeos/gztool (by Roberto S. Galende)\n" );
-    fprintf( stderr, "\n  $ gztool [-b #] [-s #] [-cdefhilStT] [-I <INDEX>] <FILE>...\n\n" );
-    fprintf( stderr, " -b #: extract data from indicated byte position number\n      of gzip file, using index\n" );
-    fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
-    fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
-    fprintf( stderr, " -e: if multiple files are indicated, continue on error\n" );
-    fprintf( stderr, " -f: force index overwriting if one exists\n" );
-    fprintf( stderr, " -F: force index creation first, if none exists, and the action:\n" );
-    fprintf( stderr, "     if -F is not used, index is created interleaved with actions\n" );
+    fprintf( stderr, "\n" );
+    fprintf( stderr, "  gztool (v0.3.14)\n");
+    fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
+    fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
+    fprintf( stderr, "  for quick and random positioned data extraction.\n" );
+    fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
+    fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
+    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdefFhilStT] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
+    fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction an\n" );
+    fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
+    fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
+    fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
+    fprintf( stderr, "  next gztool run over the same data.\n\n" );
+    fprintf( stderr, " -b #: extract data from indicated byte position number\n" );
+    fprintf( stderr, "      of gzip file, using index, to STDOUT.\n" );
+    fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
+    fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
+    fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
+    fprintf( stderr, " -f: force index overwriting from scratch, if one exists\n" );
+    fprintf( stderr, " -F: force index creation/completion first, and then action: if\n" );
+    fprintf( stderr, "     `-F` is not used, index is created interleaved with actions.\n" );
     fprintf( stderr, " -h: print this help\n" );
     fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
-    fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
+    fprintf( stderr, "     the default index file name will be 'file.gzi').\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
-    fprintf( stderr, " -l: list info contained in indicated index file\n" );
-    fprintf( stderr, " -s #: span in MiB between index points. By default is 10.\n" );
-    fprintf( stderr, " -S: supervise indicated file: create a growing index,\n" );
-    fprintf( stderr, "     for a still-growing gzip file. (`-i` is  implicit).\n" );
-    fprintf( stderr, " -t: tail (extract last bytes) on indicated gzip file\n" );
-    fprintf( stderr, " -T: tail (extract last bytes) on indicated gzip file\n" );
-    fprintf( stderr, "     and continue Supervising & extracting it.\n" );
+    fprintf( stderr, " -l: check and list info contained in indicated index file\n" );
+    fprintf( stderr, " -s #: span in uncompressed MiB between index points when\n" );
+    fprintf( stderr, "     creating the index. By default is `10`.\n" );
+    fprintf( stderr, " -S: Supervise indicated file: create a growing index,\n" );
+    fprintf( stderr, "     for a still-growing gzip file. (`-i` is implicit).\n" );
+    fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
+    fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
+    fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
+    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `3` (maniac)\n" );
+    fprintf( stderr, "     Default is `1` (normal).\n" );
+    fprintf( stderr, "\n" );
+    fprintf( stderr, "  Example: Extract data from 1000000000 byte (1 GB) on,\n" );
+    fprintf( stderr, "  from `myfile.gz`: the extraction will create (or reuse, or\n" );
+    fprintf( stderr, "  complete) an index file named `myfile.gzi`:\n" );
+    fprintf( stderr, "  $ gztool -b 1000000000 myfile.gz\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -2533,7 +2551,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdefhiIlSstT", optopt) ) {
+                    if ( NULL == strchr("bcdefFhiIlSstTv", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
