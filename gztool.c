@@ -2416,12 +2416,13 @@ int main(int argc, char **argv)
     int index_filename_indicated = 0;
     int force_action = 0;
     int force_strict_order = 0;
+    int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
 
     int opt = 0;
-    int i, j;
+    int i;
     int actions_set = 0;
 
 
@@ -2886,6 +2887,9 @@ int main(int argc, char **argv)
             printToStderr( VERBOSITY_NORMAL, "\n" );
             printToStderr( VERBOSITY_MANIAC, "ERROR code = %d\n", ret_value );
 
+            if ( ret_value != EXIT_OK )
+                count_errors++;
+
             if ( continue_on_error == 0 &&
                  ret_value != EXIT_OK ) {
                 printToStderr( VERBOSITY_NORMAL, "Aborted.\n" );
@@ -2898,7 +2902,12 @@ int main(int argc, char **argv)
     }
 
     if ( (i -optind) > 1 )
-        printToStderr( VERBOSITY_NORMAL, "%d files processed\n\n", (i -optind) );
+        printToStderr( VERBOSITY_NORMAL, "%d files processed\n", 
+            ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) );
+    if ( count_errors > 0 )
+        printToStderr( VERBOSITY_NORMAL, "%d files processed with errors!\n", count_errors );
+
+    printToStderr( VERBOSITY_NORMAL, "\n" );
 
     // final freeing of resources
     if ( NULL != in ) {
