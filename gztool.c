@@ -776,24 +776,35 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 }
 
 
-/* Basic checks of existing index file */
-// TODO: description, and use this !
-int check_index_file( struct access *index, unsigned char *index_filename, unsigned char *file_name ) {
+/* Basic checks of existing index file:
+   - Checks that last index point ->in isn't greater than gzip file size
+*/
+// INPUT:
+// struct access *index         : pointer to index. Can be NULL => no check.
+// unsigned char *file_name     : gzip file name. Can be NULL or "" => no check.
+// unsigned char *index_filename: index file name. Must be != NULL, but can be "". Only used to print warning.
+// OUTPUT:
+// 0 on error, 1 on success
+int check_index_file( struct access *index, unsigned char *file_name, unsigned char *index_filename ) {
 
-    if ( strlen( file_name ) > 0 ) {
+    if ( NULL != file_name &&
+         strlen( file_name ) > 0 ) {
         if ( NULL != index ) {
             // size of input file
             struct stat st;
-            stat( file_name, &st ); // TODO: done: file_name received as parameter in build_index()
+            stat( file_name, &st );
+            printToStderr( VERBOSITY_EXCESSIVE, "(%ld >= %ld)\n", st.st_size, ( index->list[index->have - 1].in ) );
             if ( index->have > 1 &&
-                st.st_size > index->list[index->have - 1].in +
-                    2*( index->list[index->have - 1].in - index->list[index->have - 2].in )
+                st.st_size < ( index->list[index->have - 1].in )
                 ) {
-                printToStderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' seems to be for a file bigger than '%s'\n",
+                printToStderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' corresponds to a file bigger than '%s'\n",
                     index_filename, file_name );
+                return 0;
             }
         }
     }
+
+    return 1;
 
 }
 
@@ -865,7 +876,7 @@ local struct returned_output build_index(
     int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
                                                  // 1: start extraction on first depletion.
-    unsigned char input[CHUNK]; // TODO: convert to malloc
+    unsigned char input[CHUNK];    // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
     unsigned char window2[WINSIZE];// TODO: convert to malloc
     uint64_t window2_size;      // size of data stored in window2 buffer
@@ -1093,7 +1104,7 @@ local struct returned_output build_index(
                 // to the last CHUNK of gzip data ... this can be a good tail...
                 struct stat st;
                 if ( strlen( file_name ) > 0 ) {
-                    stat(file_name, &st); // TODO: done: file_name received as parameter in build_index()
+                    stat(file_name, &st);
                     if ( st.st_size > 0 ) {
                         continue_extraction = 1;
                         if ( st.st_size <= CHUNK ) {
@@ -1343,7 +1354,7 @@ local struct returned_output build_index(
                 if ( actual_index_point == 0 &&
                     // addpoint() only if index doesn't yet exist or it is incomplete
                     ( NULL == index || index->index_complete == 0 )
-                    ) { // TODO or finished ?
+                    ) {
                     if ( NULL != index )
                         printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
                             index->have, index_last_written_point );
@@ -1472,7 +1483,7 @@ local struct returned_output extract(FILE *in, struct access *index, off_t offse
     unsigned have;
     z_stream strm;
     struct point *here;
-    unsigned char input[CHUNK]; // TODO: convert to malloc
+    unsigned char input[CHUNK];     // TODO: convert to malloc
     unsigned char discard[WINSIZE]; // TODO: convert to malloc
     unsigned char *decompressed_window;
     uint64_t initial_len = len;
@@ -2108,6 +2119,14 @@ wait_for_file_creation:
         }
     }
 
+    // checks on index read from file:
+    if ( NULL != (*index) &&
+         strlen( file_name ) > 0 ) {
+        // (here, index_filename exists and index exists)
+        check_index_file( (*index), file_name, index_filename );
+        // return value is not used - only warn user and continue
+    }
+
     // stdout to binary mode if needed
     if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
          indx_n_extraction_opts == EXTRACT_TAIL ||
@@ -2318,6 +2337,7 @@ local int action_list_info( unsigned char *file_name ) {
         if ( verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
         if ( NULL != index) {
+            // TODO: this MUST be done with size of COMPRESSED data file
             if ( verbosity_level > VERBOSITY_NORMAL &&
                  index->file_size > 0 )
                 fprintf( stdout, " (%.2f%%)", (double)st.st_size / (double)index->file_size * 100.0 );
@@ -2669,16 +2689,22 @@ int main(int argc, char **argv)
                 break;
 
             case ACT_CREATE_INDEX:
-                if ( force_action == 0 &&
-                     index_filename_indicated == 1 &&
+                if ( index_filename_indicated == 1 &&
                      access( index_filename, F_OK ) != -1 ) {
                     // index file already exists
-                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists.\n", index_filename );
-                    printToStderr( VERBOSITY_NORMAL, "Use `-f` to force overwriting.\nAborted.\n\n" );
-                    ret_value = EXIT_GENERIC_ERROR;
-                    break;
+                    if ( force_action == 1 ) {
+                        // force_action == 1 => delete index file
+                        printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                        if ( remove( index_filename ) != 0 ) {
+                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                            ret_value = EXIT_GENERIC_ERROR;
+                            break;
+                        }
+                    } else {
+                        printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
+                        printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                    }
                 }
-                // TODO: if force_action==1, delete index first...
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
@@ -2786,9 +2812,8 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 } else {
                     // force_action == 1
-                    // delete idnex file
+                    // delete index file
                     printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                    // delete it
                     if ( remove( index_filename ) != 0 ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
                         ret_value = EXIT_GENERIC_ERROR;
