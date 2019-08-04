@@ -36,7 +36,7 @@ Also, some optimizations has been made:
 * windows are not loaded in memory unless they're needed, so the app memory footprint is fairly low.
 * data can be provided from/to stdin/stdout
 
-More functionality is planned.
+More functionality is planned: with v0.3 *index files will be reusable*, so they can be stopped at any time and reused and/or completed later.
 
 Compilation
 ===========
