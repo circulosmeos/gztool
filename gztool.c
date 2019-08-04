@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2 by Roberto S. Galende, 2019-06
+// v0.1, v0.2, v0.3.* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -2154,6 +2154,9 @@ wait_for_file_creation:
 }
 
 
+/*                                         */
+/* Deprecated in favour of build_index() ! */
+/*                                         */
 // extract data from a gzip file using its index file if it exists,
 // or FIRST creates the index if it doesn't exist, and then extract the data.
 // INPUT:
@@ -2343,7 +2346,7 @@ action_list_info_error:
 // print help
 local void print_help() {
 
-    fprintf( stderr, " gztool (v0.2)\n GZIP files indexer and data retriever.\n");
+    fprintf( stderr, " gztool (v0.3.14)\n GZIP files indexer and data retriever.\n");
     fprintf( stderr, " Create small indexes for gzipped files and use them\n for quick and random data extraction.\n" );
     fprintf( stderr, " No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, " //github.com/circulosmeos/gztool (by Roberto S. Galende)\n" );
@@ -2352,8 +2355,9 @@ local void print_help() {
     fprintf( stderr, " -c: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: raw-gzip-decompress indicated file to STDOUT \n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error\n" );
-    fprintf( stderr, " -f: with `-i` force index overwriting if one exists\n" );
-    fprintf( stderr, "     with `-b` force index creation if none exists\n" );
+    fprintf( stderr, " -f: force index overwriting if one exists\n" );
+    fprintf( stderr, " -F: force index creation first, if none exists, and the action:\n" );
+    fprintf( stderr, "     if -F is not used, index is created interleaved with actions\n" );
     fprintf( stderr, " -h: print this help\n" );
     fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
     fprintf( stderr, "     the default index file name will be 'file.gzi')\n" );
@@ -2390,6 +2394,7 @@ int main(int argc, char **argv)
     int continue_on_error = 0;
     int index_filename_indicated = 0;
     int force_action = 0;
+    int force_strict_order = 0;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
@@ -2402,7 +2407,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefhiI:ls:StT")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StT")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -2433,6 +2438,10 @@ int main(int argc, char **argv)
             // do not overwrite files unless `-f` is indicated
             case 'f':
                 force_action = 1;
+                break;
+            // First create index, the process indicated action
+            case 'F':
+                force_strict_order = 1;
                 break;
             // `-i` creates index for <FILE>
             case 'i':
@@ -2492,10 +2501,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "Please, do not merge parameters `-bcdilStT`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
+
     if ( span_between_points != SPAN &&
         action != ACT_CREATE_INDEX && action != ACT_SUPERVISE ) {
         fprintf(stderr, "`-s` parameter will be ignored.\n" );
     }
+
     if ( actions_set == 0 ) {
         // `-I <FILE>` is equivalent to `-i -I <FILE>`
         if ( action == ACT_NOT_SET && index_filename_indicated  == 1 ) {
@@ -2509,6 +2520,16 @@ int main(int argc, char **argv)
             fprintf(stderr, "Please, indicate one parameter of `-bcdilStT`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
+    }
+
+    if ( force_strict_order == 1 &&
+        ( action == ACT_SUPERVISE ||
+          action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+          action == ACT_LIST_INFO ||
+          action == ACT_COMPRESS_CHUNK ||
+          action == ACT_DECOMPRESS_CHUNK ) ) {
+        fprintf( stderr, "WARNING: There's no sense in using `-F` with `-cdlST`: ignoring `-F`.\n" );
+        force_strict_order = 0;
     }
 
 
@@ -2531,7 +2552,7 @@ int main(int argc, char **argv)
                 action_string = "Supervise still-growing file";
                 break;
             case ACT_LIST_INFO:
-                action_string = "List info of index file";
+                action_string = "List info in index file";
                 break;
             case ACT_EXTRACT_TAIL:
                 action_string = "Extract tail data";
@@ -2545,11 +2566,11 @@ int main(int argc, char **argv)
 
 
     if (optind == argc || argc == 1) {
-
+        // file input is stdin
 
         // check `-f` and execute delete if index file exists
         if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-                ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+               action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
              index_filename_indicated == 1 &&
              access( index_filename, F_OK ) != -1 ) {
             // index file already exists
@@ -2569,6 +2590,11 @@ int main(int argc, char **argv)
 
         }
 
+        // `-F` has no sense with stdin
+        if ( force_strict_order == 1 ) {
+            fprintf( stderr, "WARNING: There is no sense in using `-F` with stdin input: ignoring `F`.\n" );
+            force_strict_order = 0;
+        }
 
         // file input is stdin
         switch ( action ) {
@@ -2576,8 +2602,6 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
-                    /*ret_value = action_extract_from_byte(
-                        "", index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );*/
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
                     fprintf( stderr, "\n" );
@@ -2653,8 +2677,6 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_TAIL:
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
-                    /*ret_value = action_extract_from_byte(
-                        "", index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );*/
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points );
                 } else {
@@ -2725,7 +2747,7 @@ int main(int argc, char **argv)
             }
 
             if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-                    ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+                   action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
 
@@ -2745,6 +2767,7 @@ int main(int argc, char **argv)
 
             }
 
+
             // check possible errors and `-e` before proceed
             if ( ret_value != EXIT_OK ) {
                 if ( continue_on_error == 1 ) {
@@ -2754,14 +2777,19 @@ int main(int argc, char **argv)
                 }
             }
 
-            // TODO: if force_action==1, delete index first...
+
+            // create index first if `-F`
+            // (checking of conformity between `-F` and action has been done before)
+            if ( force_strict_order == 1 ) {
+                ret_value = action_create_index( file_name, &index, index_filename,
+                            JUST_CREATE_INDEX, 0, span_between_points );
+            }
+
 
             // "-bil" options can accept multiple files
             switch ( action ) {
 
                 case ACT_EXTRACT_FROM_BYTE:
-                    /*ret_value = action_extract_from_byte(
-                        file_name, index_filename, extract_from_byte, force_action, span_between_points, ACT_EXTRACT_FROM_BYTE );*/
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
                     break;
@@ -2797,7 +2825,10 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_CREATE_INDEX:
-                    ret_value = action_create_index( file_name, &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
+                    if ( force_strict_order == 0 )
+                        // if force_strict_order == 1 action has already been done!
+                        ret_value = action_create_index( file_name, &index, index_filename,
+                            JUST_CREATE_INDEX, 0, span_between_points );
                     break;
 
                 case ACT_LIST_INFO:
@@ -2805,13 +2836,12 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_SUPERVISE:
-                    ret_value = action_create_index( file_name, &index, index_filename, SUPERVISE_DO, 0, span_between_points );
+                    ret_value = action_create_index( file_name, &index, index_filename,
+                        SUPERVISE_DO, 0, span_between_points );
                     fprintf( stderr, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
-                    /*ret_value = action_extract_from_byte(
-                        file_name, index_filename, 0, force_action, span_between_points, ACT_EXTRACT_TAIL );*/
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points );
                     break;
