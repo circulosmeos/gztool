@@ -2396,13 +2396,13 @@ local void print_help() {
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
     fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdefFhilStT] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
-    fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction an\n" );
+    fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
-    fprintf( stderr, " -b #: extract data from indicated byte position number\n" );
-    fprintf( stderr, "      of gzip file, using index, to STDOUT.\n" );
+    fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
+    fprintf( stderr, "      gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
@@ -2944,7 +2944,7 @@ int main(int argc, char **argv)
 
     }
 
-    if ( (i -optind) > 1 )
+    if ( (i -optind) >= 1 )
         printToStderr( VERBOSITY_NORMAL, "%d files processed\n", 
             ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) );
     if ( count_errors > 0 )
