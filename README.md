@@ -10,10 +10,12 @@ See the [Release page](https://github.com/circulosmeos/gztool/releases) for exec
 Considerations
 ==============
 
-* Please, note that the initial index creation still consumes as much time as a complete file decompression.   
+* Please, note that the initial complete index creation still consumes as much time as a complete file decompression.   
 Once created the index will reduce this time.
 
-Nonetheless, note that **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
+Nonetheless, note that `gztool` **creates index interleaved with extraction of data**, so in the practice there's no waste of time. Note that if extraction of data or just index creation are stopped at any moment, `gztool` will reuse the remaining index on the next run over the same data, so time consumption is always minimized.
+
+Also **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
 
 * Index size is approximately 1% or less of compressed gzip file. The bigger the gzip usually the better the proportion.
 
@@ -30,13 +32,15 @@ Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), pr
 Also, some optimizations has been made:
 
 * **`gztool` can *Supervise* an still-growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
+* extraction of data and index creation are interleaved, so there's no waste of time for the index creation.
+* **index files are reusable**, so they can be stopped at any time and reused and/or completed later.
 * an *ex novo* index file format has been created to store the index
 * span between index points is raised by default from 1 to 10 MiB, and can be adjusted with `-s` (*span*).
 * windows are compressed in file
 * windows are not loaded in memory unless they're needed, so the app memory footprint is fairly low.
 * data can be provided from/to stdin/stdout
 
-More functionality is planned: with v0.3 *index files will be reusable*, so they can be stopped at any time and reused and/or completed later.
+More functionality is planned.
 
 Compilation
 ===========
@@ -65,61 +69,83 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      $ gztool [-b #] [-cdefhilsS] [-I <INDEX>] <FILE> ...
+      gztool (v0.3.14)
+      GZIP files indexer and data retriever.
+      Create small indexes for gzipped files and use them
+      for quick and random positioned data extraction.
+      No more waiting when the end of a 10 GiB gzip is needed!
+      //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-     -b #: extract data from indicated byte position number
-          of gzip file, using index
-     -c: raw-gzip-compress indicated file to STDOUT
-     -d: raw-gzip-decompress indicated file to STDOUT
-     -e: if multiple files are indicated, continue on error
-     -f: with `-i` force index overwriting if one exists
-         with `-b` force index creation if none exists
+      $ gztool [-b #] [-s #] [-v #] [-cdefFhilStT] [-I <INDEX>] <FILE>...
+
+      Note that actions `-bStT` proceed to an index file creation (if
+      none exists) INTERLEAVED with data extraction. As extraction and
+      index creation occur at the same time there's no waste of time.
+      Also you can interrupt actions at any moment and the remaining
+      index file will be reused (and completed if necessary) on the
+      next gztool run over the same data.
+
+     -b #: extract data from indicated uncompressed byte position of
+          gzip file (creating or reusing an index file) to STDOUT.
+     -c: utility: raw-gzip-compress indicated file to STDOUT
+     -d: utility: raw-gzip-decompress indicated file to STDOUT
+     -e: if multiple files are indicated, continue on error (if any)
+     -f: force index overwriting from scratch, if one exists
+     -F: force index creation/completion first, and then action: if
+         `-F` is not used, index is created interleaved with actions.
      -h: print this help
      -i: create index for indicated gzip file (For 'file.gz'
-         the default index file name will be 'file.gzi')
+         the default index file name will be 'file.gzi').
      -I INDEX: index file name will be 'INDEX'
-     -l: list info contained in indicated index file
-     -s #: span in MiB between index points. By default is 10.
-     -S: supervise indicated file: create a growing index,
-         for a still-growing gzip file. (`-i` is  implicit).
+     -l: check and list info contained in indicated index file
+     -s #: span in uncompressed MiB between index points when
+         creating the index. By default is `10`.
+     -S: Supervise indicated file: create a growing index,
+         for a still-growing gzip file. (`-i` is implicit).
+     -t: tail (extract last bytes) to STDOUT on indicated gzip file
+     -T: tail (extract last bytes) to STDOUT on indicated still-growing
+         gzip file, and continue Supervising & extracting to STDOUT.
+     -v #: output verbosity: from `0` (none) to `3` (maniac)
+         Default is `1` (normal).
 
-Please, **note that STDOUT is used for data extraction** with `-bcd` modifiers.
+      Example: Extract data from 1000000000 byte (1 GB) on,
+      from `myfile.gz` to the file `myfile.txt`. Also gztool will
+      create (or reuse, or complete) an index file named `myfile.gzi`:
+      $ gztool -b 1000000000 myfile.gz > myfile.txt
+
+Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
 
 When using `S` (*Supervise*), the gzipped file may not yet exist when the command is executed, but it will wait patiently for its creation.
 
 Examples of use
 ===============
 
-Make an index for test.gz. The index will be named test.gzi:
+Make an index for `test.gz`. The index will be named `test.gzi`:
 
     $ gztool -i test.gz
 
-Make an index for test.gz with name 'test.index'
+Make an index for `test.gz` with name `test.index`:
 
     $ gztool -I test.index test.gz
 
-Retrieve data from uncompressed byte position 1000000 inside test.gz:
+Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file will be created **at the same time** (named `test.gzi`):
 
     $ gztool -b 1000000 test.gz
-
-In this latter case, if index hasn't yet been created the program will complain and stop. But index creation can be `forced` if it does not exist yet:
-
-    $ gztool -fb 1000000 test.gz
 
 **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case:
 
     $ gztool -S openldap.log.gz
 
-Creating and index for all "\*gz" files in a directory. If `-e` were not used the process would stop on first file as an index for it already exist - `-e` continues processing next file regardless of previous errors.
+Creating and index for all "\*gz" files in a directory.
 
-    $ gztool -ie *gz
+    $ gztool -i *gz
 
-    Index file 'data.1.tar.gz.gzi' already exists.
-    Index file 'data.2.tar.gz.gzi' already exists.
-    Index file 'data_project.0.tar.gz.gzi' already exists.
-    Processing 'data_project.1.tar.gz' ...
-    Built index with 129 access points.
-    Index written to 'data_project.1.tar.gz.gzi'.
+    ACTION: Create index
+
+    Index file 'data.gzi' already exists and will be used.
+    (Use `-f` to force overwriting.)
+    Processing 'data.gz' ...
+    Index already complete. Nothing to do.
 
     Processing 'data_project.2.tar.gz' ...
     Built index with 73 access points.
@@ -129,17 +155,17 @@ Creating and index for all "\*gz" files in a directory. If `-e` were not used th
     Built index with 3 access points.
     Index written to 'project_2.gz.gzi'.
 
-Extract data from project.gz byte 25600000 to STDOUT, creating index if necessary (`-f`), and use `grep` on this output:
+Extract data from `project.gz` byte 25600000 to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
 
-    $ gztool -fb 25600000 project.gz | grep -i "balance = "
+    $ gztool -b 25600000 project.gz | grep -i "balance = "
 
-Please, note that STDOUT is used for data extraction with `-bcd` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
+Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
 
-    $ gztool -fb 99900000 project.gz > uncompressed.data
+    $ gztool -b 99900000 project.gz > uncompressed.data
 
-Show internals of all index files in this directory:
+Show internals of all index files in this directory. `-e` is used not to stop the process if a `*.gzi` file is not a valid gzip index file:
 
-    $ gztool -l *.gzi
+    $ gztool -v2 -el *.gzi
 
     Checking index file 'accounting.gz.gzi' ...
             Number of index points:    73
@@ -193,7 +219,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.2**.
+This version is **v0.3.14**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
