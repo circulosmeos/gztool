@@ -136,7 +136,7 @@ Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file
 
     $ gztool -S openldap.log.gz
 
-Creating and index for all "\*gz" files in a directory.
+Creating and index for all "\*gz" files in a directory:
 
     $ gztool -i *gz
 
@@ -149,11 +149,11 @@ Creating and index for all "\*gz" files in a directory.
 
     Processing 'data_project.2.tar.gz' ...
     Built index with 73 access points.
-    Index written to 'data_project.2.tar.gz.gzi'.
+    Index written to 'data_project.2.tar.gzi'.
 
     Processing 'project_2.gz' ...
     Built index with 3 access points.
-    Index written to 'project_2.gz.gzi'.
+    Index written to 'project_2.gzi'.
 
 Extract data from `project.gz` byte 25600000 to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
 
@@ -163,7 +163,7 @@ Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so
 
     $ gztool -b 99900000 project.gz > uncompressed.data
 
-Show internals of all index files in this directory. `-e` is used not to stop the process if a `*.gzi` file is not a valid gzip index file:
+Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file:
 
     $ gztool -v2 -el *.gzi
 
