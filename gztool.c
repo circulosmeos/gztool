@@ -1175,13 +1175,11 @@ local struct returned_output build_index(
     do {
         /* get some compressed data from input file */
 
-        printToStderr( VERBOSITY_MANIAC, "totin = %ld\n", totin );
-        printToStderr( VERBOSITY_MANIAC, "totout = %ld\n", totout );
-        printToStderr( VERBOSITY_MANIAC, "ftello = %ld\n", ftello(in) );
-
         strm.avail_in = fread(input, 1, CHUNK, in);
 
         avail_in_0 = strm.avail_in;
+
+        printToStderr( VERBOSITY_MANIAC, "totin=%ld,totout=%ld,ftello=%ld,avail_in=%d\n", totin, totout, ftello(in), strm.avail_in );
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
               indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
@@ -1256,9 +1254,7 @@ local struct returned_output build_index(
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR totin = %ld\n", totin );
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR totout = %ld\n", totout );
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR ftello = %ld\n", ftello(in) );
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR totin=%ld, totout=%ld, ftello=%ld\n", totin, totout, ftello(in) );
                 goto build_index_error;
             }
             if (ret.error == Z_STREAM_END)
@@ -1390,6 +1386,9 @@ local struct returned_output build_index(
           indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
 
         unsigned have = WINSIZE - strm.avail_out;
+
+        printToStderr( VERBOSITY_EXCESSIVE, "last extraction: %d\n", have );
+
         if ( have > 0 ) {
             if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                 ret.error = Z_ERRNO;
