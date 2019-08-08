@@ -69,14 +69,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.3.14)
+      gztool (v0.3.141)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-b #] [-s #] [-v #] [-cdefFhilStT] [-I <INDEX>] <FILE>...
+      $ gztool [-b #] [-s #] [-v #] [-cdefFhilStTW] [-I <INDEX>] <FILE>...
 
       Note that actions `-bStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data extraction. As extraction and
@@ -107,6 +107,8 @@ Usage
          gzip file, and continue Supervising & extracting to STDOUT.
      -v #: output verbosity: from `0` (none) to `3` (maniac)
          Default is `1` (normal).
+     -W: do not Write index to disk. But if one is already available
+         read and use it. Useful if the index is still under a `-S` run.
 
       Example: Extract data from 1000000000 byte (1 GB) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
@@ -132,9 +134,13 @@ Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file
 
     $ gztool -b 1000000 test.gz
 
-**Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case:
+**Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until the gzip-file data is terminated.
 
     $ gztool -S openldap.log.gz
+
+The previous command can be sent to background and with no verbosity, so we can forget about it:
+
+    $ gztool -v0 -S openldap.log.gz &
 
 Creating and index for all "\*gz" files in a directory:
 
@@ -163,7 +169,7 @@ Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so
 
     $ gztool -b 99900000 project.gz > uncompressed.data
 
-Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file:
+Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-v2` verbosity option will show data about each index point:
 
     $ gztool -v2 -el *.gzi
 
@@ -175,6 +181,9 @@ Show internals of all index files in this directory. `-e` is used not to stop th
         @ 10 / 0 ( 22870 ), @ 1034606 / 1069037 ( 32784 ), @ 2085195 / 2120817 ( 32784 ), @ 3136550 / 3180475 ( 32784 ), ...
     ...
 
+Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary).
+
+    $ gztool -Wb 100000 still-growing-gzip-file.gz > mytext
 
 Index file format
 =================
@@ -219,7 +228,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.3.14**.
+This version is **v0.3.141**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
