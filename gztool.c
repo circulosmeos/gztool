@@ -1345,11 +1345,16 @@ local struct returned_output build_index(
                     ++actual_index_point;
                 if ( NULL != index &&
                     actual_index_point > (index->have - 1) ) {
-                    actual_index_point = 0; // this checks are not needed any more
+                    actual_index_point = 0; // 0: actual_index_point won't be incremented or checked anymore
                 }
                 if ( actual_index_point == 0 &&
                     // addpoint() only if index doesn't yet exist or it is incomplete
-                    ( NULL == index || index->index_complete == 0 )
+                    ( NULL == index || index->index_complete == 0 ) &&
+                    // do not add points if position is lower than the last index point available:
+                    // (this can happen if -s is less now, than when the index was created!)
+                    ( NULL == index || ( index->have > 0 &&
+                        index->list[index->have -1].in < totin &&
+                        index->list[index->have -1].out < totout ) )
                     ) {
                     if ( NULL != index )
                         printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
