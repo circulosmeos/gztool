@@ -185,6 +185,14 @@ Extract data from a gzipped file which index is still growing with a `gztool -S`
 
     $ gztool -Wb 100000 still-growing-gzip-file.gz > mytext
 
+To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
+
+    $ gztool -WT still-growing-gzip-file.gz
+
+More on files still being "Supervised" (`-S`) by another `gztool` instance: they can also be tailed *à la* `tail -f` without updating the index on disk using `-W`:
+
+    $ gztool -WT still-growing-gzip-file.gz
+
 Index file format
 =================
 
