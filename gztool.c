@@ -1308,7 +1308,7 @@ local struct returned_output build_index(
                     if ( offset_in > 0 )
                         offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
-                        offset_in == 0 ) {
+                        offset_in <= 0 ) {
                         offset_in = 0;
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
