@@ -849,6 +849,8 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                        0 otherwise.
 // unsigned char *index_filename    : in case of SUPERVISE_DO, index will be written on-the-fly
 //                                    to this index file name.
+// write_index_to_disk  : 1: will write/update the index as usual;
+//                        0: will just read, but do not write nor update (overwrite) it
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -856,7 +858,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 local struct returned_output build_index(
     FILE *in, unsigned char *file_name, off_t span, struct access **built,
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset,
-    unsigned char *index_filename )
+    unsigned char *index_filename, int write_index_to_disk )
 {
     struct returned_output ret;
     off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
@@ -1369,11 +1371,13 @@ local struct returned_output build_index(
                     }
                     last = totout;
 
-                    // write added point!
-                    // note that points written are automatically emptied of its window values
-                    // in order to use as less memory a s possible
-                    if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
-                        goto build_index_error;
+                    if ( write_index_to_disk == 1 ) {
+                        // write added point!
+                        // note that points written are automatically emptied of its window values
+                        // in order to use as less memory a s possible
+                        if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
+                            goto build_index_error;
+                    }
                     index_last_written_point = index->have;
                 }
 
@@ -1423,13 +1427,13 @@ local struct returned_output build_index(
 
     // once all index values are filled, close index file: a last call must be done
     // with index_last_written_point = index->have
-    if ( index->index_complete == 0 )
+    if ( index->index_complete == 0 && write_index_to_disk == 1 )
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto build_index_error;
     if ( NULL != index_file )
         fclose(index_file);
 
-    if ( index->index_complete == 0 )
+    if ( index->index_complete == 0 && write_index_to_disk == 1 )
         if ( strlen(index_filename) > 0 )
             printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
@@ -2047,12 +2051,14 @@ local int decompress_file(FILE *source, FILE *dest)
 //                                the uncompressed stream from which to extract to stdout.
 //                                0 otherwise.
 // off_t span_between_points    : span between index points in bytes
+// write_index_to_disk          : 1: will write/update the index as usual;
+//                                0: will just read, but do not write nor update (overwrite) it
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
     unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
-    off_t offset, off_t span_between_points )
+    off_t offset, off_t span_between_points, int write_index_to_disk )
 {
 
     FILE *in;
@@ -2139,8 +2145,8 @@ wait_for_file_creation:
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
     }
 
-    ret = build_index( in, file_name, span_between_points,
-            index, indx_n_extraction_opts, offset, index_filename );
+    ret = build_index( in, file_name, span_between_points, index,
+            indx_n_extraction_opts, offset, index_filename, write_index_to_disk );
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -2161,12 +2167,12 @@ wait_for_file_creation:
                 printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on stdin.\n" );
             break;
         default:
-           printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while building index.\n", ret.error );
+           printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
        }
        return EXIT_GENERIC_ERROR;
     }
 
-    if ( number_of_index_points != (*index)->have )
+    if ( number_of_index_points != (*index)->have && write_index_to_disk == 1 )
         if ( number_of_index_points > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
             printToStderr( VERBOSITY_NORMAL, "Now index have %ld access points.\n", ret.value);
@@ -2181,7 +2187,7 @@ wait_for_file_creation:
 /*                                         */
 /* Deprecated in favour of build_index() ! */
 /*                                         */
-// extract data from a gzip file using its index file if it exists,
+/*// extract data from a gzip file using its index file if it exists,
 // or FIRST creates the index if it doesn't exist, and then extract the data.
 // INPUT:
 // unsigned char *file_name     : gzip file name
@@ -2302,7 +2308,7 @@ action_extract_from_byte_error:
         free_index( index );
     return ret_value;
 
-}
+}*/
 
 
 // list info for an index file
@@ -2392,13 +2398,13 @@ action_list_info_error:
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.3.14)\n");
+    fprintf( stderr, "  gztool (v0.3.141)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdefFhilStT] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdefFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -2427,6 +2433,8 @@ local void print_help() {
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
     fprintf( stderr, " -v #: output verbosity: from `0` (none) to `3` (maniac)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
+    fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
+    fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
     fprintf( stderr, "\n" );
     fprintf( stderr, "  Example: Extract data from 1000000000 byte (1 GB) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
@@ -2458,6 +2466,7 @@ int main(int argc, char **argv)
     int index_filename_indicated = 0;
     int force_action = 0;
     int force_strict_order = 0;
+    int write_index_to_disk = 0;
     int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -2470,7 +2479,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StTv:")) != -1)
+    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StTvW:")) != -1)
         switch(opt) {
             // help
             case 'h':
@@ -2498,7 +2507,7 @@ int main(int argc, char **argv)
             case 'e':
                 continue_on_error = 1;
                 break;
-            // do not overwrite files unless `-f` is indicated
+            // `-f` forces index overwriting from scratch, if one exists
             case 'f':
                 force_action = 1;
                 break;
@@ -2552,10 +2561,14 @@ int main(int argc, char **argv)
                     verbosity_level = VERBOSITY_NORMAL;
                 }
                 break;
+            // `-W` do not write nor update index on disk
+            case 'W':
+                write_index_to_disk = 0;
+                break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdefFhiIlSstTv", optopt) ) {
+                    if ( NULL == strchr("bcdefFhiIlSstTvW", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -2574,8 +2587,16 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    if ( write_index_to_disk == 1 &&
+           ( force_action == 1 || force_strict_order == 1)
+        ) {
+        printToStderr( VERBOSITY_NORMAL, "Please, do not merge contradictory parameters `-U` and `-fF`.\nAborted.\n\n" );
+        return EXIT_INVALID_OPTION;
+    }
+
     if ( span_between_points != SPAN &&
-        action != ACT_CREATE_INDEX && action != ACT_SUPERVISE ) {
+        ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
+        ) {
         printToStderr( VERBOSITY_NORMAL, "`-s` parameter will be ignored.\n" );
     }
 
@@ -2675,7 +2696,8 @@ int main(int argc, char **argv)
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
-                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
+                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points,
+                        write_index_to_disk );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -2729,9 +2751,9 @@ int main(int argc, char **argv)
                 }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
                 } else {
-                    ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2745,9 +2767,9 @@ int main(int argc, char **argv)
             case ACT_SUPERVISE:
                 // stdin is a gzip file for which an index file must be created on-the-fly
                 if ( index_filename_indicated == 1 ) {
-                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, 0, span_between_points, write_index_to_disk );
                 } else {
-                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0, span_between_points );
+                    ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0, span_between_points, write_index_to_disk );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2756,7 +2778,8 @@ int main(int argc, char **argv)
                 // stdin is a gzip file
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
-                        EXTRACT_TAIL, 0, span_between_points );
+                        EXTRACT_TAIL, 0, span_between_points,
+                        write_index_to_disk );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -2768,10 +2791,12 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_TAIL_AND_CONTINUE:
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
-                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
+                        write_index_to_disk );
                 } else {
                     ret_value = action_create_index( "", &index, "",
-                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
+                        write_index_to_disk );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2859,7 +2884,7 @@ int main(int argc, char **argv)
             // (checking of conformity between `-F` and action has been done before)
             if ( force_strict_order == 1 ) {
                 ret_value = action_create_index( file_name, &index, index_filename,
-                            JUST_CREATE_INDEX, 0, span_between_points );
+                            JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
             }
 
 
@@ -2868,7 +2893,7 @@ int main(int argc, char **argv)
 
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_create_index( file_name, &index, index_filename,
-                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points );
+                        EXTRACT_FROM_BYTE, extract_from_byte, span_between_points, write_index_to_disk );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -2905,7 +2930,7 @@ int main(int argc, char **argv)
                     if ( force_strict_order == 0 )
                         // if force_strict_order == 1 action has already been done!
                         ret_value = action_create_index( file_name, &index, index_filename,
-                            JUST_CREATE_INDEX, 0, span_between_points );
+                            JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
                     break;
 
                 case ACT_LIST_INFO:
@@ -2914,18 +2939,18 @@ int main(int argc, char **argv)
 
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename,
-                        SUPERVISE_DO, 0, span_between_points );
+                        SUPERVISE_DO, 0, span_between_points, write_index_to_disk );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
                     ret_value = action_create_index( file_name, &index, index_filename,
-                        EXTRACT_TAIL, 0, span_between_points );
+                        EXTRACT_TAIL, 0, span_between_points, write_index_to_disk );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
                     ret_value = action_create_index( file_name, &index, index_filename,
-                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points );
+                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points, write_index_to_disk );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
