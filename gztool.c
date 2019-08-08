@@ -2466,7 +2466,7 @@ int main(int argc, char **argv)
     int index_filename_indicated = 0;
     int force_action = 0;
     int force_strict_order = 0;
-    int write_index_to_disk = 0;
+    int write_index_to_disk = 1;
     int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -2479,8 +2479,8 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StTvW:")) != -1)
-        switch(opt) {
+    while ((opt = getopt(argc, argv, "b:cdefFhiI:ls:StTv:W")) != -1)
+        switch (opt) {
             // help
             case 'h':
                 print_help();
@@ -2544,14 +2544,17 @@ int main(int argc, char **argv)
                 action = ACT_SUPERVISE;
                 actions_set++;
                 break;
+            // `-t` tail file contents
             case 't':
                 action = ACT_EXTRACT_TAIL;
                 actions_set++;
                 break;
+            // `-T` tail file contents and continue Supervising (and extracting data from) gzip file
             case 'T':
                 action = ACT_EXTRACT_TAIL_AND_CONTINUE;
                 actions_set++;
                 break;
+            // `-v` verbosity
             case 'v':
                 verbosity_level = atoi(optarg);
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
@@ -2587,10 +2590,10 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
-    if ( write_index_to_disk == 1 &&
+    if ( write_index_to_disk == 0 &&
            ( force_action == 1 || force_strict_order == 1)
         ) {
-        printToStderr( VERBOSITY_NORMAL, "Please, do not merge contradictory parameters `-U` and `-fF`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "Please, do not merge contradictory parameters `-W` and `-fF`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
 
