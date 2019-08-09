@@ -850,7 +850,12 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 // unsigned char *index_filename    : in case of SUPERVISE_DO, index will be written on-the-fly
 //                                    to this index file name.
 // write_index_to_disk  : 1: will write/update the index as usual;
-//                        0: will just read, but do not write nor update (overwrite) it
+//                        0: will just read, but do not write nor update (overwrite) the index on disk,
+//                           and also, do not create/update the index in memory (**built and returned_output.value):
+//                           This is done because if index is not written to disk, windows would need to be
+//                           maintained in memory, increasing the memory footprint unnecessarily as the index
+//                           is not (actually) used later in the app. (Windows could be also emptied, but again,
+//                           index points are not used later.)
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -1356,7 +1361,9 @@ local struct returned_output build_index(
                     // (this can happen if -s is less now, than when the index was created!)
                     ( NULL == index || ( index->have > 0 &&
                         index->list[index->have -1].in < totin &&
-                        index->list[index->have -1].out < totout ) )
+                        index->list[index->have -1].out < totout ) ) &&
+                    // if `-W`, index is not written to disk, and it will also not be created/updated (!)
+                    write_index_to_disk == 1
                     ) {
                     if ( NULL != index )
                         printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
@@ -1371,13 +1378,11 @@ local struct returned_output build_index(
                     }
                     last = totout;
 
-                    if ( write_index_to_disk == 1 ) {
-                        // write added point!
-                        // note that points written are automatically emptied of its window values
-                        // in order to use as less memory a s possible
-                        if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
-                            goto build_index_error;
-                    }
+                    // write added point!
+                    // note that points written are automatically emptied of its window values
+                    // in order to use as less memory a s possible
+                    if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
+                        goto build_index_error;
                     index_last_written_point = index->have;
                 }
 
