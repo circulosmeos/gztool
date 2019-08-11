@@ -2422,7 +2422,7 @@ local void print_help() {
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
-    fprintf( stderr, "      gzip file (creating or reusing an index file) to STDOUT.\n" );
+    fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
