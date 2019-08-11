@@ -913,15 +913,20 @@ local struct returned_output build_index(
     if ( strlen(index_filename) > 0 &&
         ( NULL == index || index->index_complete == 0 )
         ) {
-        if ( access( index_filename, F_OK ) != -1 ) {
-            // index_filename already exist:
-            // "r+": Open a file for update (both for input and output). The file must exist.
-            // r+, because the index may be incomplete, and so build_index() will
-            // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
-            index_file = fopen( index_filename, "r+b" );
+        if ( write_index_to_disk == 1 ) {
+            if ( access( index_filename, F_OK ) != -1 ) {
+                // index_filename already exist:
+                // "r+": Open a file for update (both for input and output). The file must exist.
+                // r+, because the index may be incomplete, and so build_index() will
+                // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
+                index_file = fopen( index_filename, "r+b" );
+            } else {
+                // index_filename does not exist:
+                index_file = fopen( index_filename, "w+b" );
+            }
         } else {
-            // index_filename does not exist:
-            index_file = fopen( index_filename, "w+b" );
+            // open index file in read-only mode (if file does not exist, NULL == index_file)
+            index_file = fopen( index_filename, "rb" );
         }
     } else {
         // restrictions to not collide index output with data output to stdout
@@ -2417,7 +2422,7 @@ local void print_help() {
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
-    fprintf( stderr, "      gzip file (creating or reusing an index file) to STDOUT.\n" );
+    fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
