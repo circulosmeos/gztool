@@ -19,7 +19,7 @@ Also **`gztool` can monitor a growing gzip file** (for example, a log created by
 
 * Index size is approximately 1% or less of compressed gzip file. The bigger the gzip usually the better the proportion.
 
-Note that the size of the index depends on the span between index points on the uncompressed stream: by default it is 10 MiB, this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (by average) no matter the size of the gzip file - which is a fairly low value!    
+Note that the size of the index depends on the span between index points on the uncompressed stream: by default it is 10 MiB, this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (on average) no matter the size of the gzip file - which is a fairly low value!    
 The span between index points can be adjusted with `-s` (*span*) option.
 
 Background
@@ -36,8 +36,8 @@ Also, some optimizations has been made:
 * **index files are reusable**, so they can be stopped at any time and reused and/or completed later.
 * an *ex novo* index file format has been created to store the index
 * span between index points is raised by default from 1 to 10 MiB, and can be adjusted with `-s` (*span*).
-* windows are compressed in file
-* windows are not loaded in memory unless they're needed, so the app memory footprint is fairly low.
+* windows **are compressed** in file
+* windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
 * data can be provided from/to stdin/stdout
 
 More functionality is planned.
@@ -227,11 +227,18 @@ With 64 bit long numbers, the index could potentially manage files up to 2^64 = 
 Other tools which try to provide random access to gzipped files
 ===============================================================
 
+* also based on [zlib's `zran.c`](https://github.com/madler/zlib/blob/master/examples/zran.c):
+
+  * Perl module [Gzip::RandomAccess](https://metacpan.org/pod/Gzip::RandomAccess). It seems to create the index only in memory, after decompressing the whole gzip file.
+  * Go package [gzran](https://github.com/coreos/gzran). It seems to create the index only in memory, after decompressing the whole gzip file.
+
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
-* [indexed_gzip](https://github.com/pauldmccarthy/indexed_gzip) Fast random access of gzip files in Python
+* [indexed_gzip](https://github.com/pauldmccarthy/indexed_gzip) Fast random access of gzip files in Python: it also creates file indexes, but they are not as small and they cannot be reused as easily as with `gztool`.
 
 * [zindex](https://github.com/mattgodbolt/zindex) creates SQLite indexes for text files based on regular expressions
+
+* interesting article on parallel gzip decompression: [`Parallel decompression of gzip-compressed files and random access to DNA sequences`](https://arxiv.org/pdf/1905.07224.pdf)
 
 Version
 =======
