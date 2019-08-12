@@ -2415,7 +2415,7 @@ action_list_info_error:
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.3.141)\n");
+    fprintf( stderr, "  gztool (v0.3.1415)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
