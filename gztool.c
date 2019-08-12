@@ -713,6 +713,15 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 
     }
 
+    // update index->size on disk with index->have data
+    // ( if index->have == 0, no index points still, maintain UINT64_MAX )
+    if ( index->have > 0 ) {
+        // seek to index->have position
+        fseeko( output_file, 3*sizeof(temp), SEEK_SET );
+        // write index->have value; (when the index be closed, index->size on disk will be >0)
+        fwrite_endian( &(index->have), sizeof(index->have), output_file );
+    }
+
     // fseek to index position of index_last_written_point
     offset = 4*sizeof(temp);
     for (i = 0; i < index_last_written_point; i++) {
@@ -1784,9 +1793,9 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     fread_endian(&(index_have), sizeof(index_have), input_file);
     fread_endian(&(index_size), sizeof(index_size), input_file);
 
-    // index->size equals index->have when the index file is correctly closed
-    // and index->have == UINT64_MAX when the index is still growing
-    if (index_have == 0 && index_size == UINT64_MAX) {
+    // index->size equals index->have when the index file is correctly closed,
+    // and index->have on disk == 0 && index->have on disk = index->size whilst the index is growing:
+    if ( index_have == 0 && index_size > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
         index_complete = 0;
     }
@@ -1805,12 +1814,10 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                     file_name, ftello(input_file), index->have + 1 );
             continue;
         }
-        if ( (here.in > 10 && here.in > here.out) ||
-             here.in > file_size ||
-             here.bits > 8 ||
-             here.window_size < 0 || here.window_size > 2*WINSIZE )
+        if ( here.bits > 8 ||
+             here.window_size < 0 )
         {
-            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d), ", index, here.bits, here.in, here.out, here.window_size);
+            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
                     file_name, ftello(input_file), index->have + 1 );
             break; // break do loop
