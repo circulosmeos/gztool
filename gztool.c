@@ -713,6 +713,15 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 
     }
 
+    // update index->size on disk with index->have data
+    // ( if index->have == 0, no index points still, maintain UINT64_MAX )
+    if ( index->have > 0 ) {
+        // seek to index->have position
+        fseeko( output_file, 3*sizeof(temp), SEEK_SET );
+        // write index->have value; (when the index be closed, index->size on disk will be >0)
+        fwrite_endian( &(index->have), sizeof(index->have), output_file );
+    }
+
     // fseek to index position of index_last_written_point
     offset = 4*sizeof(temp);
     for (i = 0; i < index_last_written_point; i++) {
@@ -871,7 +880,7 @@ local struct returned_output build_index(
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
     uint64_t output_data_counter = 0;// counts uncompressed bytes output
-    unsigned char *decompressed_window;
+    unsigned char *decompressed_window = NULL;
     z_stream strm;
     FILE *index_file = NULL;
     size_t index_last_written_point = 0;
@@ -970,6 +979,7 @@ local struct returned_output build_index(
             // this index must be completed from last point: index->list[index->have-1]
             totin  = index->list[ actual_index_point ].in;
             totout = index->list[ actual_index_point ].out;
+            last = totout;
             here = &(index->list[ actual_index_point ]);
         }
 
@@ -988,6 +998,7 @@ local struct returned_output build_index(
             actual_index_point--;
             totin  = index->list[ actual_index_point ].in;
             totout = index->list[ actual_index_point ].out;
+            last = totout;
             continue_extraction = 1;
             // offset value comes from caller as parameter
         }
@@ -1071,9 +1082,6 @@ local struct returned_output build_index(
             // In order to avoid deleting the on-memory here->window_size, that may
             // be needed later if index must be increased and written disk (fseeko):
             (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-            free(here->window);
-            here->window = decompressed_window;
-            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
         } else {
             (void)inflateSetDictionary(&strm, here->window, WINSIZE);
         }
@@ -1348,6 +1356,7 @@ local struct returned_output build_index(
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
                 printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld\n", actual_index_point );
+                printToStderr( VERBOSITY_MANIAC, "\t(%ld, %ld)\n", totout, last );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -1451,6 +1460,9 @@ local struct returned_output build_index(
 
     index->index_complete = 1; /* index is now complete */
 
+    if ( NULL != decompressed_window )
+        free(decompressed_window);
+
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
@@ -1465,6 +1477,8 @@ local struct returned_output build_index(
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
     (void)inflateEnd(&strm);
+    if ( NULL != decompressed_window )
+        free(decompressed_window);
     if (index != NULL)
         free_index(index);
     *built = NULL;
@@ -1747,6 +1761,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     struct access *index = NULL;
     uint32_t i;
     uint32_t index_complete = 1;
+    uint64_t number_of_index_points = 0;
     uint64_t index_have, index_size, file_size;
     char header[GZIP_INDEX_HEADER_SIZE];
     struct stat st;
@@ -1784,13 +1799,17 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     fread_endian(&(index_have), sizeof(index_have), input_file);
     fread_endian(&(index_size), sizeof(index_size), input_file);
 
-    // index->size equals index->have when the index file is correctly closed
-    // and index->have == UINT64_MAX when the index is still growing
-    if (index_have == 0 && index_size == UINT64_MAX) {
+    number_of_index_points = index_have;
+
+    // index->size equals index->have when the index file is correctly closed,
+    // and index->have on disk == 0 && index->have on disk = index->size whilst the index is growing:
+    if ( index_have == 0 && index_size > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
         index_complete = 0;
+        number_of_index_points = index_size;
     }
 
+    printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %ld\n", number_of_index_points );
 
     // read the list of points
     do {
@@ -1801,9 +1820,17 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
         if ( here.window_size == 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
+            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
                     file_name, ftello(input_file), index->have + 1 );
             continue;
+        }
+        if ( here.bits > 8 ||
+             here.window_size < 0 )
+        {
+            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
+            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
+                    file_name, ftello(input_file), index->have + 1 );
+            break; // exit do loop
         }
 
         if ( load_windows == 0 ) {
@@ -1862,6 +1889,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         // at least an empty window must enter, otherwise end loop:
         ( sizeof(here.out)+sizeof(here.in)+sizeof(here.bits)+
           sizeof(here.window_beginning)+sizeof(index->file_size) )
+        &&
+        --number_of_index_points > 0
         );
 
 
