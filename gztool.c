@@ -1801,9 +1801,19 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
         if ( here.window_size == 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
+            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
                     file_name, ftello(input_file), index->have + 1 );
             continue;
+        }
+        if ( (here.in > 10 && here.in > here.out) ||
+             here.in > file_size ||
+             here.bits > 8 ||
+             here.window_size < 0 || here.window_size > 2*WINSIZE )
+        {
+            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d), ", index, here.bits, here.in, here.out, here.window_size);
+            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
+                    file_name, ftello(input_file), index->have + 1 );
+            break; // break do loop
         }
 
         if ( load_windows == 0 ) {
