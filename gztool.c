@@ -632,16 +632,11 @@ local struct access *addpoint(struct access *index, uint32_t bits,
         next->window_size = size;
         printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
     } else {
-        if ( window == NULL ) {
-            // create a NULL window: it resides on file,
-            // and can/will later loaded on memory
-            next->window_size = window_size;
-            next->window = NULL;
-        } else {
-            // passed window is already compressed: store as it is with size "window_size"
-            next->window_size = window_size;
-            next->window = window;
-        }
+        // if NULL == window, this creates a NULL window: it resides on file,
+        // and can/will later loaded on memory with its correct ->window_size;
+        // if passed window is already compressed it will be stored as it is with size "window_size"
+        next->window_size = window_size;
+        next->window = window;
     }
 
     index->have++;
@@ -868,8 +863,8 @@ local struct returned_output build_index(
     struct returned_output ret;
     off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
     off_t totout = 0;           /* our own total counters to avoid 4GB limit */
-    off_t last;                 /* totout value of last access point */
-    off_t offset_in;
+    off_t last   = 0;           /* totout value of last access point */
+    off_t offset_in = 0;        /* offset in compressed data to reach (opposed to "offset" in uncompressed data) */
     off_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
     off_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
     struct access *index = NULL;/* access points being generated */
@@ -934,7 +929,7 @@ local struct returned_output build_index(
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
         index_file = stdout;
     }
-    if ( NULL == index_file ) {
+    if ( NULL == index_file && write_index_to_disk == 1 ) {
         printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
         goto build_index_error;
     }
@@ -1076,9 +1071,9 @@ local struct returned_output build_index(
             // In order to avoid deleting the on-memory here->window_size, that may
             // be needed later if index must be increased and written disk (fseeko):
             (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-            /*free(here->window);
+            free(here->window);
             here->window = decompressed_window;
-            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window*/
+            here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
         } else {
             (void)inflateSetDictionary(&strm, here->window, WINSIZE);
         }
@@ -1425,13 +1420,18 @@ local struct returned_output build_index(
 
     }
 
-    // print output_data_counter info
-    if ( output_data_counter > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
-
-    /* clean up and return index (release unused entries in list) */
+    /* clean up */
     (void)inflateEnd(&strm);
-    index->list = realloc(index->list, sizeof(struct point) * index->have);
+    /* and return index (release unused entries in list) */
+    {
+        struct point *next = realloc(index->list, sizeof(struct point) * index->have);
+        if (next == NULL) {
+            ret.error = Z_MEM_ERROR;
+            ret.value = 0;
+            goto build_index_error;
+        }
+        index->list = next;
+    }
     index->size = index->have;
     index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
 
@@ -1451,12 +1451,19 @@ local struct returned_output build_index(
 
     index->index_complete = 1; /* index is now complete */
 
+    // print output_data_counter info
+    if ( output_data_counter > 0 )
+        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
+
     *built = index;
     ret.value = index->have;
     return ret;
 
     /* return error */
   build_index_error:
+    // print output_data_counter info
+    if ( output_data_counter > 0 )
+        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
     (void)inflateEnd(&strm);
     if (index != NULL)
         free_index(index);
@@ -1843,7 +1850,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d), ", index, here.bits, here.in, here.out, here.window_size);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, NULL, here.window_size );
+        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
 
         // after increasing index, copy values which were not passed to addpoint():
         index->list[index->have - 1].window_beginning = here.window_beginning;
