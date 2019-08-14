@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2, v0.3.* by Roberto S. Galende, 2019
+// v0.1, v0.2, v0.3.*, v0.4 by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -133,6 +133,7 @@
 #include <unistd.h> // getopt(), access(), sleep()
 #include <ctype.h>  // isprint()
 #include <sys/stat.h> // stat()
+#include <math.h>   // pow()
 
 // sets binary mode for stdin in Windows
 #define STDIN 0
@@ -2433,7 +2434,7 @@ local int action_list_info( unsigned char *file_name ) {
             if ( NULL != gzip_filename ) {
                 struct stat st2;
                 stat( gzip_filename, &st2 );
-                if ( st.st_size > 0 ) {
+                if ( st2.st_size > 0 ) {
                     fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st2.st_size * 100.0 );
                     fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
                 }
@@ -2483,6 +2484,74 @@ action_list_info_error:
 }
 
 
+// obtain an integer from inputs like
+// with valid suffixes: kmgtpe (powers of 10) and KMGTPE (powers of 2),
+// and valid prefixes: "0" (octal), "0x" or "0X" (hexadecimal).
+// Examples:
+// "83m" == 83*10^6, "9G" == 9*2^30, "0xa" == 10, "010k" = 8000
+// INPUT:
+// unsigned char *original_input: string containing the data (only read)
+// OUTPUT:
+// 64 bit long integer number
+off_t giveMeAnInteger( const unsigned char *original_input ) {
+
+    int i = 0;
+    unsigned char *PowerSuffixes = "kmgtpeKMGTPE";
+    int PowerSuffixesLength = strlen(PowerSuffixes)/2;
+    unsigned char *input = NULL;
+    off_t result = 1;
+
+    if ( NULL == original_input )
+        return 0LL;
+
+    input = malloc( strlen(original_input) +1 );
+    memcpy(input, original_input, strlen(original_input) +1);
+
+    if ( strlen(input) > 1 ) {
+        // look for suffixes of size
+
+        for ( i=0; i<strlen(PowerSuffixes); i++ ) {
+            if ( (unsigned char *)strchr(input, PowerSuffixes[i]) == (unsigned char *)(input + strlen(input) -1) ) {
+                if ( i >= PowerSuffixesLength ) {
+                    result = pow( 2.0, 10.0 + 10.0*(double)(i - PowerSuffixesLength) );
+                } else {
+                    result = pow( 10.0, 3.0 + 3.0*(double)i );
+                }
+                input[strlen(input) -1] = '\0';
+                break;
+            }
+        }
+
+    }
+
+    if ( strlen(input) > 1 ) {
+        // look fo prefixes of base
+
+        if ( input[0] == '0' ) {
+            if ( strlen(input) > 2 &&
+                 ( input[1] == 'x' || input[1] == 'X' ) ) {
+                // hexadecimal
+                result = strtoll( input +2, NULL, 16 ) * result;
+            } else {
+                // octal
+                result = strtoll( input +1, NULL, 8 ) * result;
+            }
+            input[0] = '1';
+            input[1] = '\0';
+        }
+
+    }
+
+    result = (off_t)atoll(input) * result;
+
+    if ( NULL != input )
+        free( input );
+
+    return result;
+
+}
+
+
 // .................................................
 
 
@@ -2490,7 +2559,7 @@ action_list_info_error:
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.3.1415)\n");
+    fprintf( stderr, "  gztool (v0.4)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
@@ -2505,6 +2574,7 @@ local void print_help() {
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
+    fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
@@ -2528,10 +2598,10 @@ local void print_help() {
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  Example: Extract data from 1000000000 byte (1 GB) on,\n" );
+    fprintf( stderr, "  Example: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
     fprintf( stderr, "  create (or reuse, or complete) an index file named `myfile.gzi`:\n" );
-    fprintf( stderr, "  $ gztool -b 1000000000 myfile.gz > myfile.txt\n" );
+    fprintf( stderr, "  $ gztool -b 1G myfile.gz > myfile.txt\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -2579,8 +2649,7 @@ int main(int argc, char **argv)
                 return EXIT_OK;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
-                // TODO: pass to strtoll() checking 0 and 0x
-                extract_from_byte = atoll(optarg);
+                extract_from_byte = giveMeAnInteger( optarg );
                 // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_BYTE;
                 actions_set++;
@@ -2627,8 +2696,7 @@ int main(int argc, char **argv)
                 break;
             // `-s #` span between index points, in MiB
             case 's':
-                // TODO: pass to strtoll() checking 0 and 0x
-                // span is converted to bytes for internal use
+                // span is converted to from MiB to bytes for internal use
                 span_between_points = atoll(optarg) * 1024 * 1024;
                 break;
             // `-S` supervise a still-growing gzip <FILE> and create index for it
@@ -2689,6 +2757,10 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    if ( span_between_points <= 0 ) {
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%d'\n", span_between_points );
+        return EXIT_INVALID_OPTION;
+    }
     if ( span_between_points != SPAN &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
@@ -2725,7 +2797,7 @@ int main(int argc, char **argv)
         unsigned char *action_string;
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                action_string = "Extract from byte";
+                action_string = "Extract from byte = ";
                 break;
             case ACT_COMPRESS_CHUNK:
                 action_string = "Compress chunk";
@@ -2749,7 +2821,10 @@ int main(int argc, char **argv)
                 action_string = "Extract from tail data from a still-growing file";
                 break;
         }
-        printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
+        if ( action == ACT_EXTRACT_FROM_BYTE )
+            printToStderr( VERBOSITY_NORMAL, "ACTION: %s%ld\n\n", action_string, extract_from_byte );
+        else
+            printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
     }
 
 
@@ -2758,14 +2833,18 @@ int main(int argc, char **argv)
 
         // check `-f` and execute delete if index file exists
         if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-               action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+               action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+               action == ACT_EXTRACT_FROM_BYTE || action == ACT_EXTRACT_TAIL ) &&
              index_filename_indicated == 1 &&
              access( index_filename, F_OK ) != -1 ) {
             // index file already exists
 
             if ( force_action == 0 ) {
                 printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                if ( write_index_to_disk == 0 )
+                    printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                else
+                    ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
             } else {
                 // force_action == 1 => delete index file
                 printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
@@ -2841,7 +2920,7 @@ int main(int argc, char **argv)
                         }
                     } else {
                         printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                        printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                        //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                     }
                 }
                 // stdin is a gzip file that must be indexed
@@ -2945,13 +3024,17 @@ int main(int argc, char **argv)
             }
 
             if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-                   action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+                   action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+                   action == ACT_EXTRACT_FROM_BYTE || action == ACT_EXTRACT_TAIL ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
 
                 if ( force_action == 0 ) {
                     printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                    printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                    if ( write_index_to_disk == 0 )
+                        printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                    else
+                        ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 } else {
                     // force_action == 1
                     // delete index file
