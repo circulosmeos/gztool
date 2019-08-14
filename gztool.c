@@ -2907,22 +2907,6 @@ int main(int argc, char **argv)
                 break;
 
             case ACT_CREATE_INDEX:
-                if ( index_filename_indicated == 1 &&
-                     access( index_filename, F_OK ) != -1 ) {
-                    // index file already exists
-                    if ( force_action == 1 ) {
-                        // force_action == 1 => delete index file
-                        printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                        if ( remove( index_filename ) != 0 ) {
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
-                            ret_value = EXIT_GENERIC_ERROR;
-                            break;
-                        }
-                    } else {
-                        printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                        //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
-                    }
-                }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
