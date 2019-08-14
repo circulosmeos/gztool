@@ -2388,18 +2388,64 @@ local int action_list_info( unsigned char *file_name ) {
     // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
     index = deserialize_index_from_file( in, 0, file_name );
 
-    if ( strlen( file_name ) > 0 ) {
+    if ( NULL != index &&
+         strlen( file_name ) > 0 ) {
         stat( file_name, &st );
         if ( verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
-        if ( NULL != index) {
-            // TODO: this MUST be done with size of COMPRESSED data file
-            if ( verbosity_level > VERBOSITY_NORMAL &&
-                 index->file_size > 0 )
-                fprintf( stdout, " (%.2f%%)", (double)st.st_size / (double)index->file_size * 100.0 );
+
+        if ( st.st_size > 0 &&
+             verbosity_level > VERBOSITY_NONE ) {
+            // try to obtain the name of the original gzip data file
+            // to calculate the ratio index_file_size / gzip_file_size
+
+            unsigned char *gzip_filename = NULL;
+            gzip_filename = malloc( strlen(file_name) + 1 );
+            if ( NULL != gzip_filename ) {
+                sprintf( gzip_filename, "%s", file_name );
+                if ( (unsigned char *)strstr(gzip_filename, ".gzi") ==
+                        (unsigned char *)(gzip_filename + strlen(file_name) - 4) ) {
+                    // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
+                    gzip_filename[strlen(gzip_filename)-1]='\0';
+                    // let's see if we're certain:
+                    if ( access( gzip_filename, F_OK ) != -1 ) {
+                        // we've found the gzip-file name !
+                        ;
+                    } else {
+                        // we haven't found it: may be the name is of the format "FILE.another_extension.gzi"
+                        gzip_filename[strlen(gzip_filename)-3]='\0';
+                        if ( access( gzip_filename, F_OK ) != -1 ) {
+                            // we've found the gzip-file name !
+                            ;
+                        } else {
+                            // we must give up guessing names here
+                            free( gzip_filename );
+                            gzip_filename = NULL;
+                        }
+                    }
+                } else {
+                    // if ".gzi" doesn't fit as extension, we're up guessing!
+                    free( gzip_filename );
+                    gzip_filename = NULL;
+                }
+            }
+
+            if ( NULL != gzip_filename ) {
+                struct stat st2;
+                stat( gzip_filename, &st2 );
+                if ( st.st_size > 0 ) {
+                    fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st2.st_size * 100.0 );
+                    fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
+                }
+                free( gzip_filename );
+                gzip_filename = NULL;
+            }
+
         }
+
         if ( verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\n" );
+
     }
 
     if ( ! index ) {
@@ -2417,9 +2463,9 @@ local int action_list_info( unsigned char *file_name ) {
                 fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
         }
         if ( verbosity_level > VERBOSITY_NORMAL ) {
-            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
+            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
             for (j=0; j<index->have; j++) {
-                fprintf( stdout, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
+                fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
             }
         }
         if (verbosity_level > VERBOSITY_NONE )
