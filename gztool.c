@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2, v0.3.* by Roberto S. Galende, 2019
+// v0.1, v0.2, v0.3.*, v0.4 by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -133,6 +133,7 @@
 #include <unistd.h> // getopt(), access(), sleep()
 #include <ctype.h>  // isprint()
 #include <sys/stat.h> // stat()
+#include <math.h>   // pow()
 
 // sets binary mode for stdin in Windows
 #define STDIN 0
@@ -1076,12 +1077,18 @@ local struct returned_output build_index(
 
         if (here->window_size != UNCOMPRESSED_WINDOW) {
             /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+            // local window_size in order to avoid deleting the on-memory here->window_size,
+            // that may be needed later if index must be increased and written to disk (fseeko).
             uint64_t window_size = here->window_size;
             /* window is compressed on memory, so decompress it */
             decompressed_window = decompress_chunk(here->window, &window_size);
-            // In order to avoid deleting the on-memory here->window_size, that may
-            // be needed later if index must be increased and written disk (fseeko):
+            if ( NULL == decompressed_window ) {
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
             (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
+            free( decompressed_window );
+            decompressed_window = NULL;
         } else {
             (void)inflateSetDictionary(&strm, here->window, WINSIZE);
         }
@@ -1460,9 +1467,6 @@ local struct returned_output build_index(
 
     index->index_complete = 1; /* index is now complete */
 
-    if ( NULL != decompressed_window )
-        free(decompressed_window);
-
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
@@ -1477,8 +1481,6 @@ local struct returned_output build_index(
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
     (void)inflateEnd(&strm);
-    if ( NULL != decompressed_window )
-        free(decompressed_window);
     if (index != NULL)
         free_index(index);
     *built = NULL;
@@ -1489,261 +1491,6 @@ local struct returned_output build_index(
     // there's no need to free(here),
     // because it pointed to index's values, and they
     // will be freed with free_index().
-}
-
-
-/* Use the index to read len bytes from offset into buf, return bytes read or
-   negative for error (Z_DATA_ERROR or Z_MEM_ERROR).  If data is requested past
-   the end of the uncompressed data, then extract() will return a value less
-   than len, indicating how much as actually read into buf.  This function
-   should not return a data error unless the file was modified since the index
-   was generated.  extract() may also return Z_ERRNO if there is an error on
-   reading or seeking the input file. */
-// INPUT:
-// FILE *in             : input stream
-// struct access *index : pointer to index
-// off_t offset         : offset in uncompressed bytes in source
-// unsigned char *buf   : pointer to destination data buffer
-//                        if buf is NULL, stdout will be used as output
-// uint64_t len         : size of destination buffer `buf`
-//                        If 0 && buf == NULL all input stream
-//                        from `offset` will be inflated
-// OUTPUT:
-// struct returned_output: contains two values:
-//      .error: Z_* error code or Z_OK if everything was ok
-//      .value: size of data returned in `buf`
-local struct returned_output extract(FILE *in, struct access *index, off_t offset,
-                  unsigned char *buf, uint64_t len)
-{
-    struct returned_output ret;
-    int i, skip;
-    int output_to_stdout = 0;
-    int extract_all_input = 0;
-    unsigned have;
-    z_stream strm;
-    struct point *here;
-    unsigned char input[CHUNK];     // TODO: convert to malloc
-    unsigned char discard[WINSIZE]; // TODO: convert to malloc
-    unsigned char *decompressed_window;
-    uint64_t initial_len = len;
-
-    ret.value = 0;
-    ret.error = Z_OK;
-
-    /* proceed only if something reasonable to do */
-    if (NULL == in || NULL == index)
-        return ret;
-    if (len < 0)
-        return ret;
-    if (len == 0 && buf != NULL)
-        return ret;
-
-    /* print decompression to stdout if buf == NULL */
-    if (buf == NULL) {
-        // buf of size WINSIZE > CHUNK so probably
-        // each CHUNK is totally deflated on each step
-        if (NULL == (buf = malloc(WINSIZE))) {
-            ret.error = Z_ERRNO;
-            return ret;
-        }
-        output_to_stdout = 1;
-        SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
-        if (len == 0) {
-            extract_all_input = 1;
-        }
-    }
-
-    /* find where in stream to start */
-    here = index->list;
-    i = index->have;
-    while (--i && i>0 && here[1].out <= offset)
-        here++;
-
-    /* initialize file and inflate state to start there */
-    strm.zalloc = Z_NULL;
-    strm.zfree = Z_NULL;
-    strm.opaque = Z_NULL;
-    strm.avail_in = 0;
-    strm.next_in = Z_NULL;
-    ret.error = inflateInit2(&strm, -15);         /* raw inflate */
-    if (ret.error != Z_OK) {
-        if (output_to_stdout == 1)
-            free(buf);
-        return ret;
-    }
-    if ( stdin == in ) {
-        // read input until here->in - (here->bits ? 1 : 0)
-        uint64_t pos = 0;
-        uint64_t position = here->in - (here->bits ? 1 : 0);
-        ret.error = 0;
-        while ( pos < position ) {
-            if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), in) ) {
-                ret.error = -1;
-                break;
-            }
-            pos += CHUNK;
-        }
-    } else {
-        ret.error = fseeko(in, here->in - (here->bits ? 1 : 0), SEEK_SET);
-    }
-    if (ret.error == -1)
-        goto extract_ret;
-    if (here->bits) {
-        i = getc(in);
-        if (i == -1) {
-            ret.error = ferror(in) ? Z_ERRNO : Z_DATA_ERROR;
-            goto extract_ret;
-        }
-        (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
-    }
-
-    if (here->window == NULL && here->window_beginning != 0) {
-        /* index' window data is not on memory,
-        but we have position and size on index file, so we load it now */
-        FILE *index_file;
-        if (NULL == (index_file = fopen(index->file_name, "rb")) ||
-            0 != fseeko(index_file, here->window_beginning, SEEK_SET)
-            ) {
-            printToStderr( VERBOSITY_NORMAL, "Error while opening index file. Extraction aborted.\n" );
-            fclose(index_file);
-            ret.error = Z_ERRNO;
-            goto extract_ret;
-        }
-        // here->window_beginning = 0; // this is not needed
-        if ( NULL == (here->window = malloc(here->window_size)) ||
-            !fread(here->window, here->window_size, 1, index_file)
-            ) {
-            printToStderr( VERBOSITY_NORMAL, "Error while reading index file. Extraction aborted.\n" );
-            fclose(index_file);
-            ret.error = Z_ERRNO;
-            goto extract_ret;
-        }
-        fclose(index_file);
-    }
-
-    if (here->window_size != UNCOMPRESSED_WINDOW) {
-        /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-        uint64_t window_size = here->window_size;
-        /* window is compressed on memory, so decompress it */
-        decompressed_window = decompress_chunk(here->window, &window_size);
-        free(here->window);
-        here->window = decompressed_window;
-        here->window_size = UNCOMPRESSED_WINDOW; // uncompressed WINSIZE next->window
-    }
-
-    (void)inflateSetDictionary(&strm, here->window, WINSIZE);
-
-    /* skip uncompressed bytes until offset reached, then satisfy request */
-    offset -= here->out;
-    strm.avail_in = 0;
-    skip = 1;                               /* while skipping to offset */
-    do {
-        /* define where to put uncompressed data, and how much */
-        if (offset == 0 && skip) {          /* at offset now */
-            strm.avail_out = len;
-            strm.next_out = buf;
-            skip = 0;                       /* only do this once */
-        }
-        if (offset > WINSIZE) {             /* skip WINSIZE bytes */
-            strm.avail_out = WINSIZE;
-            strm.next_out = discard;
-            offset -= WINSIZE;
-        }
-        else if (offset != 0) {             /* last skip */
-            strm.avail_out = (unsigned)offset;
-            strm.next_out = discard;
-            offset = 0;
-        }
-
-        if (offset == 0 && skip == 0) {         /* deflating */
-            if (output_to_stdout == 1){
-                if (extract_all_input == 0) {
-                    strm.avail_out = (len <= WINSIZE) ? len : WINSIZE;
-                } else {
-                    strm.avail_out = WINSIZE;
-                }
-            }
-        }
-
-        /* uncompress until avail_out filled, or end of stream */
-        do {
-            if (skip == 0 && output_to_stdout == 1) {
-                strm.next_out = buf;
-                if (extract_all_input == 0) {
-                    strm.avail_out = (len <= WINSIZE) ? len : WINSIZE;
-                } else {
-                    strm.avail_out = WINSIZE;
-                }
-            }
-            if (strm.avail_in == 0) {
-                strm.avail_in = fread(input, 1, CHUNK, in);
-                if (ferror(in)) {
-                    ret.error = Z_ERRNO;
-                    goto extract_ret;
-                }
-                if (strm.avail_in == 0) {
-                    ret.error = Z_DATA_ERROR;
-                    goto extract_ret;
-                }
-                strm.next_in = input;
-            }
-            ret.error = inflate(&strm, Z_NO_FLUSH);       /* normal inflate */
-            if (ret.error == Z_NEED_DICT)
-                ret.error = Z_DATA_ERROR;
-            if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR)
-                goto extract_ret;
-            if (skip == 0 && output_to_stdout == 1) {
-                /* print decompression to stdout */
-                have = WINSIZE - strm.avail_out;
-                if (have > len && extract_all_input == 0) {
-                    have = len;
-                }
-                if (fwrite(buf, 1, have, stdout) != have || ferror(stdout)) {
-                    (void)inflateEnd(&strm);
-                    ret.error = Z_ERRNO;
-                    goto extract_ret;
-                }
-                if (skip == 0) {
-                    if (extract_all_input == 0) {
-                        len -= have;
-                    } else {
-                        len += have;
-                    }
-                }
-            }
-            if (ret.error == Z_STREAM_END)
-                break;
-        } while (
-            // skipping output, but window not completely filled
-            strm.avail_out != 0 ||
-            // extracting to stdout and specified length not reached:
-            (skip == 0 && output_to_stdout == 1 && len > 0) ||
-            // extract the whole input (until break on Z_STREAM_END)
-            (skip == 0 && extract_all_input == 1)
-            );
-
-        /* if reach end of stream, then don't keep trying to get more */
-        if (ret.error == Z_STREAM_END)
-            break;
-
-        /* do until offset reached and requested data read, or stream ends */
-    } while (skip);
-
-    /* compute number of uncompressed bytes read after offset */
-    ret.value = skip ? 0 : len - strm.avail_out;
-    if (output_to_stdout == 1) {
-        ret.value = initial_len - len;
-    }
-    if (extract_all_input == 1) {
-        ret.value = len;
-    }
-
-    /* clean up and return bytes read or error */
-  extract_ret:
-    (void)inflateEnd(&strm);
-    if (output_to_stdout == 1)
-        free(buf);
-    return ret;
 }
 
 
@@ -1829,7 +1576,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         {
             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
-                    file_name, ftello(input_file), index->have + 1 );
+                    file_name, ftello(input_file), index_size - number_of_index_points + 1 );
             break; // exit do loop
         }
 
@@ -2230,133 +1977,6 @@ wait_for_file_creation:
 }
 
 
-/*                                         */
-/* Deprecated in favour of build_index() ! */
-/*                                         */
-/*// extract data from a gzip file using its index file if it exists,
-// or FIRST creates the index if it doesn't exist, and then extract the data.
-// INPUT:
-// unsigned char *file_name     : gzip file name
-// unsigned char *index_filename: index file name
-// uint64_t extract_from_byte   : uncompressed offset of original data from which to extract
-// int force_action             : if 1 and index file doesn't exist, create it
-// off_t span_between_points    : span between index points in bytes
-// enum action type_of_extraction: one of { ACT_EXTRACT_FROM_BYTE, ACT_EXTRACT_TAIL }
-// OUTPUT:
-// EXIT_* error code or EXIT_OK on success
-local int action_extract_from_byte(
-    unsigned char *file_name, unsigned char *index_filename,
-    uint64_t extract_from_byte, int force_action, off_t span_between_points, enum ACTION type_of_extraction )
-{
-
-    FILE *in = NULL;
-    FILE *index_file = NULL;
-    struct access *index = NULL;
-    struct returned_output ret;
-    int mark_recursion = 0;
-    int ret_value;
-
-    // open <FILE>:
-    if ( strlen(file_name) > 0 ) {
-        if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
-            printToStderr( VERBOSITY_NORMAL, "Extracting data from uncompressed byte @%ld in file '%s',\nusing index '%s'...\n",
-                extract_from_byte, file_name, index_filename);
-        if ( type_of_extraction == ACT_EXTRACT_TAIL )
-            printToStderr( VERBOSITY_NORMAL, "Extracting tail data from file '%s',\nusing index '%s'...\n",
-                file_name, index_filename);            
-        in = fopen( file_name, "rb" );
-        if ( NULL == in ) {
-            printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\n", file_name );
-            return EXIT_GENERIC_ERROR;
-        }
-    } else {
-        // stdin
-        if ( type_of_extraction == ACT_EXTRACT_FROM_BYTE )
-            printToStderr( VERBOSITY_NORMAL, "Extracting data from uncompressed byte @%ld on stdin,\nusing index '%s'...\n",
-                extract_from_byte, index_filename);
-        if ( type_of_extraction == ACT_EXTRACT_TAIL )
-            printToStderr( VERBOSITY_NORMAL, "Extracting tail data from stdin,\nusing index '%s'...\n",
-                index_filename);
-        SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
-        in = stdin;
-    }
-
-    // open index file (filename derived from <FILE> unless indicated with `-I`)
-open_index_file:
-    index_file = fopen( index_filename, "rb" );
-    if ( NULL == index_file ) {
-        if ( force_action == 1 && mark_recursion == 0 ) {
-            // before extraction, create index file
-            ret_value = action_create_index( file_name, &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points );
-            if ( ret_value != EXIT_OK )
-                goto action_extract_from_byte_error;
-            // index file has been created, so it must now be opened
-            mark_recursion = 1;
-            goto open_index_file;
-        } else {
-            printToStderr( VERBOSITY_NORMAL, "Index file '%s' not found.\n", index_filename );
-            ret_value = EXIT_GENERIC_ERROR;
-            goto action_extract_from_byte_error;
-        }
-    }
-
-    // deserialize_index_from_file
-    index = deserialize_index_from_file( index_file, 0, index_filename );
-    if ( ! index ) {
-        printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'\n", index_filename );
-        ret_value = EXIT_GENERIC_ERROR;
-        goto action_extract_from_byte_error;
-    }
-
-    if ( type_of_extraction == ACT_EXTRACT_TAIL ) {
-        // on ACT_EXTRACT_TAIL, now that we have the index data loaded,
-        // we're trying to calculate where we can get a chunk of last data:
-        if ( index->have > 0 ) {
-            extract_from_byte = index->list[index->have -1].out;
-            // get size of compressed file, if not stdin
-            // and use it to increment extract_from_byte a little more
-            // by increasing the offset with + 3/4*(gzip size - last .in)
-            if ( strlen(file_name) > 0 ) {
-                struct stat st;
-                stat(file_name, &st);
-                if ( st.st_size > 0 ) {
-                    // try to calculate a viable increment in extract_from_byte:
-                    // aprox. +3/4 of remaining compressed size == more than that size
-                    // in uncompressed data:
-                    extract_from_byte += (st.st_size - index->list[index->have -1].in)/4*3;
-                }
-            }
-        } else {
-            extract_from_byte = 0;
-        }
-        printToStderr( VERBOSITY_NORMAL, "...extracting data from uncompressed byte @%ld...\n",
-            extract_from_byte);
-    }
-    ret = extract( in, index, extract_from_byte, NULL, 0 );
-    if ( ret.error < 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "Data extraction failed: %s error\n",
-                ret.error == Z_MEM_ERROR ? "out of memory" : "input corrupted" );
-        ret_value = EXIT_GENERIC_ERROR;
-    } else {
-        if ( strlen(file_name) > 0 )
-            printToStderr( VERBOSITY_NORMAL, "Extracted %ld bytes from '%s' to stdout.\n", ret.value, file_name );
-        else
-            printToStderr( VERBOSITY_NORMAL, "Extracted %ld bytes from stdin to stdout.\n", ret.value );
-        ret_value = EXIT_OK;
-    }
-
-action_extract_from_byte_error:
-    if ( NULL != in )
-        fclose( in );
-    if ( NULL != index_file )
-        fclose( index_file );
-    if ( NULL != index )
-        free_index( index );
-    return ret_value;
-
-}*/
-
-
 // list info for an index file
 // INPUT:
 // unsigned char *file_name: index file name
@@ -2388,18 +2008,64 @@ local int action_list_info( unsigned char *file_name ) {
     // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
     index = deserialize_index_from_file( in, 0, file_name );
 
-    if ( strlen( file_name ) > 0 ) {
+    if ( NULL != index &&
+         strlen( file_name ) > 0 ) {
         stat( file_name, &st );
         if ( verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
-        if ( NULL != index) {
-            // TODO: this MUST be done with size of COMPRESSED data file
-            if ( verbosity_level > VERBOSITY_NORMAL &&
-                 index->file_size > 0 )
-                fprintf( stdout, " (%.2f%%)", (double)st.st_size / (double)index->file_size * 100.0 );
+
+        if ( st.st_size > 0 &&
+             verbosity_level > VERBOSITY_NONE ) {
+            // try to obtain the name of the original gzip data file
+            // to calculate the ratio index_file_size / gzip_file_size
+
+            unsigned char *gzip_filename = NULL;
+            gzip_filename = malloc( strlen(file_name) + 1 );
+            if ( NULL != gzip_filename ) {
+                sprintf( gzip_filename, "%s", file_name );
+                if ( (unsigned char *)strstr(gzip_filename, ".gzi") ==
+                        (unsigned char *)(gzip_filename + strlen(file_name) - 4) ) {
+                    // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
+                    gzip_filename[strlen(gzip_filename)-1]='\0';
+                    // let's see if we're certain:
+                    if ( access( gzip_filename, F_OK ) != -1 ) {
+                        // we've found the gzip-file name !
+                        ;
+                    } else {
+                        // we haven't found it: may be the name is of the format "FILE.another_extension.gzi"
+                        gzip_filename[strlen(gzip_filename)-3]='\0';
+                        if ( access( gzip_filename, F_OK ) != -1 ) {
+                            // we've found the gzip-file name !
+                            ;
+                        } else {
+                            // we must give up guessing names here
+                            free( gzip_filename );
+                            gzip_filename = NULL;
+                        }
+                    }
+                } else {
+                    // if ".gzi" doesn't fit as extension, we're up guessing!
+                    free( gzip_filename );
+                    gzip_filename = NULL;
+                }
+            }
+
+            if ( NULL != gzip_filename ) {
+                struct stat st2;
+                stat( gzip_filename, &st2 );
+                if ( st2.st_size > 0 ) {
+                    fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st2.st_size * 100.0 );
+                    fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
+                }
+                free( gzip_filename );
+                gzip_filename = NULL;
+            }
+
         }
+
         if ( verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\n" );
+
     }
 
     if ( ! index ) {
@@ -2417,9 +2083,9 @@ local int action_list_info( unsigned char *file_name ) {
                 fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
         }
         if ( verbosity_level > VERBOSITY_NORMAL ) {
-            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes), ...\n\t" );
+            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
             for (j=0; j<index->have; j++) {
-                fprintf( stdout, "@ %ld / %ld ( %d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size );
+                fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
             }
         }
         if (verbosity_level > VERBOSITY_NONE )
@@ -2437,6 +2103,74 @@ action_list_info_error:
 }
 
 
+// obtain an integer from a string that may used decimal point,
+// with valid suffixes: kmgtpe (powers of 10) and KMGTPE (powers of 2),
+// and valid prefixes: "0" (octal), "0x" or "0X" (hexadecimal).
+// Examples:
+// "83m" == 83*10^6, "9G" == 9*2^30, "0xa" == 10, "010k" = 8000, "23.5k" = 23500
+// INPUT:
+// unsigned char *original_input: string containing the data (only read)
+// OUTPUT:
+// 64 bit long integer number
+uint64_t giveMeAnInteger( const unsigned char *original_input ) {
+
+    int i = 0;
+    unsigned char *PowerSuffixes = "kmgtpeKMGTPE";
+    int PowerSuffixesLength = strlen(PowerSuffixes)/2;
+    unsigned char *input = NULL;
+    uint64_t result = 1;
+
+    if ( NULL == original_input )
+        return 0LL;
+
+    input = malloc( strlen(original_input) +1 );
+    memcpy(input, original_input, strlen(original_input) +1);
+
+    if ( strlen(input) > 1 ) {
+        // look for suffixes of size
+
+        for ( i=0; i<strlen(PowerSuffixes); i++ ) {
+            if ( (unsigned char *)strchr(input, PowerSuffixes[i]) == (unsigned char *)(input + strlen(input) -1) ) {
+                if ( i >= PowerSuffixesLength ) {
+                    result = pow( 2.0, 10.0 + 10.0*(double)(i - PowerSuffixesLength) );
+                } else {
+                    result = pow( 10.0, 3.0 + 3.0*(double)i );
+                }
+                input[strlen(input) -1] = '\0';
+                break;
+            }
+        }
+
+    }
+
+    if ( strlen(input) > 1 ) {
+        // look fo prefixes of base
+
+        if ( input[0] == '0' ) {
+            if ( strlen(input) > 2 &&
+                 ( input[1] == 'x' || input[1] == 'X' ) ) {
+                // hexadecimal
+                result = strtoll( input +2, NULL, 16 ) * result;
+            } else {
+                // octal
+                result = strtoll( input +1, NULL, 8 ) * result;
+            }
+            input[0] = '1';
+            input[1] = '\0';
+        }
+
+    }
+
+    result = (uint64_t)(strtod(input, NULL) * (double)result);
+
+    if ( NULL != input )
+        free( input );
+
+    return result;
+
+}
+
+
 // .................................................
 
 
@@ -2444,7 +2178,7 @@ action_list_info_error:
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.3.1415)\n");
+    fprintf( stderr, "  gztool (v0.4)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
@@ -2459,6 +2193,7 @@ local void print_help() {
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
+    fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
@@ -2482,10 +2217,10 @@ local void print_help() {
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  Example: Extract data from 1000000000 byte (1 GB) on,\n" );
+    fprintf( stderr, "  Example: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
     fprintf( stderr, "  create (or reuse, or complete) an index file named `myfile.gzi`:\n" );
-    fprintf( stderr, "  $ gztool -b 1000000000 myfile.gz > myfile.txt\n" );
+    fprintf( stderr, "  $ gztool -b 1G myfile.gz > myfile.txt\n" );
     fprintf( stderr, "\n" );
 
 }
@@ -2533,8 +2268,7 @@ int main(int argc, char **argv)
                 return EXIT_OK;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
-                // TODO: pass to strtoll() checking 0 and 0x
-                extract_from_byte = atoll(optarg);
+                extract_from_byte = giveMeAnInteger( optarg );
                 // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_BYTE;
                 actions_set++;
@@ -2581,8 +2315,7 @@ int main(int argc, char **argv)
                 break;
             // `-s #` span between index points, in MiB
             case 's':
-                // TODO: pass to strtoll() checking 0 and 0x
-                // span is converted to bytes for internal use
+                // span is converted to from MiB to bytes for internal use
                 span_between_points = atoll(optarg) * 1024 * 1024;
                 break;
             // `-S` supervise a still-growing gzip <FILE> and create index for it
@@ -2643,6 +2376,10 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    if ( span_between_points <= 0 ) {
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%d'\n", span_between_points );
+        return EXIT_INVALID_OPTION;
+    }
     if ( span_between_points != SPAN &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
@@ -2679,7 +2416,7 @@ int main(int argc, char **argv)
         unsigned char *action_string;
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                action_string = "Extract from byte";
+                action_string = "Extract from byte = ";
                 break;
             case ACT_COMPRESS_CHUNK:
                 action_string = "Compress chunk";
@@ -2703,7 +2440,10 @@ int main(int argc, char **argv)
                 action_string = "Extract from tail data from a still-growing file";
                 break;
         }
-        printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
+        if ( action == ACT_EXTRACT_FROM_BYTE )
+            printToStderr( VERBOSITY_NORMAL, "ACTION: %s%ld\n\n", action_string, extract_from_byte );
+        else
+            printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
     }
 
 
@@ -2712,14 +2452,18 @@ int main(int argc, char **argv)
 
         // check `-f` and execute delete if index file exists
         if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-               action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+               action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+               action == ACT_EXTRACT_FROM_BYTE || action == ACT_EXTRACT_TAIL ) &&
              index_filename_indicated == 1 &&
              access( index_filename, F_OK ) != -1 ) {
             // index file already exists
 
             if ( force_action == 0 ) {
                 printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                if ( write_index_to_disk == 0 )
+                    printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                else
+                    ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
             } else {
                 // force_action == 1 => delete index file
                 printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
@@ -2782,22 +2526,6 @@ int main(int argc, char **argv)
                 break;
 
             case ACT_CREATE_INDEX:
-                if ( index_filename_indicated == 1 &&
-                     access( index_filename, F_OK ) != -1 ) {
-                    // index file already exists
-                    if ( force_action == 1 ) {
-                        // force_action == 1 => delete index file
-                        printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                        if ( remove( index_filename ) != 0 ) {
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
-                            ret_value = EXIT_GENERIC_ERROR;
-                            break;
-                        }
-                    } else {
-                        printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                        printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
-                    }
-                }
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk );
@@ -2899,13 +2627,17 @@ int main(int argc, char **argv)
             }
 
             if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
-                   action == ACT_EXTRACT_TAIL_AND_CONTINUE || action == ACT_EXTRACT_FROM_BYTE ) &&
+                   action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+                   action == ACT_EXTRACT_FROM_BYTE || action == ACT_EXTRACT_TAIL ) &&
                  access( index_filename, F_OK ) != -1 ) {
                 // index file already exists
 
                 if ( force_action == 0 ) {
                     printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                    printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                    if ( write_index_to_disk == 0 )
+                        printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                    else
+                        ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 } else {
                     // force_action == 1
                     // delete index file

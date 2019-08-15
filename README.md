@@ -49,7 +49,7 @@ Compilation
 
     $ sudo apt install zlib1g-dev
 
-    $ gcc -O3 -o gztool gztool.c -lz
+    $ gcc -O3 -o gztool gztool.c -lz -lm
 
 Compilation in Windows
 ======================
@@ -63,13 +63,13 @@ Please, note that **executables for different platforms are provided** on the [R
 * The previous step generates the file **zlib.a** that you need to compile *gztool*:
 Copy gztool.c to the directory where you compiled zlib, and do:
     
-    `gcc -static -O3 -I. -o gztool gztool.c libz.a`
+    `gcc -static -O3 -I. -o gztool gztool.c libz.a -lm`
 
 
 Usage
 =====
 
-      gztool (v0.3.1415)
+      gztool (v0.4)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -86,7 +86,8 @@ Usage
       next gztool run over the same data.
 
      -b #: extract data from indicated uncompressed byte position of
-          gzip file (creating or reusing an index file) to STDOUT.
+         gzip file (creating or reusing an index file) to STDOUT.
+         Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -c: utility: raw-gzip-compress indicated file to STDOUT
      -d: utility: raw-gzip-decompress indicated file to STDOUT
      -e: if multiple files are indicated, continue on error (if any)
@@ -110,10 +111,10 @@ Usage
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
 
-      Example: Extract data from 1000000000 byte (1 GB) on,
+      Example: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
       create (or reuse, or complete) an index file named `myfile.gzi`:
-      $ gztool -b 1000000000 myfile.gz > myfile.txt
+      $ gztool -b 1G myfile.gz > myfile.txt
 
 Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
 
@@ -132,7 +133,7 @@ Make an index for `test.gz` with name `test.index`:
 
 Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file will be created **at the same time** (named `test.gzi`):
 
-    $ gztool -b 1000000 test.gz
+    $ gztool -b 1m test.gz
 
 **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until the gzip-file data is terminated.
 
@@ -161,13 +162,13 @@ Creating and index for all "\*gz" files in a directory:
     Built index with 3 access points.
     Index written to 'project_2.gzi'.
 
-Extract data from `project.gz` byte 25600000 to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
+Extract data from `project.gz` byte at 1 GiB to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
 
-    $ gztool -b 25600000 project.gz | grep -i "balance = "
+    $ gztool -b 1G project.gz | grep -i "balance = "
 
 Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
 
-    $ gztool -b 99900000 project.gz > uncompressed.data
+    $ gztool -b 99m project.gz > uncompressed.data
 
 Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-v2` verbosity option will show data about each index point:
 
@@ -183,7 +184,7 @@ Show internals of all index files in this directory. `-e` is used not to stop th
 
 Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary).
 
-    $ gztool -Wb 100000 still-growing-gzip-file.gz > mytext
+    $ gztool -Wb 100k still-growing-gzip-file.gz > mytext
 
 To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
 
@@ -243,7 +244,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.3.1415**.
+This version is **v0.4**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
