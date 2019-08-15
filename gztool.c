@@ -1077,12 +1077,18 @@ local struct returned_output build_index(
 
         if (here->window_size != UNCOMPRESSED_WINDOW) {
             /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+            // local window_size in order to avoid deleting the on-memory here->window_size,
+            // that may be needed later if index must be increased and written to disk (fseeko).
             uint64_t window_size = here->window_size;
             /* window is compressed on memory, so decompress it */
             decompressed_window = decompress_chunk(here->window, &window_size);
-            // In order to avoid deleting the on-memory here->window_size, that may
-            // be needed later if index must be increased and written disk (fseeko):
+            if ( NULL == decompressed_window ) {
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
             (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
+            free( decompressed_window );
+            decompressed_window = NULL;
         } else {
             (void)inflateSetDictionary(&strm, here->window, WINSIZE);
         }
@@ -1461,9 +1467,6 @@ local struct returned_output build_index(
 
     index->index_complete = 1; /* index is now complete */
 
-    if ( NULL != decompressed_window )
-        free(decompressed_window);
-
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
@@ -1478,8 +1481,6 @@ local struct returned_output build_index(
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
     (void)inflateEnd(&strm);
-    if ( NULL != decompressed_window )
-        free(decompressed_window);
     if (index != NULL)
         free_index(index);
     *built = NULL;
@@ -2484,7 +2485,7 @@ action_list_info_error:
 }
 
 
-// obtain an integer from inputs like
+// obtain an integer from a string
 // with valid suffixes: kmgtpe (powers of 10) and KMGTPE (powers of 2),
 // and valid prefixes: "0" (octal), "0x" or "0X" (hexadecimal).
 // Examples:
@@ -2493,13 +2494,13 @@ action_list_info_error:
 // unsigned char *original_input: string containing the data (only read)
 // OUTPUT:
 // 64 bit long integer number
-off_t giveMeAnInteger( const unsigned char *original_input ) {
+uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 
     int i = 0;
     unsigned char *PowerSuffixes = "kmgtpeKMGTPE";
     int PowerSuffixesLength = strlen(PowerSuffixes)/2;
     unsigned char *input = NULL;
-    off_t result = 1;
+    uint64_t result = 1;
 
     if ( NULL == original_input )
         return 0LL;
@@ -2542,7 +2543,7 @@ off_t giveMeAnInteger( const unsigned char *original_input ) {
 
     }
 
-    result = (off_t)atoll(input) * result;
+    result = (uint64_t)atoll(input) * result;
 
     if ( NULL != input )
         free( input );
