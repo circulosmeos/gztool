@@ -1501,6 +1501,7 @@ local struct returned_output build_index(
 // unsigned char *file_name : file path to index file, needed in case
 //                            load_windows==0, so a later extract() can access the
 //                            index file again to read the window data.
+//                            Can be "" if using stdin, but not NULL.
 // OUTPUT:
 // struct access *index : pointer to index, or NULL on error
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
@@ -1510,13 +1511,19 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     uint32_t index_complete = 1;
     uint64_t number_of_index_points = 0;
     uint64_t index_have, index_size, file_size;
+    uint64_t position_at_file = 0;
     char header[GZIP_INDEX_HEADER_SIZE];
     struct stat st;
 
     // get index file size to calculate on-the-fly how many registers are
     // in order to being able to read still-growing index files (see `-S`)
-    stat(file_name, &st);
-    file_size = st.st_size;
+    if ( strlen(file_name) > 0 ) {
+        stat(file_name, &st);
+        file_size = st.st_size;
+    } else {
+        // for stdin use max value
+        file_size = UINT64_MAX;
+    }
 
     ///* access point entry */
     //struct point {
@@ -1558,6 +1565,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
     printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %ld\n", number_of_index_points );
 
+    position_at_file = GZIP_INDEX_HEADER_SIZE + sizeof(index_have)*2;
+
     // read the list of points
     do {
 
@@ -1565,10 +1574,11 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.in),   sizeof(here.in),   input_file);
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
+        position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
         printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
         if ( here.window_size == 0 ) {
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
-                    file_name, ftello(input_file), index->have + 1 );
+                    file_name, position_at_file, index->have + 1 );
             continue;
         }
         if ( here.bits > 8 ||
@@ -1576,7 +1586,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         {
             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
-                    file_name, ftello(input_file), index_size - number_of_index_points + 1 );
+                    file_name, position_at_file, index_size - number_of_index_points + 1 );
             break; // exit do loop
         }
 
@@ -1584,7 +1594,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
             // do not load window on here.window, but leave it on disk: this is marked with
             // a here.window_beginning to the position of the window on disk
             here.window = NULL;
-            here.window_beginning = ftello(input_file);
+            here.window_beginning = position_at_file;
             // and position into file as if read had occur
             if ( stdin == input_file ) {
                 // read input until here.window_size
@@ -1621,7 +1631,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 goto deserialize_index_from_file_error;
             }
         }
-        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d), ", index, here.bits, here.in, here.out, here.window_size);
+        position_at_file += here.window_size;
+        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld), ", index, here.bits, here.in, here.out, here.window_size, here.window_beginning);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
         index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
@@ -1632,7 +1643,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         // the pointer has been copied in a point of the index structure.
 
     } while (
-        ( file_size - ftello(input_file) ) >
+        ( file_size - position_at_file ) >
         // at least an empty window must enter, otherwise end loop:
         ( sizeof(here.out)+sizeof(here.in)+sizeof(here.bits)+
           sizeof(here.window_beginning)+sizeof(index->file_size) )
