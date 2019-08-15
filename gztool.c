@@ -1576,7 +1576,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         {
             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
-                    file_name, ftello(input_file), index->have + 1 );
+                    file_name, ftello(input_file), index_size - number_of_index_points + 1 );
             break; // exit do loop
         }
 
@@ -2103,11 +2103,11 @@ action_list_info_error:
 }
 
 
-// obtain an integer from a string
+// obtain an integer from a string that may used decimal point,
 // with valid suffixes: kmgtpe (powers of 10) and KMGTPE (powers of 2),
 // and valid prefixes: "0" (octal), "0x" or "0X" (hexadecimal).
 // Examples:
-// "83m" == 83*10^6, "9G" == 9*2^30, "0xa" == 10, "010k" = 8000
+// "83m" == 83*10^6, "9G" == 9*2^30, "0xa" == 10, "010k" = 8000, "23.5k" = 23500
 // INPUT:
 // unsigned char *original_input: string containing the data (only read)
 // OUTPUT:
@@ -2161,7 +2161,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 
     }
 
-    result = (uint64_t)atoll(input) * result;
+    result = (uint64_t)(strtod(input, NULL) * (double)result);
 
     if ( NULL != input )
         free( input );
