@@ -1197,7 +1197,36 @@ local struct returned_output build_index(
     do {
         /* get some compressed data from input file */
 
-        strm.avail_in = fread(input, 1, CHUNK, in);
+        // bgzip-compatible streams code:
+        if ( ret.error == Z_STREAM_END ) {
+            // use window as buffer for strm.next_in remanent data movement
+            // to the beginning of the input (strm.next_in floats from input to input+CHUNK)
+            memcpy( window, strm.next_in, strm.avail_in );
+            memcpy( input, window, strm.avail_in );
+            printToStderr( VERBOSITY_MANIAC, "strm data reinitiated\n" );
+        }
+        // .................................................
+        int strm_avail_in0 = strm.avail_in;
+        strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
+        strm.avail_in += strm_avail_in0;
+        // .................................................
+        // decompressor state MUST be reinitiated after Z_STREAM_END
+        if ( ret.error == Z_STREAM_END ) {
+            strm_avail_in0 = strm.avail_in;
+            (void)inflateEnd(&strm);
+            strm.zalloc = Z_NULL;
+            strm.zfree = Z_NULL;
+            strm.opaque = Z_NULL;
+            strm.avail_in = 0;
+            strm.next_in = Z_NULL;
+            ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
+            if (ret.error != Z_OK)
+                return ret;
+            strm.avail_in = strm_avail_in0;
+        }
+        // end of bgzip-compatible streams code
+
+        //strm.avail_in = fread(input, 1, CHUNK, in);
 
         avail_in_0 = strm.avail_in;
 
@@ -1405,9 +1434,9 @@ local struct returned_output build_index(
 
             }
 
-        } while (strm.avail_in != 0);
+        } while ( strm.avail_in != 0 );
 
-    } while (ret.error != Z_STREAM_END);
+    } while ( ret.error != Z_STREAM_END || !feof( in ) );
 
 
     // last opportunity to output tail data

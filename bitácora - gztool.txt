@@ -1180,3 +1180,8 @@ Fast-forward
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190817]] [[git]] [[bgzip_compatible]] 
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout -b bgzip_compatible
+Switched to a new branch 'bgzip_compatible'
+
