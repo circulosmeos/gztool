@@ -2017,7 +2017,8 @@ wait_for_file_creation:
        return EXIT_GENERIC_ERROR;
     }
 
-    if ( number_of_index_points != (*index)->have && write_index_to_disk == 1 )
+    if ( NULL != index && NULL != *index &&
+         number_of_index_points != (*index)->have && write_index_to_disk == 1 )
         if ( number_of_index_points > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
             printToStderr( VERBOSITY_NORMAL, "Now index have %ld access points.\n", ret.value);
