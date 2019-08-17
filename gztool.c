@@ -1469,7 +1469,7 @@ local struct returned_output build_index(
     /* clean up */
     (void)inflateEnd(&strm);
     /* and return index (release unused entries in list) */
-    {
+    if ( NULL != index ) {
         struct point *next = realloc(index->list, sizeof(struct point) * index->have);
         if (next == NULL) {
             ret.error = Z_MEM_ERROR;
@@ -1477,32 +1477,43 @@ local struct returned_output build_index(
             goto build_index_error;
         }
         index->list = next;
+        index->size = index->have;
+        index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
     }
-    index->size = index->have;
-    index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
 
     // once all index values are filled, close index file: a last call must be done
     // with index_last_written_point = index->have
-    if ( index->index_complete == 0 && write_index_to_disk == 1 )
+    if ( NULL != index &&
+         index->index_complete == 0 &&
+         write_index_to_disk == 1 ) {
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto build_index_error;
+    }
+
     if ( NULL != index_file )
         fclose(index_file);
 
-    if ( index->index_complete == 0 && write_index_to_disk == 1 )
+    if ( NULL != index &&
+         index->index_complete == 0 &&
+         write_index_to_disk == 1 ) {
         if ( strlen(index_filename) > 0 )
             printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
             printToStderr( VERBOSITY_NORMAL, "Index written to stdout.\n" );
+    }
 
-    index->index_complete = 1; /* index is now complete */
+    if ( NULL != index )
+        index->index_complete = 1; /* index is now complete */
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
 
     *built = index;
-    ret.value = index->have;
+    if ( NULL != index )
+        ret.value = index->have;
+    else
+        ret.value = 0;
     return ret;
 
     /* return error */
