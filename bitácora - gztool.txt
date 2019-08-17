@@ -1062,4 +1062,102 @@ odroid@odroid64:~/SD/dev/zlib/gztool$ gdb ./gztool
 
 ...
 
-    
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190816]] [[20190817]] <#conversión para inflate() de bgzips>
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool2$ ./bgzip_test
+    decompressing ...
+    strm.avail_in = 16384 (i=0) (stream_size=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 10731, next_in = 0x41cb75 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 6968, next_in = 0x41da28 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 3537, next_in = 0x41e78f (have=16384)
+            inflate == 1
+    avail_out = 256, avail_in = 233, next_in = 0x41f477 (have=16128)
+    ret = 1
+    output_size = 65280
+    strm restarted
+    strm.avail_in = 10240 (i=16151) (stream_size=10240)
+            inflate == 0
+    avail_out = 0, avail_in = 6013, next_in = 0x41c5e3 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 2193, next_in = 0x41d4cf (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 183, next_in = 0x41dca9 (have=16384)
+            inflate == 1
+    avail_out = 15634, avail_in = 28, next_in = 0x41dd44 (have=750)
+    ret = 1
+    output_size = 115182
+    decompressed size = 115182 (0x42f5a0)
+
+
+    Without "if (ret == Z_STREAM_END)" break:
+        odroid@odroid64:~/SD/dev/zlib/gztool2$ ./bgzip_test2
+            decompressing ...
+            strm.avail_in = 16384 (i=0) (stream_size=16384)
+                    inflate == 0
+            avail_out = 16384, avail_in = 16366, next_in = 0x41b572 (have=0)
+            ret = 0
+            output_size = 0
+            strm.avail_in = 26373 (i=18) (stream_size=26373)
+                    inflate == 0
+            avail_out = 16384, avail_in = 26355, next_in = 0x41b572 (have=0)
+            ret = 0
+            output_size = 0
+            *** Error in `./bgzip_test2': free(): invalid next size (normal): 0x000000000041b560 ***
+            Aborted
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool2$ ./bgzip_test2
+    decompressing ...
+    strm.avail_in = 16384 (i=0) (stream_size=16384)
+            inflate == 0
+    avail_out = 16384, avail_in = 16366, next_in = 0x41b572 (have=0)
+            inflate == 0
+    avail_out = 0, avail_in = 10731, next_in = 0x41cb75 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 6968, next_in = 0x41da28 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 3537, next_in = 0x41e78f (have=16384)
+            inflate == 0
+    avail_out = 256, avail_in = 241, next_in = 0x41f46f (have=16128)
+            inflate == 1
+    ret = 1
+    output_size = 65280
+    strm restarted
+    strm.avail_in = 10240 (i=16151) (stream_size=10240)
+            inflate == 0
+    avail_out = 16384, avail_in = 10222, next_in = 0x41b572 (have=0)
+            inflate == 0
+    avail_out = 0, avail_in = 6013, next_in = 0x41c5e3 (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 2193, next_in = 0x41d4cf (have=16384)
+            inflate == 0
+    avail_out = 0, avail_in = 183, next_in = 0x41dca9 (have=16384)
+            inflate == 0
+    avail_out = 15634, avail_in = 36, next_in = 0x41dd3c (have=750)
+            inflate == 1
+    ret = 1
+    output_size = 115182
+    decompressed size = 115182 (0x42f5a0)
+
+
+.................................................
+:<#conversión para inflate() de bgzips> :
+
+NO se asegura ahora que strm.aval_in sea siempre cero al inicio del bucle:
+así que el fread debe modificarse con una variable stream_size
+
+Se debe copiar el contenido disponible remanente de strm.next_in al principio
+de strm.next_in, y el fread debe ir a continuación.
+
+Una vez hecho todo esto, se debe reiniciar el estado de strm con "47",
+y poner al final el valor correcto de strm.avail_in = stream_size
+
+
+
+-------------------------------------------------------------------------------
