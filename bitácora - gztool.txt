@@ -1161,3 +1161,22 @@ y poner al final el valor correcto de strm.avail_in = stream_size
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190817]] [[git]] [[merge]] [[tail_n_supervise]] 
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout master
+Switched to branch 'master'
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch
+* master
+  supervise
+  tail_n_supervise
+odroid@odroid64:~/SD/dev/zlib/gztool$ git merge tail_n_supervise
+Updating d2102bf..ee09917
+Fast-forward
+ "bit\303\241cora - gztool.txt" | 1163 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ gztool.c                       | 1872 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------------------------------
+ 2 files changed, 2438 insertions(+), 597 deletions(-)
+ create mode 100644 "bit\303\241cora - gztool.txt"
+
+
+-------------------------------------------------------------------------------
