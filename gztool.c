@@ -891,7 +891,7 @@ local struct returned_output build_index(
     unsigned char input[CHUNK];    // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
     unsigned char window2[WINSIZE];// TODO: convert to malloc
-    uint64_t window2_size;      // size of data stored in window2 buffer
+    uint64_t window2_size = 0;     // size of data stored in window2 buffer
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -1174,7 +1174,7 @@ local struct returned_output build_index(
 
 
     // default zlib initialization
-    // when no index entry points has been found:
+    // when no index entry points have been found:
     if ( NULL == (*built) ||
         NULL == here ) {
         // NULL != *built (there is no previous index available: build it from scratch)
@@ -1284,12 +1284,13 @@ local struct returned_output build_index(
 
             // maintain a backup window for the case of sudden Z_STREAM_END
             // and indx_n_extraction_opts == *_TAIL
-            if ( ( NULL == index || index->index_complete == 0 ) &&
+            if ( output_data_counter == 0 &&
+                 ( NULL == index || index->index_complete == 0 ) &&
                  ( indx_n_extraction_opts == EXTRACT_TAIL ||
                    indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
                 window2_size = WINSIZE - strm.avail_out;
                 memcpy( window2, window, window2_size );
-                // TODO: change to pointer flip at the end of loop
+                // TODO: change to pointer flip at the end of loop (possible?)
             }
 
             //
