@@ -888,10 +888,12 @@ local struct returned_output build_index(
     int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
                                                  // 1: start extraction on first depletion.
+    int decompressing_with_gzip_headers = 0;     // 1 if inflateInit2(&strm, 47);
     unsigned char input[CHUNK];    // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
+    unsigned window_size = 0;      // restarted on every reinitiation of strm data
     unsigned char window2[WINSIZE];// TODO: convert to malloc
-    uint64_t window2_size = 0;     // size of data stored in window2 buffer
+    unsigned window2_size = 0;     // size of data stored in window2 buffer
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -1078,18 +1080,20 @@ local struct returned_output build_index(
 
         // Windows are ALWAYS stored compressed, so decompress it now:
         /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-        // local window_size in order to avoid deleting the on-memory here->window_size,
+        // local_window_size in order to avoid deleting the on-memory here->window_size,
         // that may be needed later if index must be increased and written to disk (fseeko).
-        uint64_t window_size = here->window_size;
+        uint64_t local_window_size = here->window_size;
         /* window is compressed on memory, so decompress it */
-        decompressed_window = decompress_chunk(here->window, &window_size);
+        decompressed_window = decompress_chunk(here->window, &local_window_size);
         if ( NULL == decompressed_window ) {
             ret.error = Z_ERRNO;
             goto build_index_error;
         }
-        (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size may not be WINSIZE)
+        (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
         free( decompressed_window );
         decompressed_window = NULL;
+
+        window_size = WINSIZE;
 
     } // end if ( NULL != *built && (*built)->have > 0 ) {
 
@@ -1184,6 +1188,7 @@ local struct returned_output build_index(
         strm.avail_in = 0;
         strm.next_in = Z_NULL;
         ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
+        decompressing_with_gzip_headers = 1;
         printToStderr( VERBOSITY_MANIAC, "ret.error = %d\n", ret.error );
         if (ret.error != Z_OK)
             return ret;
@@ -1228,6 +1233,7 @@ local struct returned_output build_index(
             strm.avail_in = 0;
             strm.next_in = Z_NULL;
             ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
+            decompressing_with_gzip_headers = 1;
             if (ret.error != Z_OK)
                 return ret;
             strm.avail_in = strm_avail_in0;
@@ -1235,6 +1241,7 @@ local struct returned_output build_index(
             strm.avail_out = WINSIZE;
             strm.next_out = window;
             avail_out_0 = strm.avail_out;
+            window_size = 0;
         }
         // end of bgzip-compatible-streams code
 
@@ -1310,15 +1317,22 @@ local struct returned_output build_index(
             totin += strm.avail_in;
             totout += strm.avail_out;
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
+            { // update window_size available size
+                window_size += strm.avail_out;
+                if (window_size > WINSIZE)
+                    window_size = WINSIZE;
+            }
             totin -= strm.avail_in;
             totout -= strm.avail_out;
             // .................................................
             // treat possible gzip tail:
             if ( ret.error == Z_STREAM_END &&
-                 strm.avail_in >= 8 ) {
+                 strm.avail_in >= 8 &&
+                 decompressing_with_gzip_headers == 0 ) {
                 // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
-                // and for some reason zlib is not able to consume it
+                // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
                 strm.avail_in -= 8;
+                strm.next_in += 8;
                 printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
                 break;
             }
@@ -1439,7 +1453,7 @@ local struct returned_output build_index(
                             index->have, index_last_written_point );
 
                     index = addpoint(index, strm.data_type & 7, totin,
-                                     totout, strm.avail_out, window, WINSIZE, 1);
+                                     totout, strm.avail_out, window, window_size, 1);
 
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
