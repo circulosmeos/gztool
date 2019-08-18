@@ -911,7 +911,8 @@ local struct returned_output build_index(
             printToStderr( VERBOSITY_NORMAL, "Index already complete - using it.\n" );
         }
     } else {
-        printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
+        if ( write_index_to_disk == 1 )
+            printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
     }
 
     /* open index_filename for binary reading & writing */
@@ -1197,21 +1198,31 @@ local struct returned_output build_index(
     do {
         /* get some compressed data from input file */
 
-        // bgzip-compatible streams code:
-        if ( ret.error == Z_STREAM_END ) {
-            // use window as buffer for strm.next_in remanent data movement
+        // bgzip-compatible-streams code:
+        if ( ret.error == Z_STREAM_END &&
+             strm.avail_in > 0 ) { // if strm.avail_in is casually 0, this block of code isn't needed
+            // use buffer for strm.next_in remanent data movement
             // to the beginning of the input (strm.next_in floats from input to input+CHUNK)
-            memcpy( window, strm.next_in, strm.avail_in );
-            memcpy( input, window, strm.avail_in );
-            printToStderr( VERBOSITY_MANIAC, "strm data reinitiated\n" );
+            unsigned char *buffer = malloc( strm.avail_in );
+            if ( NULL == buffer ) {
+                ret.error = Z_MEM_ERROR;
+                goto build_index_error;
+            }
+            memcpy( buffer, strm.next_in, strm.avail_in );
+            memcpy( input, buffer, strm.avail_in );
+            free( buffer );
         }
         // .................................................
+        // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
-        strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
-        strm.avail_in += strm_avail_in0;
+        if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with eof(in)==1 already!
+            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
+            strm.avail_in += strm_avail_in0;
+        }
         // .................................................
         // decompressor state MUST be reinitiated after Z_STREAM_END
         if ( ret.error == Z_STREAM_END ) {
+            printToStderr( VERBOSITY_MANIAC, "Reinitiating zlib strm data...\n" );
             strm_avail_in0 = strm.avail_in;
             (void)inflateEnd(&strm);
             strm.zalloc = Z_NULL;
@@ -1223,10 +1234,12 @@ local struct returned_output build_index(
             if (ret.error != Z_OK)
                 return ret;
             strm.avail_in = strm_avail_in0;
+            // it is compulsory to reinitiate also output data:
+            strm.avail_out = WINSIZE;
+            strm.next_out = window;
+            avail_out_0 = strm.avail_out;
         }
-        // end of bgzip-compatible streams code
-
-        //strm.avail_in = fread(input, 1, CHUNK, in);
+        // end of bgzip-compatible-streams code
 
         avail_in_0 = strm.avail_in;
 
@@ -1436,7 +1449,7 @@ local struct returned_output build_index(
 
         } while ( strm.avail_in != 0 );
 
-    } while ( ret.error != Z_STREAM_END || !feof( in ) );
+    } while ( ret.error != Z_STREAM_END || strm.avail_in > 0 );
 
 
     // last opportunity to output tail data
