@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2, v0.3.*, v0.4 by Roberto S. Galende, 2019
+// v0.1, v0.2, v0.3*, v0.4*, v0.6 by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -2269,7 +2269,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.4)\n");
+    fprintf( stderr, "  gztool (v0.6.28)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
