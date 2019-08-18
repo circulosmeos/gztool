@@ -1218,6 +1218,7 @@ local struct returned_output build_index(
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with eof(in)==1 already!
+            printToStderr( VERBOSITY_MANIAC, "[reading %d B]", CHUNK - strm_avail_in0 );
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
             strm.avail_in += strm_avail_in0;
         }
@@ -1289,6 +1290,7 @@ local struct returned_output build_index(
 
             // sleep and retry
             sleep( WAITING_TIME );
+            clearerr( in );
             continue;
 
         }
@@ -1389,7 +1391,7 @@ local struct returned_output build_index(
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
                 if ( continue_extraction == 1 ) {
-                    unsigned have = WINSIZE - strm.avail_out;
+                    unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
                     printToStderr( VERBOSITY_MANIAC, ">2> %ld, %d, %d ", offset_in, have_in, strm.avail_in );
@@ -1401,7 +1403,7 @@ local struct returned_output build_index(
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
                         output_data_counter += have;
-                        if (fwrite(window, 1, have, stdout) != have ||
+                        if (fwrite(window + (WINSIZE - avail_out_0), 1, have, stdout) != have ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
@@ -1413,6 +1415,7 @@ local struct returned_output build_index(
                         // though indx_n_extraction_opts != EXTRACT_FROM_BYTE
                     }
                 }
+                avail_out_0 = strm.avail_out;
             }
 
             /* if at end of block, consider adding an index entry (note that if
