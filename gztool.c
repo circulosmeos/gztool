@@ -1312,10 +1312,23 @@ local struct returned_output build_index(
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
             totin -= strm.avail_in;
             totout -= strm.avail_out;
+            // .................................................
+            // treat possible gzip tail:
+            if ( ret.error == Z_STREAM_END &&
+                 strm.avail_in >= 8 ) {
+                // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
+                // and for some reason zlib is not able to consume it
+                strm.avail_in -= 8;
+                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
+                break;
+            }
+            // end of treat possible gzip tail
+            // .................................................
+            if ( ret.error != Z_OK )
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(in) );
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR totin=%ld, totout=%ld, ftello=%ld\n", totin, totout, ftello(in) );
                 goto build_index_error;
             }
             if (ret.error == Z_STREAM_END)
@@ -1338,7 +1351,7 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d ", offset, have, strm.avail_out );
+                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d, %d ", offset, have, strm.avail_out, strm.avail_in );
                 if ( offset > have ) {
                     offset -= have;
                 } else {
