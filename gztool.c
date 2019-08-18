@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2, v0.3.*, v0.4.* by Roberto S. Galende, 2019
+// v0.1, v0.2, v0.3*, v0.4*, v0.6* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -578,16 +578,16 @@ local struct access *create_empty_index()
 // unsigned char *window: window data, already compressed with size window_size,
 //                        or uncompressed with size WINSIZE,
 //                        or store an empty window (NULL) because it resides on file.
-// uint32_t window_size : 0: compress passed window of size WINSIZE
-//                       >0 & NULL != window: store window, of size window_size, as it is, in point structure
-//                       >0 & NULL == window: ->window=NULL : this marks a window of size window_size that resides on file
+// uint32_t window_size : size of passed *window (may be already compressed o not)
+// int compress_window  : 0: store window of size window_size, as it is, in point structure
+//                        1: compress passed window of size window_size
 // OUTPUT:
 // pointer to (new) index (NULL on error)
 local struct access *addpoint(struct access *index, uint32_t bits,
-    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size )
+    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size, int compress_window )
 {
     struct point *next;
-    uint64_t size = WINSIZE;
+    uint64_t size = window_size;
     unsigned char *compressed_chunk;
 
     /* if list is empty, create it (start with eight points) */
@@ -614,13 +614,13 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     next->in = in;
     next->out = out;
 
-    if ( window_size == 0 ) {
-        next->window_size = UNCOMPRESSED_WINDOW; // this marks an uncompressed WINSIZE next->window
-        next->window = malloc(WINSIZE);
+    if ( compress_window == 1 ) {
+        next->window_size = window_size;
+        next->window = malloc( window_size );
         if (left)
-            memcpy(next->window, window + WINSIZE - left, left);
-        if (left < WINSIZE)
-            memcpy(next->window + left, window, WINSIZE - left);
+            memcpy(next->window, window + window_size - left, left);
+        if (left < window_size)
+            memcpy(next->window + left, window, window_size - left);
         // compress window
         compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
         if (compressed_chunk == NULL) {
@@ -888,10 +888,12 @@ local struct returned_output build_index(
     int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
                                                  // 1: start extraction on first depletion.
+    int decompressing_with_gzip_headers = 0;     // 1 if inflateInit2(&strm, 47);
     unsigned char input[CHUNK];    // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
+    unsigned window_size = 0;      // restarted on every reinitiation of strm data
     unsigned char window2[WINSIZE];// TODO: convert to malloc
-    uint64_t window2_size;      // size of data stored in window2 buffer
+    unsigned window2_size = 0;     // size of data stored in window2 buffer
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -911,7 +913,8 @@ local struct returned_output build_index(
             printToStderr( VERBOSITY_NORMAL, "Index already complete - using it.\n" );
         }
     } else {
-        printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
+        if ( write_index_to_disk == 1 )
+            printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
     }
 
     /* open index_filename for binary reading & writing */
@@ -1075,23 +1078,22 @@ local struct returned_output build_index(
             fclose(index_file);
         }
 
-        if (here->window_size != UNCOMPRESSED_WINDOW) {
-            /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-            // local window_size in order to avoid deleting the on-memory here->window_size,
-            // that may be needed later if index must be increased and written to disk (fseeko).
-            uint64_t window_size = here->window_size;
-            /* window is compressed on memory, so decompress it */
-            decompressed_window = decompress_chunk(here->window, &window_size);
-            if ( NULL == decompressed_window ) {
-                ret.error = Z_ERRNO;
-                goto build_index_error;
-            }
-            (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-            free( decompressed_window );
-            decompressed_window = NULL;
-        } else {
-            (void)inflateSetDictionary(&strm, here->window, WINSIZE);
+        // Windows are ALWAYS stored compressed, so decompress it now:
+        /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+        // local_window_size in order to avoid deleting the on-memory here->window_size,
+        // that may be needed later if index must be increased and written to disk (fseeko).
+        uint64_t local_window_size = here->window_size;
+        /* window is compressed on memory, so decompress it */
+        decompressed_window = decompress_chunk(here->window, &local_window_size);
+        if ( NULL == decompressed_window ) {
+            ret.error = Z_ERRNO;
+            goto build_index_error;
         }
+        (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
+        free( decompressed_window );
+        decompressed_window = NULL;
+
+        window_size = WINSIZE;
 
     } // end if ( NULL != *built && (*built)->have > 0 ) {
 
@@ -1174,7 +1176,7 @@ local struct returned_output build_index(
 
 
     // default zlib initialization
-    // when no index entry points has been found:
+    // when no index entry points have been found:
     if ( NULL == (*built) ||
         NULL == here ) {
         // NULL != *built (there is no previous index available: build it from scratch)
@@ -1186,6 +1188,7 @@ local struct returned_output build_index(
         strm.avail_in = 0;
         strm.next_in = Z_NULL;
         ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
+        decompressing_with_gzip_headers = 1;
         printToStderr( VERBOSITY_MANIAC, "ret.error = %d\n", ret.error );
         if (ret.error != Z_OK)
             return ret;
@@ -1197,7 +1200,50 @@ local struct returned_output build_index(
     do {
         /* get some compressed data from input file */
 
-        strm.avail_in = fread(input, 1, CHUNK, in);
+        // bgzip-compatible-streams code:
+        if ( ret.error == Z_STREAM_END &&
+             strm.avail_in > 0 ) { // if strm.avail_in is casually 0, this block of code isn't needed
+            // use buffer for strm.next_in remanent data movement
+            // to the beginning of the input (strm.next_in floats from input to input+CHUNK)
+            unsigned char *buffer = malloc( strm.avail_in );
+            if ( NULL == buffer ) {
+                ret.error = Z_MEM_ERROR;
+                goto build_index_error;
+            }
+            memcpy( buffer, strm.next_in, strm.avail_in );
+            memcpy( input, buffer, strm.avail_in );
+            free( buffer );
+        }
+        // .................................................
+        // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
+        int strm_avail_in0 = strm.avail_in;
+        if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with eof(in)==1 already!
+            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
+            strm.avail_in += strm_avail_in0;
+        }
+        // .................................................
+        // decompressor state MUST be reinitiated after Z_STREAM_END
+        if ( ret.error == Z_STREAM_END ) {
+            printToStderr( VERBOSITY_MANIAC, "Reinitiating zlib strm data...\n" );
+            strm_avail_in0 = strm.avail_in;
+            (void)inflateEnd(&strm);
+            strm.zalloc = Z_NULL;
+            strm.zfree = Z_NULL;
+            strm.opaque = Z_NULL;
+            strm.avail_in = 0;
+            strm.next_in = Z_NULL;
+            ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
+            decompressing_with_gzip_headers = 1;
+            if (ret.error != Z_OK)
+                return ret;
+            strm.avail_in = strm_avail_in0;
+            // it is compulsory to reinitiate also output data:
+            strm.avail_out = WINSIZE;
+            strm.next_out = window;
+            avail_out_0 = strm.avail_out;
+            window_size = 0;
+        }
+        // end of bgzip-compatible-streams code
 
         avail_in_0 = strm.avail_in;
 
@@ -1271,12 +1317,33 @@ local struct returned_output build_index(
             totin += strm.avail_in;
             totout += strm.avail_out;
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
+            { // update window_size available size
+                window_size += strm.avail_out;
+                if (window_size > WINSIZE)
+                    window_size = WINSIZE;
+            }
             totin -= strm.avail_in;
             totout -= strm.avail_out;
+            // .................................................
+            // treat possible gzip tail:
+            if ( ret.error == Z_STREAM_END &&
+                 strm.avail_in >= 8 &&
+                 decompressing_with_gzip_headers == 0 ) {
+                // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
+                // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
+                strm.avail_in -= 8;
+                strm.next_in += 8;
+                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
+                break;
+                // avail_in_0 need not be decremented as it tries to count raw stream input bytes
+            }
+            // end of treat possible gzip tail
+            // .................................................
+            if ( ret.error != Z_OK )
+                printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(in) );
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR totin=%ld, totout=%ld, ftello=%ld\n", totin, totout, ftello(in) );
                 goto build_index_error;
             }
             if (ret.error == Z_STREAM_END)
@@ -1284,12 +1351,13 @@ local struct returned_output build_index(
 
             // maintain a backup window for the case of sudden Z_STREAM_END
             // and indx_n_extraction_opts == *_TAIL
-            if ( ( NULL == index || index->index_complete == 0 ) &&
+            if ( output_data_counter == 0 &&
+                 ( NULL == index || index->index_complete == 0 ) &&
                  ( indx_n_extraction_opts == EXTRACT_TAIL ||
                    indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
                 window2_size = WINSIZE - strm.avail_out;
                 memcpy( window2, window, window2_size );
-                // TODO: change to pointer flip at the end of loop
+                // TODO: change to pointer flip at the end of loop (possible?)
             }
 
             //
@@ -1298,7 +1366,7 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d ", offset, have, strm.avail_out );
+                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d, %d ", offset, have, strm.avail_out, strm.avail_in );
                 if ( offset > have ) {
                     offset -= have;
                 } else {
@@ -1386,7 +1454,7 @@ local struct returned_output build_index(
                             index->have, index_last_written_point );
 
                     index = addpoint(index, strm.data_type & 7, totin,
-                                     totout, strm.avail_out, window, 0);
+                                     totout, strm.avail_out, window, window_size, 1);
 
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
@@ -1404,9 +1472,9 @@ local struct returned_output build_index(
 
             }
 
-        } while (strm.avail_in != 0);
+        } while ( strm.avail_in != 0 );
 
-    } while (ret.error != Z_STREAM_END);
+    } while ( ret.error != Z_STREAM_END || strm.avail_in > 0 );
 
 
     // last opportunity to output tail data
@@ -1439,7 +1507,7 @@ local struct returned_output build_index(
     /* clean up */
     (void)inflateEnd(&strm);
     /* and return index (release unused entries in list) */
-    {
+    if ( NULL != index ) {
         struct point *next = realloc(index->list, sizeof(struct point) * index->have);
         if (next == NULL) {
             ret.error = Z_MEM_ERROR;
@@ -1447,32 +1515,43 @@ local struct returned_output build_index(
             goto build_index_error;
         }
         index->list = next;
+        index->size = index->have;
+        index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
     }
-    index->size = index->have;
-    index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
 
     // once all index values are filled, close index file: a last call must be done
     // with index_last_written_point = index->have
-    if ( index->index_complete == 0 && write_index_to_disk == 1 )
+    if ( NULL != index &&
+         index->index_complete == 0 &&
+         write_index_to_disk == 1 ) {
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto build_index_error;
+    }
+
     if ( NULL != index_file )
         fclose(index_file);
 
-    if ( index->index_complete == 0 && write_index_to_disk == 1 )
+    if ( NULL != index &&
+         index->index_complete == 0 &&
+         write_index_to_disk == 1 ) {
         if ( strlen(index_filename) > 0 )
             printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
             printToStderr( VERBOSITY_NORMAL, "Index written to stdout.\n" );
+    }
 
-    index->index_complete = 1; /* index is now complete */
+    if ( NULL != index )
+        index->index_complete = 1; /* index is now complete */
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
 
     *built = index;
-    ret.value = index->have;
+    if ( NULL != index )
+        ret.value = index->have;
+    else
+        ret.value = 0;
     return ret;
 
     /* return error */
@@ -1635,7 +1714,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld), ", index, here.bits, here.in, here.out, here.window_size, here.window_beginning);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
+        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size, 0 );
 
         // after increasing index, copy values which were not passed to addpoint():
         index->list[index->have - 1].window_beginning = here.window_beginning;
@@ -1976,7 +2055,8 @@ wait_for_file_creation:
        return EXIT_GENERIC_ERROR;
     }
 
-    if ( number_of_index_points != (*index)->have && write_index_to_disk == 1 )
+    if ( NULL != index && NULL != *index &&
+         number_of_index_points != (*index)->have && write_index_to_disk == 1 )
         if ( number_of_index_points > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
             printToStderr( VERBOSITY_NORMAL, "Now index have %ld access points.\n", ret.value);
@@ -2189,7 +2269,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.4.1)\n");
+    fprintf( stderr, "  gztool (v0.6.28)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );

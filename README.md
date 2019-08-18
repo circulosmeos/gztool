@@ -38,6 +38,8 @@ Also, some optimizations has been made:
 * span between index points is raised by default from 1 to 10 MiB, and can be adjusted with `-s` (*span*).
 * windows **are compressed** in file
 * windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
+* **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)**
+* **Compatible with complete `gzip` concatenated files**
 * data can be provided from/to stdin/stdout
 
 More functionality is planned.
@@ -69,7 +71,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.4.1)
+      gztool (v0.6.28)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -211,11 +213,11 @@ There's a special header to mark ".gzi" files as index files usable for this app
     |   0x0 64 bits   |    "gzipindx"   |     ~     16 bytes = 128 bits
     +-----------------+-----------------+
 
-Note that this header has been built so that this format will be "compatible" with index files generated for *bgzip*-compressed files. **[bgzip](http://www.htslib.org/doc/bgzip.html)** files are totally compatible with gzip: they've just been made so every 64 kiB of uncompressed data the zlib library is restart, so they are composed of independent gzipped blocks one after another. The *bgzip* command can create index files for bgzipped files in less time and with much less space than with this tool as they're already almost random-access-capable. The first 64-bit-long of bgzip files is the count of index pairs that are next, so with this 0x0 header gztool-index-files can be ignored by *bgzip* command and so bgzipped and gzipped files and their indexes could live in the same folder without collision. In the next version *gztool* will also ignore *bgzip*-index files (and in a future version *gztool* will hopefully read both index file types).
+Note that this header has been built so that this format will be "compatible" with index files generated for *bgzip*-compressed files. **[bgzip](http://www.htslib.org/doc/bgzip.html)** files are totally compatible with gzip: they've just been made so every 64 kiB of uncompressed data the zlib library is restart, so they are composed of independent gzipped blocks one after another. The *bgzip* command can create index files for bgzipped files in less time and with much less space than with this tool as they're already almost random-access-capable. The first 64-bit-long of bgzip files is the count of index pairs that are next, so with this 0x0 header gztool-index-files can be ignored by *bgzip* command and so bgzipped and gzipped files and their indexes could live in the same folder without collision.
 
 All numbers are stored in big-endian byte order (platform independently). Big-endian numbers are easier to interpret than little-endian ones when inspecting them with an hex editor (like `od` for example).
 
-Next, and almost one-to-one pass of *struct access* is serialize to the file. *access->have* and *access->size* are both written even though they'd always be equal. If the index file is generated with `-S` or `-T` on a still-growing gzip file (or somehow the index hasn't been completed because the gzip data was still incomplete), the values on disk for *access->have* and *access->size* will be respectively 0x0..0 and "number of actual index points written" (both uint64_t) to mark this fact.
+Next, and almost one-to-one pass of *struct access* is serialize to the file. *access->have* and *access->size* are both written even though they'd always be equal. If the index file is generated with `-S` or `-T` on a still-growing gzip file (or somehow the index hasn't been completed because the gzip data was still incomplete), the values on disk for *access->have* and *access->size* will be respectively 0x0..0 and "number of actual index points written" (both uint64_t) to mark this fact. *access->size* MAY be UINT64_MAX to avoid written this value as it number of index points are added to the file.
 
 After that, comes all the *struct point* data. As previously said, windows are compressed so a previous register (32 bits) with their length is needed. Note that an index point with a window of size zero is possible in principle (and will be ignored).
 
@@ -244,7 +246,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.4.1**.
+This version is **v0.6.28**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
