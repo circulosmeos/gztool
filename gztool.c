@@ -578,16 +578,16 @@ local struct access *create_empty_index()
 // unsigned char *window: window data, already compressed with size window_size,
 //                        or uncompressed with size WINSIZE,
 //                        or store an empty window (NULL) because it resides on file.
-// uint32_t window_size : 0: compress passed window of size WINSIZE
-//                       >0 & NULL != window: store window, of size window_size, as it is, in point structure
-//                       >0 & NULL == window: ->window=NULL : this marks a window of size window_size that resides on file
+// uint32_t window_size : size of passed *window (may be already compressed o not)
+// int compress_window  : 0: store window of size window_size, as it is, in point structure
+//                        1: compress passed window of size window_size
 // OUTPUT:
 // pointer to (new) index (NULL on error)
 local struct access *addpoint(struct access *index, uint32_t bits,
-    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size )
+    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size, int compress_window )
 {
     struct point *next;
-    uint64_t size = WINSIZE;
+    uint64_t size = window_size;
     unsigned char *compressed_chunk;
 
     /* if list is empty, create it (start with eight points) */
@@ -614,13 +614,13 @@ local struct access *addpoint(struct access *index, uint32_t bits,
     next->in = in;
     next->out = out;
 
-    if ( window_size == 0 ) {
-        next->window_size = UNCOMPRESSED_WINDOW; // this marks an uncompressed WINSIZE next->window
-        next->window = malloc(WINSIZE);
+    if ( compress_window == 1 ) {
+        next->window_size = window_size;
+        next->window = malloc( window_size );
         if (left)
-            memcpy(next->window, window + WINSIZE - left, left);
-        if (left < WINSIZE)
-            memcpy(next->window + left, window, WINSIZE - left);
+            memcpy(next->window, window + window_size - left, left);
+        if (left < window_size)
+            memcpy(next->window + left, window, window_size - left);
         // compress window
         compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
         if (compressed_chunk == NULL) {
@@ -1076,23 +1076,20 @@ local struct returned_output build_index(
             fclose(index_file);
         }
 
-        if (here->window_size != UNCOMPRESSED_WINDOW) {
-            /* decompress() use uint64_t counters, but index->list->window_size is smaller */
-            // local window_size in order to avoid deleting the on-memory here->window_size,
-            // that may be needed later if index must be increased and written to disk (fseeko).
-            uint64_t window_size = here->window_size;
-            /* window is compressed on memory, so decompress it */
-            decompressed_window = decompress_chunk(here->window, &window_size);
-            if ( NULL == decompressed_window ) {
-                ret.error = Z_ERRNO;
-                goto build_index_error;
-            }
-            (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size must be WINSIZE)
-            free( decompressed_window );
-            decompressed_window = NULL;
-        } else {
-            (void)inflateSetDictionary(&strm, here->window, WINSIZE);
+        // Windows are ALWAYS stored compressed, so decompress it now:
+        /* decompress() use uint64_t counters, but index->list->window_size is smaller */
+        // local window_size in order to avoid deleting the on-memory here->window_size,
+        // that may be needed later if index must be increased and written to disk (fseeko).
+        uint64_t window_size = here->window_size;
+        /* window is compressed on memory, so decompress it */
+        decompressed_window = decompress_chunk(here->window, &window_size);
+        if ( NULL == decompressed_window ) {
+            ret.error = Z_ERRNO;
+            goto build_index_error;
         }
+        (void)inflateSetDictionary(&strm, decompressed_window, window_size); // (window_size may not be WINSIZE)
+        free( decompressed_window );
+        decompressed_window = NULL;
 
     } // end if ( NULL != *built && (*built)->have > 0 ) {
 
@@ -1429,7 +1426,7 @@ local struct returned_output build_index(
                             index->have, index_last_written_point );
 
                     index = addpoint(index, strm.data_type & 7, totin,
-                                     totout, strm.avail_out, window, 0);
+                                     totout, strm.avail_out, window, WINSIZE, 1);
 
                     if (index == NULL) {
                         ret.error = Z_MEM_ERROR;
@@ -1689,7 +1686,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld), ", index, here.bits, here.in, here.out, here.window_size, here.window_beginning);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size );
+        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size, 0 );
 
         // after increasing index, copy values which were not passed to addpoint():
         index->list[index->have - 1].window_beginning = here.window_beginning;
