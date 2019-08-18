@@ -1326,6 +1326,20 @@ local struct returned_output build_index(
             }
             totin -= strm.avail_in;
             totout -= strm.avail_out;
+
+            // maintain a backup window for the case of sudden Z_STREAM_END
+            // and indx_n_extraction_opts == *_TAIL
+            if ( output_data_counter == 0 &&
+                 ( NULL == index || index->index_complete == 0 ) &&
+                 ( indx_n_extraction_opts == EXTRACT_TAIL ||
+                   indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
+                if ( WINSIZE - strm.avail_out > 0 ) { // if have == 0, maintain previous (data and) window2_size value
+                    window2_size = WINSIZE - strm.avail_out;
+                    memcpy( window2, window, window2_size );
+                }
+                // TODO: change to pointer flip instead of memcpy (possible?)
+            }
+
             // .................................................
             // treat possible gzip tail:
             if ( ret.error == Z_STREAM_END &&
@@ -1350,17 +1364,6 @@ local struct returned_output build_index(
             }
             if (ret.error == Z_STREAM_END)
                 break;
-
-            // maintain a backup window for the case of sudden Z_STREAM_END
-            // and indx_n_extraction_opts == *_TAIL
-            if ( output_data_counter == 0 &&
-                 ( NULL == index || index->index_complete == 0 ) &&
-                 ( indx_n_extraction_opts == EXTRACT_TAIL ||
-                   indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
-                window2_size = WINSIZE - strm.avail_out;
-                memcpy( window2, window, window2_size );
-                // TODO: change to pointer flip at the end of loop (possible?)
-            }
 
             //
             // if required by passed indx_n_extraction_opts option, extract to stdout:
@@ -1494,15 +1497,15 @@ local struct returned_output build_index(
             if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
+            output_data_counter += have;
         } else {
             // use backup window
-            if (fwrite(window2, 1, window2_size, stdout) != have || ferror(stdout)) {
+            if (fwrite(window2, 1, window2_size, stdout) != window2_size || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
-
+            output_data_counter += window2_size;
         }
 
-        output_data_counter += have;
         fflush(stdout);
 
     }
