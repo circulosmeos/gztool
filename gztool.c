@@ -1341,7 +1341,6 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                avail_out_0 = strm.avail_out;
                 printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d ", offset, have, strm.avail_out );
                 if ( offset > have ) {
                     offset -= have;
@@ -1351,7 +1350,7 @@ local struct returned_output build_index(
                         // print offset - have bytes
                         // If offset==0 (from offset byte on) this prints always all bytes:
                         output_data_counter += have - offset;
-                        if (fwrite(window + offset, 1, have - offset, stdout) != (have - offset) ||
+                        if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, stdout) != (have - offset) ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
@@ -1361,6 +1360,7 @@ local struct returned_output build_index(
                         fflush(stdout);
                     }
                 }
+                avail_out_0 = strm.avail_out;
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
                 if ( continue_extraction == 1 ) {
