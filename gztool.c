@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1, v0.2, v0.3.*, v0.4 by Roberto S. Galende, 2019
+// v0.1, v0.2, v0.3.*, v0.4.* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -1298,7 +1298,6 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                avail_out_0 = strm.avail_out;
                 printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d ", offset, have, strm.avail_out );
                 if ( offset > have ) {
                     offset -= have;
@@ -1308,7 +1307,7 @@ local struct returned_output build_index(
                         // print offset - have bytes
                         // If offset==0 (from offset byte on) this prints always all bytes:
                         output_data_counter += have - offset;
-                        if (fwrite(window + offset, 1, have - offset, stdout) != (have - offset) ||
+                        if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, stdout) != (have - offset) ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
@@ -1318,6 +1317,7 @@ local struct returned_output build_index(
                         fflush(stdout);
                     }
                 }
+                avail_out_0 = strm.avail_out;
             } else {
                 // continue_extraction in practice marks the use of "offset_in"
                 if ( continue_extraction == 1 ) {
@@ -2189,7 +2189,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.4)\n");
+    fprintf( stderr, "  gztool (v0.4.1)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
