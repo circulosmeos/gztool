@@ -1318,14 +1318,15 @@ local struct returned_output build_index(
                update the total input and output counters */
             totin += strm.avail_in;
             totout += strm.avail_out;
+            window_size += strm.avail_out; // update window_size available size
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
+            totin -= strm.avail_in;
+            totout -= strm.avail_out;
             { // update window_size available size
-                window_size += strm.avail_out;
+                window_size -= strm.avail_out;
                 if (window_size > WINSIZE)
                     window_size = WINSIZE;
             }
-            totin -= strm.avail_in;
-            totout -= strm.avail_out;
 
             // maintain a backup window for the case of sudden Z_STREAM_END
             // and indx_n_extraction_opts == *_TAIL
