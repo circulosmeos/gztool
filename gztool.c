@@ -1203,21 +1203,14 @@ local struct returned_output build_index(
         // bgzip-compatible-streams code:
         if ( ret.error == Z_STREAM_END &&
              strm.avail_in > 0 ) { // if strm.avail_in is casually 0, this block of code isn't needed
-            // use buffer for strm.next_in remanent data movement
-            // to the beginning of the input (strm.next_in floats from input to input+CHUNK)
-            unsigned char *buffer = malloc( strm.avail_in );
-            if ( NULL == buffer ) {
-                ret.error = Z_MEM_ERROR;
-                goto build_index_error;
-            }
-            memcpy( buffer, strm.next_in, strm.avail_in );
-            memcpy( input, buffer, strm.avail_in );
-            free( buffer );
+            // readjust input data moving it to the beginning of buffer
+            // (strm.next_in floats from input to input+CHUNK)
+            memmove( input, strm.next_in, strm.avail_in ); // memmove() is overlapping-safe
         }
         // .................................................
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
-        if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with eof(in)==1 already!
+        if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with feof(in)==1 already!
             printToStderr( VERBOSITY_MANIAC, "[reading %d B]", CHUNK - strm_avail_in0 );
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
             strm.avail_in += strm_avail_in0;
@@ -1318,14 +1311,15 @@ local struct returned_output build_index(
                update the total input and output counters */
             totin += strm.avail_in;
             totout += strm.avail_out;
+            window_size += strm.avail_out; // update window_size available size
             ret.error = inflate(&strm, Z_BLOCK);      /* return at end of block */
+            totin -= strm.avail_in;
+            totout -= strm.avail_out;
             { // update window_size available size
-                window_size += strm.avail_out;
+                window_size -= strm.avail_out;
                 if (window_size > WINSIZE)
                     window_size = WINSIZE;
             }
-            totin -= strm.avail_in;
-            totout -= strm.avail_out;
 
             // maintain a backup window for the case of sudden Z_STREAM_END
             // and indx_n_extraction_opts == *_TAIL
@@ -1451,29 +1445,34 @@ local struct returned_output build_index(
                     // (this can happen if -s is less now, than when the index was created!)
                     ( NULL == index || ( index->have > 0 &&
                         index->list[index->have -1].in < totin &&
-                        index->list[index->have -1].out < totout ) ) &&
-                    // if `-W`, index is not written to disk, and it will also not be created/updated (!)
-                    write_index_to_disk == 1
+                        index->list[index->have -1].out < totout ) )
                     ) {
-                    if ( NULL != index )
-                        printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
-                            index->have, index_last_written_point );
 
-                    index = addpoint(index, strm.data_type & 7, totin,
-                                     totout, strm.avail_out, window, window_size, 1);
+                    if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
 
-                    if (index == NULL) {
-                        ret.error = Z_MEM_ERROR;
-                        goto build_index_error;
+                        if ( NULL != index )
+                            printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
+                                index->have, index_last_written_point );
+
+                        index = addpoint(index, strm.data_type & 7, totin,
+                                         totout, strm.avail_out, window, window_size, 1);
+                        if (index == NULL) {
+                            ret.error = Z_MEM_ERROR;
+                            goto build_index_error;
+                        }
+
+                        // write added point!
+                        // note that points written are automatically emptied of its window values
+                        // in order to use as less memory a s possible
+                        if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
+                            goto build_index_error;
+
                     }
-                    last = totout;
 
-                    // write added point!
-                    // note that points written are automatically emptied of its window values
-                    // in order to use as less memory a s possible
-                    if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
-                        goto build_index_error;
-                    index_last_written_point = index->have;
+                    last = totout;
+                    if ( NULL != index )
+                        index_last_written_point = index->have;
+
                 }
 
             }
