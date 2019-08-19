@@ -1345,7 +1345,7 @@ local struct returned_output build_index(
                 strm.next_in += 8;
                 printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
                 break;
-                // avail_in_0 need not be decremented as it tries to count raw stream input bytes
+                // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
             // end of treat possible gzip tail
             // .................................................
@@ -1470,7 +1470,8 @@ local struct returned_output build_index(
                     }
 
                     last = totout;
-                    index_last_written_point = index->have;
+                    if ( NULL != index )
+                        index_last_written_point = index->have;
 
                 }
 
