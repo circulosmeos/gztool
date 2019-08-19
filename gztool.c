@@ -1203,16 +1203,9 @@ local struct returned_output build_index(
         // bgzip-compatible-streams code:
         if ( ret.error == Z_STREAM_END &&
              strm.avail_in > 0 ) { // if strm.avail_in is casually 0, this block of code isn't needed
-            // use buffer for strm.next_in remanent data movement
-            // to the beginning of the input (strm.next_in floats from input to input+CHUNK)
-            unsigned char *buffer = malloc( strm.avail_in );
-            if ( NULL == buffer ) {
-                ret.error = Z_MEM_ERROR;
-                goto build_index_error;
-            }
-            memcpy( buffer, strm.next_in, strm.avail_in );
-            memcpy( input, buffer, strm.avail_in );
-            free( buffer );
+            // readjust input data moving it to the beginning of buffer
+            // (strm.next_in floats from input to input+CHUNK)
+            memmove( input, strm.next_in, strm.avail_in ); // memmove() is overlapping-safe
         }
         // .................................................
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
