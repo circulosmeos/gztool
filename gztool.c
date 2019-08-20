@@ -616,21 +616,25 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 
     if ( compress_window == 1 ) {
         next->window_size = window_size;
-        next->window = malloc( window_size );
-        if (left)
-            memcpy(next->window, window + window_size - left, left);
-        if (left < window_size)
-            memcpy(next->window + left, window, window_size - left);
-        // compress window
-        compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
-        if (compressed_chunk == NULL) {
-            printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
-            return NULL;
+        next->window = NULL;
+        if ( window_size > 0 ) {
+            // compress window if window_size > 0: if not, a zero-length window is stored.
+            next->window = malloc( window_size );
+            if (left)
+                memcpy(next->window, window + window_size - left, left);
+            if (left < window_size)
+                memcpy(next->window + left, window, window_size - left);
+            // compress window
+            compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
+            if (compressed_chunk == NULL) {
+                printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
+                return NULL;
+            }
+            free(next->window);
+            next->window = compressed_chunk;
+            /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
+            next->window_size = size;
         }
-        free(next->window);
-        next->window = compressed_chunk;
-        /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
-        next->window_size = size;
         printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
     } else {
         // if NULL == window, this creates a NULL window: it resides on file,
@@ -751,11 +755,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
                 fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
             }
             here->window_beginning = ftello(output_file);
-            if (NULL == here->window) {
+            if ( NULL == here->window &&
+                 here->window_size != 0 ) {
                 printToStderr( VERBOSITY_NORMAL, "Index incomplete! - index writing aborted.\n" );
                 return 0;
             } else {
-                fwrite(here->window, here->window_size, 1, output_file);
+                if ( here->window_size > 0 )
+                    fwrite(here->window, here->window_size, 1, output_file);
             }
             // once written, point's window CAN (and will now) BE DELETED from memory
             free(here->window);
@@ -1082,18 +1088,20 @@ local struct returned_output build_index(
         /* decompress() use uint64_t counters, but index->list->window_size is smaller */
         // local_window_size in order to avoid deleting the on-memory here->window_size,
         // that may be needed later if index must be increased and written to disk (fseeko).
-        uint64_t local_window_size = here->window_size;
-        /* window is compressed on memory, so decompress it */
-        decompressed_window = decompress_chunk(here->window, &local_window_size);
-        if ( NULL == decompressed_window ) {
-            ret.error = Z_ERRNO;
-            goto build_index_error;
+        window_size = 0;
+        if ( here->window_size > 0 ) {
+            uint64_t local_window_size = here->window_size;
+            /* window is compressed on memory, so decompress it */
+            decompressed_window = decompress_chunk(here->window, &local_window_size);
+            if ( NULL == decompressed_window ) {
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
+            free( decompressed_window );
+            decompressed_window = NULL;
+            window_size = local_window_size;
         }
-        (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
-        free( decompressed_window );
-        decompressed_window = NULL;
-
-        window_size = WINSIZE;
 
     } // end if ( NULL != *built && (*built)->have > 0 ) {
 
@@ -1660,11 +1668,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
         printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
-        if ( here.window_size == 0 ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
-                    file_name, position_at_file, index->have + 1 );
-            continue;
-        }
+
         if ( here.bits > 8 ||
              here.window_size < 0 )
         {
@@ -1698,21 +1702,26 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 }
                 free(input);
             } else {
-                fseeko(input_file, here.window_size, SEEK_CUR);
+                if ( here.window_size > 0 )
+                    fseeko(input_file, here.window_size, SEEK_CUR);
             }
         } else {
             // load compressed window on memory:
-            here.window = malloc(here.window_size);
-            // load window on here.window: this is marked with
-            // a here.window_beginning = 0 (which is impossible with gzipindx format)
-            here.window_beginning = 0;
-            if (here.window == NULL) {
-                printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
-                goto deserialize_index_from_file_error;
-            }
-            if ( !fread(here.window, here.window_size, 1, input_file) ) {
-                printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
-                goto deserialize_index_from_file_error;
+            if ( here.window_size > 0 ) {
+                here.window = malloc(here.window_size);
+                // load window on here.window: this is marked with
+                // a here.window_beginning = 0 (which is impossible with gzipindx format)
+                here.window_beginning = 0;
+                if (here.window == NULL) {
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    goto deserialize_index_from_file_error;
+                }
+                if ( !fread(here.window, here.window_size, 1, input_file) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
+                    goto deserialize_index_from_file_error;
+                }
+            } else {
+                here.window = NULL;
             }
         }
         position_at_file += here.window_size;
