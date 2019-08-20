@@ -2119,7 +2119,8 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
         in = stdin;
     }
 
-    // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
+    // in case in == stdin, file_name == ""
+    // but this doesn't matter as windows won't be inflated from disk, but from memory with 2nd parameter == 1.
     index = deserialize_index_from_file( in, ((list_verbosity==VERBOSITY_MANIAC)?1:0), file_name );
 
     if ( NULL != index &&
