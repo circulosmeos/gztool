@@ -2913,6 +2913,13 @@ int main(int argc, char **argv)
         fclose( index_file );
     }
 
-    return ret_value;
+    if ( ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) > 1 ) {
+        // if processing multiple files, return EXIT_GENERIC_ERROR if any one failed:
+        if ( count_errors > 0 )
+            return EXIT_GENERIC_ERROR;
+        else
+            return EXIT_OK;
+    } else
+        return ret_value;
 
 }
