@@ -2098,6 +2098,10 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
     uint64_t j;
     int ret_value = EXIT_OK;
     struct stat st;
+    unsigned char *gzip_filename = NULL;
+    struct stat st_gzip;
+    uint64_t comp_win_counter = 0;   // just to count bytes and calculate a file estimated "hardness"
+    uint64_t uncomp_win_counter = 0; // just to count bytes and calculate a file estimated "hardness"
 
     // open index file:
     if ( strlen( file_name ) > 0 ) {
@@ -2129,7 +2133,6 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
             // try to obtain the name of the original gzip data file
             // to calculate the ratio index_file_size / gzip_file_size
 
-            unsigned char *gzip_filename = NULL;
             gzip_filename = malloc( strlen(file_name) + 1 );
             if ( NULL != gzip_filename ) {
                 sprintf( gzip_filename, "%s", file_name );
@@ -2161,14 +2164,11 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
             }
 
             if ( NULL != gzip_filename ) {
-                struct stat st2;
-                stat( gzip_filename, &st2 );
-                if ( st2.st_size > 0 ) {
-                    fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st2.st_size * 100.0 );
+                stat( gzip_filename, &st_gzip );
+                if ( st_gzip.st_size > 0 ) {
+                    fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
                     fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
                 }
-                free( gzip_filename );
-                gzip_filename = NULL;
             }
 
         }
@@ -2215,11 +2215,28 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
                         free( decompressed_window );
                         decompressed_window = NULL;
                     }
-                    if ( verbosity_level > VERBOSITY_NONE )
-                        fprintf( stdout, "@ %ld / %ld ( %d/%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, local_window_size );
+                    if ( verbosity_level > VERBOSITY_NONE ) {
+                        comp_win_counter   += index->list[j].window_size;
+                        uncomp_win_counter += local_window_size;
+                        fprintf( stdout, "@ %ld / %ld ( %d/%ld %.2f%% ), ",
+                            index->list[j].in, index->list[j].out, index->list[j].window_size,
+                            local_window_size, ((local_window_size>0)?((double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
+                    }
                 }
             }
         }
+
+        if ( verbosity_level > VERBOSITY_NONE &&
+             list_verbosity == VERBOSITY_MANIAC &&
+             uncomp_win_counter > 0 ) {
+            fprintf( stdout, "\n\tEstimated gzip data compression factor: %.2f%%", (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
+            if ( NULL != gzip_filename &&
+                 st_gzip.st_size > 0 &&
+                 index->file_size > 0 ) {
+                fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%", (double)st_gzip.st_size/(double)index->file_size*100.0 );
+            }
+        }
+
         if (verbosity_level > VERBOSITY_NONE )
             fprintf( stdout, "\n" );
 
@@ -2230,6 +2247,9 @@ action_list_info_error:
         fclose( in );
     if ( NULL != index )
         free_index( index );
+    if ( NULL != gzip_filename )
+        free( gzip_filename );
+
     return ret_value;
 
 }
