@@ -2111,7 +2111,7 @@ local int action_list_info( unsigned char *file_name ) {
     }
 
     // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
-    index = deserialize_index_from_file( in, 0, file_name );
+    index = deserialize_index_from_file( in, ((verbosity_level==VERBOSITY_MANIAC)?1:0), file_name );
 
     if ( NULL != index &&
          strlen( file_name ) > 0 ) {
@@ -2190,7 +2190,23 @@ local int action_list_info( unsigned char *file_name ) {
         if ( verbosity_level > VERBOSITY_NORMAL ) {
             fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
             for (j=0; j<index->have; j++) {
-                fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
+                if ( verbosity_level == VERBOSITY_EXCESSIVE )
+                    fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
+                if ( verbosity_level == VERBOSITY_MANIAC ) {
+                    uint64_t local_window_size = index->list[j].window_size;
+                    if ( local_window_size > 0 ) {
+                        /* window is compressed on memory, so decompress it */
+                        unsigned char *decompressed_window = NULL;
+                        decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
+                        if ( NULL == decompressed_window ) {
+                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not decompress window %d from index file '%s'.\n", j, file_name);
+                            ret_value = EXIT_GENERIC_ERROR;
+                        }
+                        free( decompressed_window );
+                        decompressed_window = NULL;
+                    }
+                    fprintf( stdout, "@ %ld / %ld ( %d/%d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, local_window_size );
+                }
             }
         }
         if (verbosity_level > VERBOSITY_NONE )
