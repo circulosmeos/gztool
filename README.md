@@ -172,16 +172,18 @@ Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so
 
     $ gztool -b 99m project.gz > uncompressed.data
 
-Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-v2` verbosity option will show data about each index point:
+Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point:
 
-    $ gztool -v2 -el *.gzi
+    $ gztool -ell *.gzi
 
-    Checking index file 'accounting.gz.gzi' ...
-            Number of index points:    73
-        Size of uncompressed file: 81285120
+    Checking index file 'accounting.gzi' ...
+        Size of index file:        184577 Bytes (0.37%/gzip)
+        Guessed gzip file name:    'accounting.gz'
+        Number of index points:    15
+        Size of uncompressed file: 147773440 Bytes
         List of points:
-           @ compressed/uncompressed byte (index data size in Bytes), ...
-        @ 10 / 0 ( 22870 ), @ 1034606 / 1069037 ( 32784 ), @ 2085195 / 2120817 ( 32784 ), @ 3136550 / 3180475 ( 32784 ), ...
+           @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
+        @ 10 / 0 ( 0 @56 ), @ 3059779 / 10495261 ( 13127 @80 ), @ 6418423 / 21210594 ( 6818 @13231 ), @ 9534259 / 31720206 ( 7238 @20073 )...
     ...
 
 Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary).

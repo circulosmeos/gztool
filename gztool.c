@@ -616,21 +616,25 @@ local struct access *addpoint(struct access *index, uint32_t bits,
 
     if ( compress_window == 1 ) {
         next->window_size = window_size;
-        next->window = malloc( window_size );
-        if (left)
-            memcpy(next->window, window + window_size - left, left);
-        if (left < window_size)
-            memcpy(next->window + left, window, window_size - left);
-        // compress window
-        compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
-        if (compressed_chunk == NULL) {
-            printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
-            return NULL;
+        next->window = NULL;
+        if ( window_size > 0 ) {
+            // compress window if window_size > 0: if not, a zero-length window is stored.
+            next->window = malloc( window_size );
+            if (left)
+                memcpy(next->window, window + window_size - left, left);
+            if (left < window_size)
+                memcpy(next->window + left, window, window_size - left);
+            // compress window
+            compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
+            if (compressed_chunk == NULL) {
+                printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
+                return NULL;
+            }
+            free(next->window);
+            next->window = compressed_chunk;
+            /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
+            next->window_size = size;
         }
-        free(next->window);
-        next->window = compressed_chunk;
-        /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
-        next->window_size = size;
         printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
     } else {
         // if NULL == window, this creates a NULL window: it resides on file,
@@ -751,11 +755,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
                 fwrite_endian(&(here->window_size), sizeof(here->window_size), output_file);
             }
             here->window_beginning = ftello(output_file);
-            if (NULL == here->window) {
+            if ( NULL == here->window &&
+                 here->window_size != 0 ) {
                 printToStderr( VERBOSITY_NORMAL, "Index incomplete! - index writing aborted.\n" );
                 return 0;
             } else {
-                fwrite(here->window, here->window_size, 1, output_file);
+                if ( here->window_size > 0 )
+                    fwrite(here->window, here->window_size, 1, output_file);
             }
             // once written, point's window CAN (and will now) BE DELETED from memory
             free(here->window);
@@ -1082,18 +1088,20 @@ local struct returned_output build_index(
         /* decompress() use uint64_t counters, but index->list->window_size is smaller */
         // local_window_size in order to avoid deleting the on-memory here->window_size,
         // that may be needed later if index must be increased and written to disk (fseeko).
-        uint64_t local_window_size = here->window_size;
-        /* window is compressed on memory, so decompress it */
-        decompressed_window = decompress_chunk(here->window, &local_window_size);
-        if ( NULL == decompressed_window ) {
-            ret.error = Z_ERRNO;
-            goto build_index_error;
+        window_size = 0;
+        if ( here->window_size > 0 ) {
+            uint64_t local_window_size = here->window_size;
+            /* window is compressed on memory, so decompress it */
+            decompressed_window = decompress_chunk(here->window, &local_window_size);
+            if ( NULL == decompressed_window ) {
+                ret.error = Z_ERRNO;
+                goto build_index_error;
+            }
+            (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
+            free( decompressed_window );
+            decompressed_window = NULL;
+            window_size = local_window_size;
         }
-        (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
-        free( decompressed_window );
-        decompressed_window = NULL;
-
-        window_size = WINSIZE;
 
     } // end if ( NULL != *built && (*built)->have > 0 ) {
 
@@ -1345,7 +1353,7 @@ local struct returned_output build_index(
                 strm.next_in += 8;
                 printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
                 break;
-                // avail_in_0 need not be decremented as it tries to count raw stream input bytes
+                // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
             // end of treat possible gzip tail
             // .................................................
@@ -1660,11 +1668,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
         printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
-        if ( here.window_size == 0 ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected window of size 0 found in index file '%s' @%ld.\nIgnoring point %ld.\n",
-                    file_name, position_at_file, index->have + 1 );
-            continue;
-        }
+
         if ( here.bits > 8 ||
              here.window_size < 0 )
         {
@@ -1698,21 +1702,26 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 }
                 free(input);
             } else {
-                fseeko(input_file, here.window_size, SEEK_CUR);
+                if ( here.window_size > 0 )
+                    fseeko(input_file, here.window_size, SEEK_CUR);
             }
         } else {
             // load compressed window on memory:
-            here.window = malloc(here.window_size);
-            // load window on here.window: this is marked with
-            // a here.window_beginning = 0 (which is impossible with gzipindx format)
-            here.window_beginning = 0;
-            if (here.window == NULL) {
-                printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
-                goto deserialize_index_from_file_error;
-            }
-            if ( !fread(here.window, here.window_size, 1, input_file) ) {
-                printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
-                goto deserialize_index_from_file_error;
+            if ( here.window_size > 0 ) {
+                here.window = malloc(here.window_size);
+                // load window on here.window: this is marked with
+                // a here.window_beginning = 0 (which is impossible with gzipindx format)
+                here.window_beginning = 0;
+                if (here.window == NULL) {
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    goto deserialize_index_from_file_error;
+                }
+                if ( !fread(here.window, here.window_size, 1, input_file) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
+                    goto deserialize_index_from_file_error;
+                }
+            } else {
+                here.window = NULL;
             }
         }
         position_at_file += here.window_size;
@@ -2073,12 +2082,16 @@ wait_for_file_creation:
 }
 
 
-// list info for an index file
+// list info for an index file, to stdout
+// May be called with global verbosity_level == VERBOSITY_NONE in which case
+// no info is printed to stdout but a value is returned.
 // INPUT:
-// unsigned char *file_name: index file name
+// unsigned char *file_name           : index file name
+// enum VERBOSITY_LEVEL list_verbosity: level of detail of index checking:
+//                                      minimum is 1 == VERBOSITY_NORMAL
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
-local int action_list_info( unsigned char *file_name ) {
+local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_verbosity ) {
 
     FILE *in = NULL;
     struct access *index = NULL;
@@ -2088,7 +2101,8 @@ local int action_list_info( unsigned char *file_name ) {
 
     // open index file:
     if ( strlen( file_name ) > 0 ) {
-        if ( verbosity_level > VERBOSITY_NONE ) fprintf( stdout, "Checking index file '%s' ...\n", file_name );
+        if ( verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
             printToStderr( VERBOSITY_NORMAL, "Could not open %s for reading.\nAborted.\n", file_name );
@@ -2102,7 +2116,7 @@ local int action_list_info( unsigned char *file_name ) {
     }
 
     // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
-    index = deserialize_index_from_file( in, 0, file_name );
+    index = deserialize_index_from_file( in, ((list_verbosity==VERBOSITY_MANIAC)?1:0), file_name );
 
     if ( NULL != index &&
          strlen( file_name ) > 0 ) {
@@ -2111,7 +2125,7 @@ local int action_list_info( unsigned char *file_name ) {
             fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
 
         if ( st.st_size > 0 &&
-             verbosity_level > VERBOSITY_NONE ) {
+             list_verbosity > VERBOSITY_NONE ) {
             // try to obtain the name of the original gzip data file
             // to calculate the ratio index_file_size / gzip_file_size
 
@@ -2178,10 +2192,32 @@ local int action_list_info( unsigned char *file_name ) {
             if ( verbosity_level > VERBOSITY_NONE )
                 fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
         }
-        if ( verbosity_level > VERBOSITY_NORMAL ) {
-            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
+        if ( list_verbosity > VERBOSITY_NORMAL ) {
+            if ( verbosity_level > VERBOSITY_NONE ) {
+                fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
+                if ( list_verbosity == VERBOSITY_MANIAC )
+                    fprintf( stdout, "Checking compressed windows...\n\t" );
+            }
             for (j=0; j<index->have; j++) {
-                fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
+                if ( list_verbosity == VERBOSITY_EXCESSIVE &&
+                     verbosity_level > VERBOSITY_NONE )
+                    fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
+                if ( list_verbosity == VERBOSITY_MANIAC ) {
+                    uint64_t local_window_size = index->list[j].window_size;
+                    if ( local_window_size > 0 ) {
+                        /* window is compressed on memory, so decompress it */
+                        unsigned char *decompressed_window = NULL;
+                        decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
+                        if ( NULL == decompressed_window ) {
+                            printToStderr( VERBOSITY_NORMAL, "\nERROR: Could not decompress window %d from index file '%s'.\n", j, file_name);
+                            ret_value = EXIT_GENERIC_ERROR;
+                        }
+                        free( decompressed_window );
+                        decompressed_window = NULL;
+                    }
+                    if ( verbosity_level > VERBOSITY_NONE )
+                        fprintf( stdout, "@ %ld / %ld ( %d/%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, local_window_size );
+                }
             }
         }
         if (verbosity_level > VERBOSITY_NONE )
@@ -2348,6 +2384,7 @@ int main(int argc, char **argv)
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
+    enum VERBOSITY_LEVEL list_verbosity = VERBOSITY_NONE;
 
     int opt = 0;
     int i;
@@ -2407,7 +2444,11 @@ int main(int argc, char **argv)
             // `-l` list info of index <FILE>
             case 'l':
                 action = ACT_LIST_INFO;
-                actions_set++;
+                if ( list_verbosity == VERBOSITY_NONE )
+                    actions_set++;
+                list_verbosity++;
+                if ( list_verbosity > VERBOSITY_MANIAC )
+                    list_verbosity = VERBOSITY_MANIAC;
                 break;
             // `-s #` span between index points, in MiB
             case 's':
@@ -2633,7 +2674,7 @@ int main(int argc, char **argv)
 
             case ACT_LIST_INFO:
                 // stdin is an index file that must be checked
-                ret_value = action_list_info( "" );
+                ret_value = action_list_info( "", list_verbosity );
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
@@ -2811,7 +2852,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_LIST_INFO:
-                    ret_value = action_list_info( file_name );
+                    ret_value = action_list_info( file_name, list_verbosity );
                     break;
 
                 case ACT_SUPERVISE:
@@ -2872,6 +2913,13 @@ int main(int argc, char **argv)
         fclose( index_file );
     }
 
-    return ret_value;
+    if ( ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) > 1 ) {
+        // if processing multiple files, return EXIT_GENERIC_ERROR if any one failed:
+        if ( count_errors > 0 )
+            return EXIT_GENERIC_ERROR;
+        else
+            return EXIT_OK;
+    } else
+        return ret_value;
 
 }
