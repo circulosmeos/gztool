@@ -2082,12 +2082,16 @@ wait_for_file_creation:
 }
 
 
-// list info for an index file
+// list info for an index file, to stdout
+// May be called with global verbosity_level == VERBOSITY_NONE in which case
+// no info is printed to stdout but a value is returned.
 // INPUT:
-// unsigned char *file_name: index file name
+// unsigned char *file_name           : index file name
+// enum VERBOSITY_LEVEL list_verbosity: level of detail of index checking:
+//                                      minimum is 1 == VERBOSITY_NORMAL
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
-local int action_list_info( unsigned char *file_name ) {
+local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_verbosity ) {
 
     FILE *in = NULL;
     struct access *index = NULL;
@@ -2097,7 +2101,8 @@ local int action_list_info( unsigned char *file_name ) {
 
     // open index file:
     if ( strlen( file_name ) > 0 ) {
-        if ( verbosity_level > VERBOSITY_NONE ) fprintf( stdout, "Checking index file '%s' ...\n", file_name );
+        if ( verbosity_level > VERBOSITY_NONE )
+            fprintf( stdout, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
             printToStderr( VERBOSITY_NORMAL, "Could not open %s for reading.\nAborted.\n", file_name );
@@ -2111,7 +2116,7 @@ local int action_list_info( unsigned char *file_name ) {
     }
 
     // in case in == stdin, file_name == "" but this doesn't matter as windows won't be inflated
-    index = deserialize_index_from_file( in, ((verbosity_level==VERBOSITY_MANIAC)?1:0), file_name );
+    index = deserialize_index_from_file( in, ((list_verbosity==VERBOSITY_MANIAC)?1:0), file_name );
 
     if ( NULL != index &&
          strlen( file_name ) > 0 ) {
@@ -2120,7 +2125,7 @@ local int action_list_info( unsigned char *file_name ) {
             fprintf( stdout, "\tSize of index file:        %ld Bytes", st.st_size );
 
         if ( st.st_size > 0 &&
-             verbosity_level > VERBOSITY_NONE ) {
+             list_verbosity > VERBOSITY_NONE ) {
             // try to obtain the name of the original gzip data file
             // to calculate the ratio index_file_size / gzip_file_size
 
@@ -2187,25 +2192,31 @@ local int action_list_info( unsigned char *file_name ) {
             if ( verbosity_level > VERBOSITY_NONE )
                 fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
         }
-        if ( verbosity_level > VERBOSITY_NORMAL ) {
-            fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
+        if ( list_verbosity > VERBOSITY_NORMAL ) {
+            if ( verbosity_level > VERBOSITY_NONE ) {
+                fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
+                if ( list_verbosity == VERBOSITY_MANIAC )
+                    fprintf( stdout, "Decompressing/checking compressed windows...\n\t" );
+            }
             for (j=0; j<index->have; j++) {
-                if ( verbosity_level == VERBOSITY_EXCESSIVE )
+                if ( list_verbosity == VERBOSITY_EXCESSIVE &&
+                     verbosity_level > VERBOSITY_NONE )
                     fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
-                if ( verbosity_level == VERBOSITY_MANIAC ) {
+                if ( list_verbosity == VERBOSITY_MANIAC ) {
                     uint64_t local_window_size = index->list[j].window_size;
                     if ( local_window_size > 0 ) {
                         /* window is compressed on memory, so decompress it */
                         unsigned char *decompressed_window = NULL;
                         decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
                         if ( NULL == decompressed_window ) {
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not decompress window %d from index file '%s'.\n", j, file_name);
+                            printToStderr( VERBOSITY_NORMAL, "\nERROR: Could not decompress window %d from index file '%s'.\n", j, file_name);
                             ret_value = EXIT_GENERIC_ERROR;
                         }
                         free( decompressed_window );
                         decompressed_window = NULL;
                     }
-                    fprintf( stdout, "@ %ld / %ld ( %d/%d ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, local_window_size );
+                    if ( verbosity_level > VERBOSITY_NONE )
+                        fprintf( stdout, "@ %ld / %ld ( %d/%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, local_window_size );
                 }
             }
         }
@@ -2373,6 +2384,7 @@ int main(int argc, char **argv)
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
+    enum VERBOSITY_LEVEL list_verbosity = VERBOSITY_NONE;
 
     int opt = 0;
     int i;
@@ -2432,7 +2444,11 @@ int main(int argc, char **argv)
             // `-l` list info of index <FILE>
             case 'l':
                 action = ACT_LIST_INFO;
-                actions_set++;
+                if ( list_verbosity == VERBOSITY_NONE )
+                    actions_set++;
+                list_verbosity++;
+                if ( list_verbosity > VERBOSITY_MANIAC )
+                    list_verbosity = VERBOSITY_MANIAC;
                 break;
             // `-s #` span between index points, in MiB
             case 's':
@@ -2658,7 +2674,7 @@ int main(int argc, char **argv)
 
             case ACT_LIST_INFO:
                 // stdin is an index file that must be checked
-                ret_value = action_list_info( "" );
+                ret_value = action_list_info( "", list_verbosity );
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
@@ -2836,7 +2852,7 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_LIST_INFO:
-                    ret_value = action_list_info( file_name );
+                    ret_value = action_list_info( file_name, list_verbosity );
                     break;
 
                 case ACT_SUPERVISE:
