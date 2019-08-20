@@ -2196,7 +2196,7 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
             if ( verbosity_level > VERBOSITY_NONE ) {
                 fprintf( stdout, "\tList of points:\n\t   @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...\n\t" );
                 if ( list_verbosity == VERBOSITY_MANIAC )
-                    fprintf( stdout, "Decompressing/checking compressed windows...\n\t" );
+                    fprintf( stdout, "Checking compressed windows...\n\t" );
             }
             for (j=0; j<index->have; j++) {
                 if ( list_verbosity == VERBOSITY_EXCESSIVE &&
