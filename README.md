@@ -17,7 +17,7 @@ Nonetheless, note that `gztool` **creates index interleaved with extraction of d
 
 Also **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
 
-* Index size is approximately 1% or less of compressed gzip file. The bigger the gzip usually the better the proportion.
+* Index size is always less than 1% of compressed gzip file. The bigger the gzip usually the better the proportion.
 
 Note that the size of the index depends on the span between index points on the uncompressed stream: by default it is 10 MiB, this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (on average) no matter the size of the gzip file - which is a fairly low value!    
 The span between index points can be adjusted with `-s` (*span*) option.
@@ -26,7 +26,7 @@ Background
 ==========
 
 By default gzip-compressed files cannot be accessed in random mode: any byte required at position N requires the complete gzip file to be decompressed from the beginning to the N byte.   
-Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), provided years ago a cryptic file named [zran.c](https://github.com/madler/zlib/blob/master/examples/zran.c) that creates an "index" of "windows" filled with 64 kiB of uncompressed data at different positions along the un/compressed file, which can be used to initialize the zlib library and make it behave as if data begin there.   
+Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), provided years ago a cryptic file named [zran.c](https://github.com/madler/zlib/blob/master/examples/zran.c) that creates an "index" of "windows" filled with 64 kiB of uncompressed data at different positions along the un/compressed file, which can be used to initialize the zlib library and make it behave as if compressed data begin there.   
 
 `gztool` builds upon zran.c to provide a useful command line tool.    
 Also, some optimizations has been made:
@@ -96,11 +96,12 @@ Usage
      -f: force index overwriting from scratch, if one exists
      -F: force index creation/completion first, and then action: if
          `-F` is not used, index is created interleaved with actions.
-     -h: print this help
+     -h: print brief help; `-hh` prints this help.
      -i: create index for indicated gzip file (For 'file.gz'
          the default index file name will be 'file.gzi').
      -I INDEX: index file name will be 'INDEX'
-     -l: check and list info contained in indicated index file
+     -l: check and list info contained in indicated index file.
+         `-ll` and `-lll` increase the level of index detail checking.
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
@@ -117,6 +118,7 @@ Usage
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
       create (or reuse, or complete) an index file named `myfile.gzi`:
       $ gztool -b 1G myfile.gz > myfile.txt
+
 
 Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
 
@@ -172,13 +174,13 @@ Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so
 
     $ gztool -b 99m project.gz > uncompressed.data
 
-Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point:
+Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity.
 
     $ gztool -ell *.gzi
 
     Checking index file 'accounting.gzi' ...
         Size of index file:        184577 Bytes (0.37%/gzip)
-        Guessed gzip file name:    'accounting.gz'
+        Guessed gzip file name:    'accounting.gz' (66.05%)
         Number of index points:    15
         Size of uncompressed file: 147773440 Bytes
         List of points:
@@ -221,7 +223,7 @@ All numbers are stored in big-endian byte order (platform independently). Big-en
 
 Next, and almost one-to-one pass of *struct access* is serialize to the file. *access->have* and *access->size* are both written even though they'd always be equal. If the index file is generated with `-S` or `-T` on a still-growing gzip file (or somehow the index hasn't been completed because the gzip data was still incomplete), the values on disk for *access->have* and *access->size* will be respectively 0x0..0 and "number of actual index points written" (both uint64_t) to mark this fact. *access->size* MAY be UINT64_MAX to avoid the need to write this value as the number of index points are added to the file. As the index is incremental the number of points can be determined by reading the index until EOF.
 
-After that, comes all the *struct point* data. As previously said, windows are compressed so a previous register (32 bits) with their length is needed. Note that an index point with a window of size zero is possible in principle (and will be ignored).
+After that, comes all the *struct point* data. As previously said, windows are compressed so a previous register (32 bits) with their length is needed. Note that an index point with a window of size zero is possible.
 
 After all the *struct point* structures data, the original uncompressed data size of the gzipped file is stored (64 bits).
 
