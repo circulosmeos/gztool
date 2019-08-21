@@ -1454,7 +1454,7 @@ local struct returned_output build_index(
                     // (this can happen if -s is less now, than when the index was created!)
                     ( NULL == index || ( index->have > 0 &&
                         index->list[index->have -1].in < totin &&
-                        index->list[index->have -1].out < totout ) )
+                       (index->list[index->have -1].out + span) <= totout ) )
                     ) {
 
                     if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
