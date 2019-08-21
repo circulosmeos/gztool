@@ -1074,8 +1074,9 @@ local struct returned_output build_index(
                 goto build_index_error;
             }
             // here->window_beginning = 0; // this is not needed
-            if ( NULL == (here->window = malloc(here->window_size)) ||
-                !fread(here->window, here->window_size, 1, index_file)
+            if ( here->window_size > 0 &&
+                ( NULL == (here->window = malloc(here->window_size)) ||
+                 !fread(here->window, here->window_size, 1, index_file) )
                 ) {
                 printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
@@ -2100,6 +2101,7 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
     struct stat st;
     unsigned char *gzip_filename = NULL;
     struct stat st_gzip;
+    st_gzip.st_size = 0;
     uint64_t comp_win_counter = 0;   // just to count bytes and calculate a file estimated "hardness"
     uint64_t uncomp_win_counter = 0; // just to count bytes and calculate a file estimated "hardness"
 
@@ -2169,6 +2171,8 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
                 if ( st_gzip.st_size > 0 ) {
                     fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
                     fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
+                    if ( index->file_size > 0 )
+                        fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
                 }
             }
 
@@ -2224,7 +2228,7 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
                         uncomp_win_counter += local_window_size;
                         fprintf( stdout, "@ %ld / %ld ( %d/%ld %.2f%% ), ",
                             index->list[j].in, index->list[j].out, index->list[j].window_size,
-                            local_window_size, ((local_window_size>0)?((double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
+                            local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
                     }
                 }
             }
@@ -2233,11 +2237,11 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
         if ( verbosity_level > VERBOSITY_NONE &&
              list_verbosity == VERBOSITY_MANIAC &&
              uncomp_win_counter > 0 ) {
-            fprintf( stdout, "\n\tEstimated gzip data compression factor: %.2f%%", (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
+            fprintf( stdout, "\n\tEstimated gzip data compression factor: %.2f%%", 100.0 - (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
             if ( NULL != gzip_filename &&
                  st_gzip.st_size > 0 &&
                  index->file_size > 0 ) {
-                fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%", (double)st_gzip.st_size/(double)index->file_size*100.0 );
+                fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%", 100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
             }
         }
 
