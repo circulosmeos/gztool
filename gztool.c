@@ -886,7 +886,7 @@ local struct returned_output build_index(
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0; // only set initially to >0 if NULL != *built
-    uint64_t output_data_counter = 0;// counts uncompressed bytes output
+    uint64_t output_data_counter = 0;// counts uncompressed bytes extracted to stdout
     unsigned char *decompressed_window = NULL;
     z_stream strm;
     FILE *index_file = NULL;
@@ -1264,11 +1264,23 @@ local struct returned_output build_index(
 
                 // output uncompressed data
                 unsigned have = WINSIZE - strm.avail_out;
-                output_data_counter += have;
-                if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
-                    (void)inflateEnd(&strm);
-                    ret.error = Z_ERRNO;
-                    goto build_index_error;
+                if ( have == 0 ) {
+                    if ( window2_size > 0 ) {
+                        // if we have previous data to show, show it, because now we're out of fresh data!
+                        output_data_counter += window2_size;
+                        if (fwrite(window2, 1, window2_size, stdout) != window2_size || ferror(stdout)) {
+                            (void)inflateEnd(&strm);
+                            ret.error = Z_ERRNO;
+                            goto build_index_error;
+                        }
+                    }
+                } else {
+                    output_data_counter += have;
+                    if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
+                        (void)inflateEnd(&strm);
+                        ret.error = Z_ERRNO;
+                        goto build_index_error;
+                    }
                 }
                 fflush(stdout);
 
