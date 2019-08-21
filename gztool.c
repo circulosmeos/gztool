@@ -2334,6 +2334,22 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 // .................................................
 
 
+// print brief help
+local void print_brief_help() {
+
+    fprintf( stderr, "\n" );
+    fprintf( stderr, "  gztool (v0.6.28)\n");
+    fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
+    fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
+    fprintf( stderr, "  for quick and random positioned data extraction.\n" );
+    fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
+    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdefFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  `gztool -hh` for more help\n" );
+    fprintf( stderr, "\n" );
+
+}
+
+
 // print help
 local void print_help() {
 
@@ -2360,11 +2376,12 @@ local void print_help() {
     fprintf( stderr, " -f: force index overwriting from scratch, if one exists\n" );
     fprintf( stderr, " -F: force index creation/completion first, and then action: if\n" );
     fprintf( stderr, "     `-F` is not used, index is created interleaved with actions.\n" );
-    fprintf( stderr, " -h: print this help\n" );
+    fprintf( stderr, " -h: print brief help; `-hh` prints this help.\n" );
     fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
     fprintf( stderr, "     the default index file name will be 'file.gzi').\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
-    fprintf( stderr, " -l: check and list info contained in indicated index file\n" );
+    fprintf( stderr, " -l: check and list info contained in indicated index file.\n" );
+    fprintf( stderr, "     `-ll` and `-lll` increase the level of index detail checking.\n" );
     fprintf( stderr, " -s #: span in uncompressed MiB between index points when\n" );
     fprintf( stderr, "     creating the index. By default is `10`.\n" );
     fprintf( stderr, " -S: Supervise indicated file: create a growing index,\n" );
@@ -2413,6 +2430,7 @@ int main(int argc, char **argv)
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
     enum VERBOSITY_LEVEL list_verbosity = VERBOSITY_NONE;
+    enum VERBOSITY_LEVEL help_verbosity = VERBOSITY_NONE;
 
     int opt = 0;
     int i;
@@ -2425,8 +2443,10 @@ int main(int argc, char **argv)
         switch (opt) {
             // help
             case 'h':
-                print_help();
-                return EXIT_OK;
+                help_verbosity++;
+                if ( help_verbosity > VERBOSITY_EXCESSIVE )
+                    help_verbosity = VERBOSITY_EXCESSIVE;
+                break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
                 extract_from_byte = giveMeAnInteger( optarg );
@@ -2527,6 +2547,15 @@ int main(int argc, char **argv)
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 abort ();
         }
+
+    // check for help action and exit
+    if ( help_verbosity > VERBOSITY_NONE ) {
+        if ( help_verbosity == VERBOSITY_NORMAL )
+            print_brief_help();
+        else
+            print_help();
+        return EXIT_OK;
+    }
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
