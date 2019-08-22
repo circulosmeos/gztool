@@ -595,6 +595,8 @@ gcc -static -O3 -I.. -o gztool gztool.c libz.a -lm
 
 gcc -O3 -o gztool gztool.c -lz -lm
 
+gcc -g -O0 -o gztool gztool.c -lz -lm
+
 
 -------------------------------------------------------------------------------
 [[RSG]] [[20190809]] 
@@ -1161,7 +1163,7 @@ y poner al final el valor correcto de strm.avail_in = stream_size
 
 
 -------------------------------------------------------------------------------
-[[RSG]] [[20190817]] [[git]] [[merge]] [[tail_n_supervise]] 
+[[RSG]] [[20190817]] [[git]] [[merge]] [[tail_n_supervise]]  
 
 
 odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout master
@@ -1185,3 +1187,110 @@ Fast-forward
 odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout -b bgzip_compatible
 Switched to a new branch 'bgzip_compatible'
 
+.................................................
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ diff test.CLEAR ../gztool2/gztool.c
+1587,1588c1587,1589
+<             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, h�BC�'�}�wG������5�@�m�Ι�����ۄL#����A�֨[6f���zvW?$L��3}f�܏�[�nݺ�
+ISE_DO_AND_EXTRACT_FROM 1 );��$\,Z����ǧ�g�z�?==�����<g�DL�,�dOD��&�'j\lm�[�/��I�}|x'��9��.Gi��eg"K�<����q`Q��<I�,J�A�
+---
+>             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
+>             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
+>                     file_name, position_at_file, index_size - number_of_index_points + 1 );
+
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190817]] [[reword]] [[git]] [[commit]] :<#rehacer el texto de un commit anterior> 
+
+
+    <https://help.github.com/en/articles/changing-a-commit-message> 
+++++++++++++++++++++++++
+Amending the message of older or multiple commit messages
+
+If you need to amend the message for multiple commits or an older commit, you can use interactive rebase, then force push to change the commit history.
+
+    On the command line, navigate to the repository that contains the commit you want to amend.
+
+    Use the git rebase -i HEAD~n command to display a list of the last n commits in your default text editor.
+
+    $ git rebase -i HEAD~3 # Displays a list of the last 3 commits on the current branch
+
+    The list will look similar to the following:
+
+    pick e499d89 Delete CNAME
+    pick 0c39034 Better README
+    pick f7fde4a Change the commit message but push the same commit.
+
+    # Rebase 9fdb3bd..f7fde4a onto 9fdb3bd
+    #
+    # Commands:
+    # p, pick = use commit
+    # r, reword = use commit, but edit the commit message
+    # e, edit = use commit, but stop for amending
+    # s, squash = use commit, but meld into previous commit
+    # f, fixup = like "squash", but discard this commit's log message
+    # x, exec = run command (the rest of the line) using shell
+    #
+    # These lines can be re-ordered; they are executed from top to bottom.
+    #
+    # If you remove a line here THAT COMMIT WILL BE LOST.
+    #
+    # However, if you remove everything, the rebase will be aborted.
+    #
+    # Note that empty commits are commented out
+
+    Replace pick with reword before each commit message you want to change.
+
+    pick e499d89 Delete CNAME
+    reword 0c39034 Better README
+    reword f7fde4a Change the commit message but push the same commit.
+
+    Save and close the commit list file.
+
+    In each resulting commit file, type the new commit message, save the file, and close it.
+++++++++++++++++++++++++
+
+
+NÓTESE que no hay que hacer el "push" porque eso es para que los nuevos commits sustituyan
+a los antiguos en el repositorio remoto... que yo no tengo en este caso.
+
+
+git rebase -i HEAD~2
+reword
+:wq
+[cambios con vi en el commit]:wq
+
+Listo.
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190818]] 
+
+D:\Instalaciones\GitHub reps\gztool>git checkout -b bgzip-compatible
+Switched to a new branch 'bgzip-compatible'
+
+D:\Instalaciones\GitHub reps\gztool>git branch
+* bgzip-compatible
+  master
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190822]] [[git]] [[merge]] [[tail_n_supervise]]  
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout master
+Switched to branch 'master'
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch
+  bgzip-compatible
+  * master
+
+D:\Instalaciones\GitHub reps\gztool>git merge bgzip-compatible
+Updating e1e73b5..8710fe8
+Fast-forward
+ README.md |  38 ++---
+ gztool.c  | 468 ++++++++++++++++++++++++++++++++++++++++++++------------------
+ 2 files changed, 357 insertions(+), 149 deletions(-)
+
+
+-------------------------------------------------------------------------------
