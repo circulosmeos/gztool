@@ -127,78 +127,86 @@ When using `S` (*Supervise*), the gzipped file may not yet exist when the comman
 Examples of use
 ===============
 
-Make an index for `test.gz`. The index will be named `test.gzi`:
+* Make an index for `test.gz`. The index will be named `test.gzi`:
 
-    $ gztool -i test.gz
+        $ gztool -i test.gz
 
-Make an index for `test.gz` with name `test.index`:
+* Make an index for `test.gz` with name `test.index`:
 
-    $ gztool -I test.index test.gz
+        $ gztool -I test.index test.gz
 
-Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file will be created **at the same time** (named `test.gzi`):
+* Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file will be created **at the same time** (named `test.gzi`):
 
-    $ gztool -b 1m test.gz
+        $ gztool -b 1m test.gz
 
-**Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until the gzip-file data is terminated.
+* **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until the gzip-file data is terminated.
 
-    $ gztool -S openldap.log.gz
+        $ gztool -S openldap.log.gz
 
-The previous command can be sent to background and with no verbosity, so we can forget about it:
+* The previous command can be sent to background and with no verbosity, so we can forget about it:
 
-    $ gztool -v0 -S openldap.log.gz &
+        $ gztool -v0 -S openldap.log.gz &
 
-Creating and index for all "\*gz" files in a directory:
+* Creating and index for all "\*gz" files in a directory:
 
-    $ gztool -i *gz
+        $ gztool -i *gz
 
-    ACTION: Create index
+        ACTION: Create index
 
-    Index file 'data.gzi' already exists and will be used.
-    (Use `-f` to force overwriting.)
-    Processing 'data.gz' ...
-    Index already complete. Nothing to do.
+        Index file 'data.gzi' already exists and will be used.
+        (Use `-f` to force overwriting.)
+        Processing 'data.gz' ...
+        Index already complete. Nothing to do.
 
-    Processing 'data_project.2.tar.gz' ...
-    Built index with 73 access points.
-    Index written to 'data_project.2.tar.gzi'.
+        Processing 'data_project.2.tar.gz' ...
+        Built index with 73 access points.
+        Index written to 'data_project.2.tar.gzi'.
 
-    Processing 'project_2.gz' ...
-    Built index with 3 access points.
-    Index written to 'project_2.gzi'.
+        Processing 'project_2.gz' ...
+        Built index with 3 access points.
+        Index written to 'project_2.gzi'.
 
-Extract data from `project.gz` byte at 1 GiB to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
+* Extract data from `project.gz` byte at 1 GiB to STDOUT, and use `grep` on this output. Index file name will be `project.gzi`:
 
-    $ gztool -b 1G project.gz | grep -i "balance = "
+        $ gztool -b 1G project.gz | grep -i "balance = "
 
-Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
+* Please, note that STDOUT is used for data extraction with `-bcdtT` modifiers, so an explicit command line redirection is needed if output is to be stored in a file:
 
-    $ gztool -b 99m project.gz > uncompressed.data
+        $ gztool -b 99m project.gz > uncompressed.data
 
-Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity.
+* Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary):
 
-    $ gztool -ell *.gzi
+        $ gztool -Wb 100k still-growing-gzip-file.gz > mytext
 
-    Checking index file 'accounting.gzi' ...
-        Size of index file:        184577 Bytes (0.37%/gzip)
-        Guessed gzip file name:    'accounting.gz' (66.05%)
-        Number of index points:    15
-        Size of uncompressed file: 147773440 Bytes
-        List of points:
-           @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
-        @ 10 / 0 ( 0 @56 ), @ 3059779 / 10495261 ( 13127 @80 ), @ 6418423 / 21210594 ( 6818 @13231 ), @ 9534259 / 31720206 ( 7238 @20073 )...
-    ...
+* To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
 
-Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary).
+        $ gztool -T still-growing-gzip-file.gz
 
-    $ gztool -Wb 100k still-growing-gzip-file.gz > mytext
+* More on files still being "Supervised" (`-S`) by another `gztool` instance: they can also be tailed *à la* `tail -f` without updating the index on disk using `-W`:
 
-To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
+        $ gztool -WT still-growing-gzip-file.gz
 
-    $ gztool -T still-growing-gzip-file.gz
+* Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity:
 
-More on files still being "Supervised" (`-S`) by another `gztool` instance: they can also be tailed *à la* `tail -f` without updating the index on disk using `-W`:
+        $ gztool -ell *.gzi
 
-    $ gztool -WT still-growing-gzip-file.gz
+            Checking index file 'accounting.gzi' ...
+            Size of index file:        184577 Bytes (0.37%/gzip)
+            Guessed gzip file name:    'accounting.gz' (66.05%) ( 50172261 Bytes )
+            Number of index points:    15
+            Size of uncompressed file: 147773440 Bytes
+            List of points:
+            @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
+            @ 10 / 0 ( 0 @56 ), @ 3059779 / 10495261 ( 13127 @80 ), @ 6418423 / 21210594 ( 6818 @13231 ), @ 9534259 / 31720206 ( 7238 @20073 )...
+        ...
+
+If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. This latter number is interesting if the gzip file is bigger than 2 GiB, in which case `gunzip -l` cannot correctly calculate it as it is [limited to a 32 bit counter](https://tools.ietf.org/html/rfc1952#page-5), or if the gzip file is in `bgzip` format, in which case `gunzip -l` would only show data about the first block (< 64 kiB).
+
+* Note that `gztool -l` tries to guess the companion gzip file of the index looking for a file with the same name, but without the `i` of the `.gzi` file name extension, or without the `.gzi`. But the gzip file name can also be directly indicated with this format:
+
+        $ gztool -l gzip_filename -I index_filename
+
+In this latter case only a pair of index+gzip filenames can be indicated on each use.
 
 Index file format
 =================
