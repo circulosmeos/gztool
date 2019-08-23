@@ -1026,6 +1026,8 @@ local struct returned_output build_index(
 
         assert( NULL != here );
 
+        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld=>%ld).\n", actual_index_point, here->in, here->out );
+
         // fseek in data for correct position
         // using here index data:
         if ( stdin == in ) {
@@ -2100,11 +2102,12 @@ wait_for_file_creation:
 // no info is printed to stdout but a value is returned.
 // INPUT:
 // unsigned char *file_name           : index file name
+// unsigned char *input_gzip_filename : gzip file associated with the index. May be NULL, but not "".
 // enum VERBOSITY_LEVEL list_verbosity: level of detail of index checking:
 //                                      minimum is 1 == VERBOSITY_NORMAL
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
-local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_verbosity ) {
+local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_filename, enum VERBOSITY_LEVEL list_verbosity ) {
 
     FILE *in = NULL;
     struct access *index = NULL;
@@ -2116,6 +2119,14 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
     st_gzip.st_size = 0;
     uint64_t comp_win_counter = 0;   // just to count bytes and calculate a file estimated "hardness"
     uint64_t uncomp_win_counter = 0; // just to count bytes and calculate a file estimated "hardness"
+
+    // check input_gzip_filename
+    if ( NULL != input_gzip_filename ) {
+        gzip_filename = malloc( strlen(input_gzip_filename) + 1 );
+        if ( NULL == gzip_filename )
+            return EXIT_GENERIC_ERROR;
+        sprintf( gzip_filename, "%s", input_gzip_filename );
+    }
 
     // open index file:
     if ( strlen( file_name ) > 0 ) {
@@ -2148,43 +2159,51 @@ local int action_list_info( unsigned char *file_name, enum VERBOSITY_LEVEL list_
             // try to obtain the name of the original gzip data file
             // to calculate the ratio index_file_size / gzip_file_size
 
-            gzip_filename = malloc( strlen(file_name) + 1 );
-            if ( NULL != gzip_filename ) {
-                sprintf( gzip_filename, "%s", file_name );
-                if ( (unsigned char *)strstr(gzip_filename, ".gzi") ==
-                        (unsigned char *)(gzip_filename + strlen(file_name) - 4) ) {
-                    // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
-                    gzip_filename[strlen(gzip_filename)-1]='\0';
-                    // let's see if we're certain:
-                    if ( access( gzip_filename, F_OK ) != -1 ) {
-                        // we've found the gzip-file name !
-                        ;
-                    } else {
-                        // we haven't found it: may be the name is of the format "FILE.another_extension.gzi"
-                        gzip_filename[strlen(gzip_filename)-3]='\0';
+            if ( NULL == gzip_filename ) {
+                gzip_filename = malloc( strlen(file_name) + 1 );
+                if ( NULL != gzip_filename ) {
+                    sprintf( gzip_filename, "%s", file_name );
+                    if ( (unsigned char *)strstr(gzip_filename, ".gzi") ==
+                            (unsigned char *)(gzip_filename + strlen(file_name) - 4) ) {
+                        // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
+                        gzip_filename[strlen(gzip_filename)-1]='\0';
+                        // let's see if we're certain:
                         if ( access( gzip_filename, F_OK ) != -1 ) {
                             // we've found the gzip-file name !
                             ;
                         } else {
-                            // we must give up guessing names here
-                            free( gzip_filename );
-                            gzip_filename = NULL;
+                            // we haven't found it: may be the name is of the format "FILE.another_extension.gzi"
+                            gzip_filename[strlen(gzip_filename)-3]='\0';
+                            if ( access( gzip_filename, F_OK ) != -1 ) {
+                                // we've found the gzip-file name !
+                                ;
+                            } else {
+                                // we must give up guessing names here
+                                free( gzip_filename );
+                                gzip_filename = NULL;
+                            }
                         }
+                    } else {
+                        // if ".gzi" doesn't fit as extension, we're up guessing!
+                        free( gzip_filename );
+                        gzip_filename = NULL;
                     }
-                } else {
-                    // if ".gzi" doesn't fit as extension, we're up guessing!
-                    free( gzip_filename );
-                    gzip_filename = NULL;
                 }
             }
 
             if ( NULL != gzip_filename ) {
-                stat( gzip_filename, &st_gzip );
-                if ( st_gzip.st_size > 0 ) {
-                    fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
-                    fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
-                    if ( index->file_size > 0 )
-                        fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
+                if( access( gzip_filename, F_OK ) != -1 ) {
+                    check_index_file( index, gzip_filename, file_name );
+                    stat( gzip_filename, &st_gzip );
+                    if ( st_gzip.st_size > 0 ) {
+                        fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
+                        fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
+                        if ( index->file_size > 0 )
+                            fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
+                        fprintf( stdout, " ( %ld Bytes )", st_gzip.st_size );
+                    }
+                } else {
+                    fprintf( stdout, "\n\tIndicated gzip file '%s' doesn't exist", gzip_filename );
                 }
             }
 
@@ -2742,8 +2761,13 @@ int main(int argc, char **argv)
                 break;
 
             case ACT_LIST_INFO:
-                // stdin is an index file that must be checked
-                ret_value = action_list_info( "", list_verbosity );
+                if ( index_filename_indicated == 1 ) {
+                    // Admit `-I` as a way to indicate an input index file name:
+                    ret_value = action_list_info( index_filename, NULL, list_verbosity );
+                } else {
+                    // stdin is an index file that must be checked
+                    ret_value = action_list_info( "", NULL, list_verbosity );
+                }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
@@ -2921,7 +2945,13 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_LIST_INFO:
-                    ret_value = action_list_info( file_name, list_verbosity );
+                    if ( index_filename_indicated == 1 ) {
+                        // if index filename has been indicated with `-I`
+                        // then the actual parameter is the gzip filename
+                        ret_value = action_list_info( index_filename, file_name, list_verbosity );
+                    } else {
+                        ret_value = action_list_info( file_name, NULL, list_verbosity );
+                    }
                     break;
 
                 case ACT_SUPERVISE:
