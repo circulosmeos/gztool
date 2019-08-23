@@ -200,7 +200,9 @@ Examples of use
             @ 10 / 0 ( 0 @56 ), @ 3059779 / 10495261 ( 13127 @80 ), @ 6418423 / 21210594 ( 6818 @13231 ), @ 9534259 / 31720206 ( 7238 @20073 )...
         ...
 
-If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. This latter number is interesting if the gzip file is bigger than 2 GiB, in which case `gunzip -l` cannot correctly calculate it as it is [limited to a 32 bit counter](https://tools.ietf.org/html/rfc1952#page-5), or if the gzip file is in `bgzip` format, in which case `gunzip -l` would only show data about the first block (< 64 kiB).
+If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. 
+
+Also, if the gzip is complete, the size of the uncompressed data is shown. This number is interesting if the gzip file is bigger than 2 GiB, in which case `gunzip -l` cannot correctly calculate it as it is [limited to a 32 bit counter](https://tools.ietf.org/html/rfc1952#page-5), or if the gzip file is in `bgzip` format, in which case `gunzip -l` would only show data about the first block (< 64 kiB).
 
 * Note that `gztool -l` tries to guess the companion gzip file of the index looking for a file with the same name, but without the `i` of the `.gzi` file name extension, or without the `.gzi`. But the gzip file name can also be directly indicated with this format:
 
