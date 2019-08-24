@@ -2553,8 +2553,8 @@ int main(int argc, char **argv)
                 verbosity_level = atoi(optarg);
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
                      strlen( optarg ) > 1 ||
-                     verbosity_level > VERBOSITY_MANIAC ) {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..3]`).\n", optarg );
+                     verbosity_level > VERBOSITY_CRAZY ) {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..4]`).\n", optarg );
                     verbosity_level = VERBOSITY_NORMAL;
                 }
                 break;
