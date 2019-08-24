@@ -194,7 +194,7 @@ enum ACTION
       ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL,
       ACT_EXTRACT_TAIL_AND_CONTINUE };
 
-enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESSIVE = 2, VERBOSITY_MANIAC = 3 };
+enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESSIVE = 2, VERBOSITY_MANIAC = 3, VERBOSITY_CRAZY = 4 };
 
 enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
 
@@ -1143,7 +1143,7 @@ local struct returned_output build_index(
                         } else {
                             offset_in = st.st_size - CHUNK;
                         }
-                        printToStderr( VERBOSITY_MANIAC, "offset_in=%ld\n", offset_in );
+                        printToStderr( VERBOSITY_EXCESSIVE, "offset_in=%ld\n", offset_in );
                     } else {
                         start_extraction_on_first_depletion = 1;
                     }
@@ -1242,7 +1242,7 @@ local struct returned_output build_index(
 
         avail_in_0 = strm.avail_in;
 
-        printToStderr( VERBOSITY_MANIAC, "output_data_counter=%ld,totin=%ld,totout=%ld,ftello=%ld,avail_in=%d\n",
+        printToStderr( VERBOSITY_CRAZY, "output_data_counter=%ld,totin=%ld,totout=%ld,ftello=%ld,avail_in=%d\n",
             output_data_counter, totin, totout, ftello(in), strm.avail_in );
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
@@ -1251,7 +1251,7 @@ local struct returned_output build_index(
              strm.avail_in == 0 ) {
 
             // check conditions to start output of uncompressed data
-            printToStderr( VERBOSITY_MANIAC, ">>> %d, %d, %d",
+            printToStderr( VERBOSITY_CRAZY, ">>> %d, %d, %d",
                 extraction_from_offset_in, start_extraction_on_first_depletion, indx_n_extraction_opts );
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
@@ -1262,6 +1262,7 @@ local struct returned_output build_index(
                     if ( window2_size > 0 ) {
                         // if we have previous data to show, show it, because now we're out of fresh data!
                         output_data_counter += window2_size;
+                        printToStderr( VERBOSITY_MANIAC, "[..>%d]", window2_size );
                         if (fwrite(window2, 1, window2_size, stdout) != window2_size || ferror(stdout)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
@@ -1270,6 +1271,7 @@ local struct returned_output build_index(
                     }
                 } else {
                     output_data_counter += have;
+                    printToStderr( VERBOSITY_MANIAC, "[.>%d]", have );
                     if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                         (void)inflateEnd(&strm);
                         ret.error = Z_ERRNO;
@@ -1380,7 +1382,7 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                printToStderr( VERBOSITY_MANIAC, ">1> %ld, %d, %d, %d ", offset, have, strm.avail_out, strm.avail_in );
+                printToStderr( VERBOSITY_CRAZY, ">1> %ld, %d, %d, %d ", offset, have, strm.avail_out, strm.avail_in );
                 if ( offset > have ) {
                     offset -= have;
                 } else {
@@ -1389,6 +1391,7 @@ local struct returned_output build_index(
                         // print offset - have bytes
                         // If offset==0 (from offset byte on) this prints always all bytes:
                         output_data_counter += have - offset;
+                        printToStderr( VERBOSITY_MANIAC, "[>1>%d]", have - offset );
                         if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, stdout) != (have - offset) ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
@@ -1406,7 +1409,7 @@ local struct returned_output build_index(
                     unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
-                    printToStderr( VERBOSITY_MANIAC, ">2> %ld, %d, %d ", offset_in, have_in, strm.avail_in );
+                    printToStderr( VERBOSITY_CRAZY, ">2> %ld, %d, %d ", offset_in, have_in, strm.avail_in );
                     if ( offset_in > 0 )
                         offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
@@ -1415,6 +1418,7 @@ local struct returned_output build_index(
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
                         output_data_counter += have;
+                        printToStderr( VERBOSITY_MANIAC, "[>2>%d]", have );
                         if (fwrite(window + (WINSIZE - avail_out_0), 1, have, stdout) != have ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
@@ -1466,7 +1470,7 @@ local struct returned_output build_index(
                     if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
 
                         if ( NULL != index )
-                            printToStderr( VERBOSITY_MANIAC, "addpoint index->have = %ld, index_last_written_point = %ld\n",
+                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %ld, index_last_written_point = %ld\n",
                                 index->have, index_last_written_point );
 
                         index = addpoint(index, strm.data_type & 7, totin,
@@ -1508,12 +1512,14 @@ local struct returned_output build_index(
         printToStderr( VERBOSITY_EXCESSIVE, "last extraction: %d\n", have );
 
         if ( have > 0 ) {
+            printToStderr( VERBOSITY_EXCESSIVE, "[.L>%d]", have );
             if (fwrite(strm.next_out, 1, have, stdout) != have || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
             output_data_counter += have;
         } else {
             // use backup window
+            printToStderr( VERBOSITY_EXCESSIVE, "[..L>%d]", window2_size );
             if (fwrite(window2, 1, window2_size, stdout) != window2_size || ferror(stdout)) {
                 ret.error = Z_ERRNO;
             }
@@ -2412,7 +2418,7 @@ local void print_help() {
     fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
     fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
-    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `3` (maniac)\n" );
+    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `4` (crazy)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
