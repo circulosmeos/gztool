@@ -1488,11 +1488,12 @@ local struct returned_output build_index(
 
                     }
 
-                    last = totout;
                     if ( NULL != index )
                         index_last_written_point = index->have;
 
                 }
+
+                last = totout;
 
             }
 
