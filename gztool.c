@@ -2368,7 +2368,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 local void print_brief_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.6.28)\n");
+    fprintf( stderr, "  gztool (v0.6.283)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
@@ -2384,7 +2384,7 @@ local void print_brief_help() {
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v0.6.28)\n");
+    fprintf( stderr, "  gztool (v0.6.283)\n");
     fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
