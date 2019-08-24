@@ -1294,3 +1294,33 @@ Fast-forward
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[201908]] :<#trozos sueltos copiados> 
+
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git rebase -i HEAD~2
+
+It seems that there is already a rebase-merge directory, and
+I wonder if you are in the middle of another rebase.  If that is the
+case, please try
+        git rebase (--continue | --abort | --skip)
+If that is not the case, please
+        rm -fr "/home/odroid/SD/dev/zlib/gztool/.git/rebase-merge"
+and run me again.  I am stopping in case you still have something
+valuable there.
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git rebase --continue
+bitácora - gztool.txt: needs update
+gztool.c: needs update
+You must edit all merge conflicts and then
+mark them as resolved using git add
+
+
+.................................................
+
+
+-rw-rw-r-- 1 odroid odroid 251932599 Aug 18 18:49 TT.CLEAR
+
+
+
+
+-------------------------------------------------------------------------------
