@@ -891,7 +891,7 @@ local struct returned_output build_index(
     z_stream strm;
     FILE *index_file = NULL;
     size_t index_last_written_point = 0;
-    int continue_extraction = 0;/* if = 1 when to inconditionally extract data */
+    int extraction_from_offset_in = 0;           // 1: extract data using offset_in value
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
                                                  // 1: start extraction on first depletion.
     int decompressing_with_gzip_headers = 0;     // 1 if inflateInit2(&strm, 47);
@@ -1009,18 +1009,14 @@ local struct returned_output build_index(
             totin  = index->list[ actual_index_point ].in;
             totout = index->list[ actual_index_point ].out;
             last = totout;
-            continue_extraction = 1;
             // offset value comes from caller as parameter
         }
 
         if ( index->index_complete == 1 ) {
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
                  indx_n_extraction_opts == EXTRACT_TAIL ) {
-
                 offset = ( index->file_size - totout ) /4*3;
                 indx_n_extraction_opts = EXTRACT_FROM_BYTE;
-                continue_extraction = 1;
-
             }
         }
 
@@ -1123,11 +1119,9 @@ local struct returned_output build_index(
 
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) {
                 start_extraction_on_first_depletion = 1;
-                // continue_extraction = 1; on depletion
             }
             if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
                 start_extraction_on_first_depletion = 1;
-                // continue_extraction = 0; on depletion
             }
 
         } else {
@@ -1141,7 +1135,7 @@ local struct returned_output build_index(
                 if ( strlen( file_name ) > 0 ) {
                     stat(file_name, &st);
                     if ( st.st_size > 0 ) {
-                        continue_extraction = 1;
+                        extraction_from_offset_in = 1;
                         if ( st.st_size <= CHUNK ) {
                             // gzip file is really small:
                             // change operation mode to extract from byte 0
@@ -1156,10 +1150,6 @@ local struct returned_output build_index(
                 } else {
                     start_extraction_on_first_depletion = 1;
                 }
-                /*if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL )
-                    continue_extraction = 1;
-                else
-                    continue_extraction = 0;*/ // both set later
             }
 
         } // end if ( stdin == in )
@@ -1252,15 +1242,17 @@ local struct returned_output build_index(
 
         avail_in_0 = strm.avail_in;
 
-        printToStderr( VERBOSITY_MANIAC, "totin=%ld,totout=%ld,ftello=%ld,avail_in=%d\n", totin, totout, ftello(in), strm.avail_in );
+        printToStderr( VERBOSITY_MANIAC, "output_data_counter=%ld,totin=%ld,totout=%ld,ftello=%ld,avail_in=%d\n",
+            output_data_counter, totin, totout, ftello(in), strm.avail_in );
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
-              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL) &&
+              indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
+              indx_n_extraction_opts == EXTRACT_TAIL ) &&
              strm.avail_in == 0 ) {
 
             // check conditions to start output of uncompressed data
             printToStderr( VERBOSITY_MANIAC, ">>> %d, %d, %d",
-                continue_extraction, start_extraction_on_first_depletion, indx_n_extraction_opts );
+                extraction_from_offset_in, start_extraction_on_first_depletion, indx_n_extraction_opts );
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
 
@@ -1286,22 +1278,22 @@ local struct returned_output build_index(
                 }
                 fflush(stdout);
 
-                if ( continue_extraction == 0 ) {
-                    // the process ends here as all required data has been output
-                    // (index remains incomplete)
-                    ret.error = Z_OK;
-                    if ( NULL != index ) {
-                        ret.value = index->have;
-                    }
-                    goto build_index_error;
-                }
-
                 // continue extracting data as usual,
                 offset = 0;
                 offset_in = 0;
                 // though as indx_n_extraction_opts != EXTRACT_FROM_BYTE it'll
                 // patiently waits if data exhausts.
 
+            }
+
+            if ( indx_n_extraction_opts == EXTRACT_TAIL ) {
+                // the process ends here as all required data has been output
+                // (index remains incomplete)
+                ret.error = Z_OK;
+                if ( NULL != index ) {
+                    ret.value = index->have;
+                }
+                goto build_index_error;
             }
 
             // sleep and retry
@@ -1409,8 +1401,8 @@ local struct returned_output build_index(
                 }
                 avail_out_0 = strm.avail_out;
             } else {
-                // continue_extraction in practice marks the use of "offset_in"
-                if ( continue_extraction == 1 ) {
+                // extraction_from_offset_in marks the use of "offset_in"
+                if ( extraction_from_offset_in == 1 ) {
                     unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
