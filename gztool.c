@@ -2600,6 +2600,18 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    if ( ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK ) &&
+        ( force_action == 1 || force_strict_order == 1 || write_index_to_disk == 0 ||
+            span_between_points != SPAN || index_filename_indicated == 1 )
+        ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-fFIsW` with `-[cd]`\n" );
+        force_action = 0;
+        force_strict_order = 0;
+        write_index_to_disk = 1;
+        span_between_points = SPAN;
+        index_filename_indicated = 0;
+    }
+
     if ( span_between_points <= 0 ) {
         printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%d'\n", span_between_points );
         return EXIT_INVALID_OPTION;
@@ -2843,7 +2855,7 @@ int main(int argc, char **argv)
 
             // free previous loop's resources
             if ( NULL != in ) {
-                free( in );
+                fclose( in );
                 in = NULL;
             }
             if ( NULL != index ) {
@@ -2999,7 +3011,7 @@ int main(int argc, char **argv)
 
     // final freeing of resources
     if ( NULL != in ) {
-        free( in );
+        fclose( in );
     }
     if ( NULL != index ) {
         free_index( index );
