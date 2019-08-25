@@ -2843,7 +2843,7 @@ int main(int argc, char **argv)
 
             // free previous loop's resources
             if ( NULL != in ) {
-                free( in );
+                fclose( in );
                 in = NULL;
             }
             if ( NULL != index ) {
@@ -2999,7 +2999,7 @@ int main(int argc, char **argv)
 
     // final freeing of resources
     if ( NULL != in ) {
-        free( in );
+        fclose( in );
     }
     if ( NULL != index ) {
         free_index( index );
