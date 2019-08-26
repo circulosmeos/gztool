@@ -1022,7 +1022,7 @@ local struct returned_output build_index(
 
         assert( NULL != here );
 
-        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld=>%ld).\n", actual_index_point, here->in, here->out );
+        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld->%ld).\n", actual_index_point, here->in, here->out );
 
         // fseek in data for correct position
         // using here index data:
