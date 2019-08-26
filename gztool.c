@@ -1361,6 +1361,7 @@ local struct returned_output build_index(
                 strm.avail_in -= 8;
                 strm.next_in += 8;
                 printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
+                totin+=8; // data is discarded from strm input, but it MUST be counted in total input
                 break;
                 // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
