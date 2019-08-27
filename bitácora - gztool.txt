@@ -424,7 +424,7 @@ EXTRACT_TAIL                        | last here, offset |   last here,[4]   |   
 *: offset value comes from caller as parameter
 
 offset: is in practice only use with indx_n_extraction_opts set to EXTRACT_FROM_BYTE
-    offset (and offset_in) will be decremented until offset(_in)==0 (offset_in decremented IIF continue_extraction == 1)
+    offset (and offset_in) will be decremented until offset(_in)==0 (offset_in decremented IIF extraction_from_offset_in == 1)
     in which case uncompressed output to stdout will begin
 
 "last here" sets actual_index_point = "here".
@@ -436,16 +436,17 @@ offset: is in practice only use with indx_n_extraction_opts set to EXTRACT_FROM_
     EOF, or 
     .in>(size of gzip file)_0
 
-[2]: on first fread depletion, start extraction: how to mark this?: continue_extraction = 1
+[2]: on first fread depletion, start extraction: how to mark this?: start_extraction_on_first_depletion
+    ([continue_extraction = 1][correction 20190824: NO!])
 [4]: on first fread depletion, extract and stop
 But if no fread depletion occurs, then last strm. data (This needs window2[WINSIZE] and window2_size).
 
 
 two new parameters needed:
-continue_extraction = 1 when to extract inconditionally (offset<=0 sets this one): in practice marks the use of "offset_in"
+extraction_from_offset_in = 1 when to extract inconditionally (offset<=0 sets this one): in practice marks the use of "offset_in"
 start_extraction_on_first_depletion = 1 for [2] and [4]
 
-Nota that EXTRACT_FROM_BYTE 0 may have a "continue_extraction = 0"
+Note that EXTRACT_FROM_BYTE 0 may have a "extraction_from_offset_in = 0"
 This doesn't matter as it is not checked on EXTRACT_FROM_BYTE extraction block.
 
 20190730: creo que he acabado de implementar las condiciones de la tabla.
@@ -456,6 +457,7 @@ TODO: falta ahora toda la parte de implementación nueva y reescritura de los fw
 
 20190731: ¡chequear!
 
+20190824: "continue_extraction" name changed to "extraction_from_offset_in"
 
 .................................................
 
@@ -1324,3 +1326,110 @@ mark them as resolved using git add
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190826]] [[incidencia]] 
+
+EL primer índice (openldap.log.gzi.ERROR) no es usable... ¡está desplazado 8 bytes a partir del punto 9 inclusive cuando se lo compara con el segundo (hecho desde cero) que sí es usable!
+Y sé que el punto 8 se escribió con la versión 0.6.283a, porque empezé con ella usando el gzi desde el punto 7,
+y vi cómo añadía el 8:
+    [root@motoko pool]# gunzip -c /var/log/openldap.log.gz | wc
+
+    gunzip: /var/log/openldap.log.gz: unexpected end of file
+     371471 5605014 73152920
+    [root@motoko pool]# gztool -lll -I openldap.log.gzi /var/log/openldap.log.gz
+    ACTION: Check & list info in index file
+
+    Checking index file 'openldap.log.gzi' ...
+    Index file is incomplete.
+            Size of index file:        11596 Bytes (0.22%/gzip)
+            Guessed gzip file name:    '/var/log/openldap.log.gz' ( 5304490 Bytes )
+            Number of index points:    7
+            List of points:
+               @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...
+            Checking compressed windows...
+            @ 10 / 0 ( 0/0 0.00% ), @ 1181008 / 10485763 ( 2512/32768 92.33% ), @ 2345755 / 20971858 ( 2631/32768 91.97% ), @ 3010946 / 31458485 ( 1736/32768 94.70% ), @ 3546583 / 41944605 ( 1587/32768 95.16% ), @ 4123678 / 52430426 ( 1800/32768 94.51% ), @ 4751728 / 62917451 ( 1130/32768 96.55% ),
+            Estimated gzip data compression factor: 94.20%
+
+    1 files processed
+
+    [root@motoko pool]# gztool -lll -I openldap.log.gzi /var/log/openldap.log.gz
+    ACTION: Check & list info in index file
+
+    Checking index file 'openldap.log.gzi' ...
+    Index file is incomplete.
+            Size of index file:        12796 Bytes (0.24%/gzip)
+            Guessed gzip file name:    '/var/log/openldap.log.gz' ( 5413035 Bytes )
+            Number of index points:    8
+            List of points:
+               @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...
+            Checking compressed windows...
+            @ 10 / 0 ( 0/0 0.00% ), @ 1181008 / 10485763 ( 2512/32768 92.33% ), @ 2345755 / 20971858 ( 2631/32768 91.97% ), @ 3010946 / 31458485 ( 1736/32768 94.70% ), @ 3546583 / 41944605 ( 1587/32768 95.16% ), @ 4123678 / 52430426 ( 1800/32768 94.51% ), @ 4751728 / 62917451 ( 1130/32768 96.55% ), @ 5314538 / 73403275 ( 1176/32768 96.41% ),
+            Estimated gzip data compression factor: 94.52%
+
+    1 files processed
+    [root@motoko pool]# ls -l openldap.log.gzi
+    -rw-r--r-- 1 root    root           23664 Aug 25 22:44 openldap.log.gzi
+
+
+.................................................
+
+
+D:\temporal\zlib\gztool\ERROR.2019>gztool -lll *gzi*
+ACTION: Check & list info in index file
+
+Checking index file 'openldap.log.gzi.ERROR' ...
+Index file is incomplete.
+        Size of index file:        23664 Bytes
+        Number of index points:    14
+        List of points:
+           @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...
+        Checking compressed windows...
+        @ 10 / 0 ( 0/0 0.00% ), @ 1181008 / 10485763 ( 2512/32768 92.33% ), @ 2345755 / 20971858 ( 2631/32768 91.97% ), @ 3010946 / 31458485 ( 1736/32768 94.70% ), @ 3546583 / 41944605 ( 1587/32768 95.16% ), @ 4123678 / 52430426 ( 1800/32768 94.51% ), @ 4751728 / 62917451 ( 1130/32768 96.55% ), @ 5314538 / 73403275 ( 1176/32768 96.41% ), @ 5848954 / 83889516 ( 2372/32768 92.76% ), @ 6397061 / 94376180 ( 1172/32768 96.42% ), @ 6932002 / 104862314 ( 1827/32768 94.42% ), @ 7504966 / 115348109 ( 1895/32768 94.22% ), @ 8141473 / 125834638 ( 1823/32768 94.44% ), @ 8700611 / 136320580 ( 1635/32768 95.01% ),
+        Estimated gzip data compression factor: 94.53%
+
+Checking index file 'openldap.log.gzi.ERROR.2' ...
+Index file is incomplete.
+        Size of index file:        23664 Bytes
+        Number of index points:    14
+        List of points:
+           @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...
+        Checking compressed windows...
+        @ 10 / 0 ( 0/0 0.00% ), @ 1181008 / 10485763 ( 2512/32768 92.33% ), @ 2345755 / 20971858 ( 2631/32768 91.97% ), @ 3010946 / 31458485 ( 1736/32768 94.70% ), @ 3546583 / 41944605 ( 1587/32768 95.16% ), @ 4123678 / 52430426 ( 1800/32768 94.51% ), @ 4751728 / 62917451 ( 1130/32768 96.55% ), @ 5314538 / 73403275 ( 1176/32768 96.41% ), @ 5848962 / 83889516 ( 2372/32768 92.76% ), @ 6397069 / 94376180 ( 1172/32768 96.42% ), @ 6932010 / 104862314 ( 1827/32768 94.42% ), @ 7504974 / 115348109 ( 1895/32768 94.22% ), @ 8141481 / 125834638 ( 1823/32768 94.44% ), @ 8700619 / 136320580 ( 1635/32768 95.01% ),
+        Estimated gzip data compression factor: 94.53%
+
+2 files processed
+
+Vaya: ¡al parecer el gzip está terminado a la mitad!
+
+D:\temporal\zlib\gztool\ERROR.2019>gztool -WI openldap.log.gzi.ERROR -b0 -v2 openldap.log.gz.ERROR | wc
+ACTION: Extract from byte = 0
+
+Index file 'openldap.log.gzi.ERROR' already exists and will be used.
+Index file will NOT be modified.
+Processing 'openldap.log.gz.ERROR' ...
+Index file is incomplete.
+Number of index points declared: 14
+(8919609 >= 8700611)
+Starting from index point 0 (@10=>0).
+END OF GZIP passed @5548341 (totout=78044514, ftello=5554186)
+140653804 bytes of data extracted.
+ERROR: Compressed data error in 'openldap.log.gz.ERROR'.
+
+Aborted.
+1 files processed with errors!
+
+ 611467 10289867 140653804
+
+Claramente es:
+++++++++++++++++++++++++
+            if ( ret.error == Z_STREAM_END &&
+                 strm.avail_in >= 8 &&
+                 decompressing_with_gzip_headers == 0 ) {
+                // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
+                // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
+                strm.avail_in -= 8;
+                strm.next_in += 8;
+                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
++               totin+=8; // data is discarded from strm input, but it MUST be counted in total input
+++++++++++++++++++++++++
+
+
