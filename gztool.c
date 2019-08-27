@@ -1315,6 +1315,18 @@ local struct returned_output build_index(
 
         }
 
+        if ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
+             indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+             indx_n_extraction_opts == EXTRACT_TAIL ) {
+            // with not Supervising options, strm.avail_in == 0 here is equivalent to Correct END OF GZIP at EOF
+            if ( feof( in ) && strm.avail_in == 0 ) {
+                printToStderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF.\n" );
+                gzip_eof_detected = 0; // to exit loop, as "gzip_eof_detected == 1" is one ORed condition
+                                       // and now this variable is not needed anymore.
+                break;
+            }
+        }
+
         if (ferror(in)) {
             ret.error = Z_ERRNO;
             goto build_index_error;
