@@ -895,6 +895,7 @@ local struct returned_output build_index(
     int start_extraction_on_first_depletion = 0; // 0: extract - no depletion interaction.
                                                  // 1: start extraction on first depletion.
     int decompressing_with_gzip_headers = 0;     // 1 if inflateInit2(&strm, 47);
+    int gzip_eof_detected = 0;     // 1 if a GZIP file format EOF is detected, and so, feof() is not trustworthy
     unsigned char input[CHUNK];    // TODO: convert to malloc
     unsigned char window[WINSIZE]; // TODO: convert to malloc
     unsigned window_size = 0;      // restarted on every reinitiation of strm data
@@ -1360,8 +1361,11 @@ local struct returned_output build_index(
                 // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
                 strm.avail_in -= 8;
                 strm.next_in += 8;
+                totin+=8;     // data is discarded from strm input, but it MUST be counted in total input
+                if ( offset_in > 0 )
+                    offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
                 printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
-                totin+=8; // data is discarded from strm input, but it MUST be counted in total input
+                gzip_eof_detected = 1;
                 break;
                 // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
@@ -1374,8 +1378,12 @@ local struct returned_output build_index(
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
                 goto build_index_error;
             }
-            if (ret.error == Z_STREAM_END)
+            if (ret.error == Z_STREAM_END) {
+                gzip_eof_detected = 1;
+                if ( offset_in > 0 )
+                    offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
                 break;
+            }
 
             //
             // if required by passed indx_n_extraction_opts option, extract to stdout:
@@ -1500,7 +1508,7 @@ local struct returned_output build_index(
 
         } while ( strm.avail_in != 0 );
 
-    } while ( ret.error != Z_STREAM_END || strm.avail_in > 0 );
+    } while ( ret.error != Z_STREAM_END || strm.avail_in > 0 || gzip_eof_detected == 1 );
 
 
     // last opportunity to output tail data
