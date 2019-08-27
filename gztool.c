@@ -620,6 +620,10 @@ local struct access *addpoint(struct access *index, uint32_t bits,
         if ( window_size > 0 ) {
             // compress window if window_size > 0: if not, a zero-length window is stored.
             next->window = malloc( window_size );
+            // check left value with windows of size != WINSIZE
+            if ( left > window_size ||
+                 window_size != WINSIZE )
+                left = 0;
             if (left)
                 memcpy(next->window, window + window_size - left, left);
             if (left < window_size)
@@ -1026,7 +1030,7 @@ local struct returned_output build_index(
 
         assert( NULL != here );
 
-        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld->%ld).\n", actual_index_point, here->in, here->out );
+        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld->%ld).\n", actual_index_point+1, here->in, here->out );
 
         // fseek in data for correct position
         // using here index data:
