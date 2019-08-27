@@ -2089,6 +2089,7 @@ wait_for_file_creation:
             }
             // index ok, continue
             number_of_index_points = (*index)->have;
+            (*index)->index_complete = 0; // every index can be updated with new points in case gzip data grows!
         } else {
             printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
