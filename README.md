@@ -40,6 +40,7 @@ Also, some optimizations has been made:
 * windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
 * **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)**
 * **Compatible with complete `gzip` concatenated files**
+* **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
 
 More functionality is planned.
@@ -71,14 +72,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.6.283)
+      gztool (v0.7)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-b #] [-s #] [-v #] [-cdefFhilStTW] [-I <INDEX>] <FILE>...
+      $ gztool [-b #] [-s #] [-v #] [-cdeEfFhilStTW] [-I <INDEX>] <FILE>...
 
       Note that actions `-bStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data extraction. As extraction and
@@ -93,6 +94,7 @@ Usage
      -c: utility: raw-gzip-compress indicated file to STDOUT
      -d: utility: raw-gzip-decompress indicated file to STDOUT
      -e: if multiple files are indicated, continue on error (if any)
+     -E: end processing on first GZIP end of file marker at EOF
      -f: force index overwriting from scratch, if one exists
      -F: force index creation/completion first, and then action: if
          `-F` is not used, index is created interleaved with actions.
@@ -109,7 +111,7 @@ Usage
      -t: tail (extract last bytes) to STDOUT on indicated gzip file
      -T: tail (extract last bytes) to STDOUT on indicated still-growing
          gzip file, and continue Supervising & extracting to STDOUT.
-     -v #: output verbosity: from `0` (none) to `3` (maniac)
+     -v #: output verbosity: from `0` (none) to `4` (crazy)
          Default is `1` (normal).
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
@@ -260,7 +262,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.6.283**.
+This version is **v0.7**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
