@@ -1388,6 +1388,17 @@ local struct returned_output build_index(
                 goto build_index_error;
             }
             if (ret.error == Z_STREAM_END) {
+                if ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
+                     indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+                     indx_n_extraction_opts == EXTRACT_TAIL ) {
+                    // with not Supervising options, a Z_STREAM_END at feof() is correct!
+                    if ( feof( in ) && strm.avail_in == 0 ) {
+                        printToStderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF.\n" );
+                        gzip_eof_detected = 0; // to exit loop, as "gzip_eof_detected == 1" is one ORed condition
+                                               // and now this variable is not needed anymore.
+                        break;
+                    }
+                }
                 if ( end_on_first_proper_gzip_eof == 0 )
                     gzip_eof_detected = 1;
                 if ( gzip_eof_detected == 0 ) {
@@ -1398,7 +1409,7 @@ local struct returned_output build_index(
                         gzip_eof_detected = 1;
                         printToStderr( VERBOSITY_NORMAL, "Warning: GZIP end detected in the middle of data: deactivating `-E`\n" );
                         end_on_first_proper_gzip_eof = 0;
-		    }
+                    }
                 }
                 if ( offset_in > 0 )
                     offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
@@ -2095,23 +2106,23 @@ wait_for_file_creation:
 
     if ( ret.error < 0 ) {
         switch ( ret.error ) {
-        case Z_MEM_ERROR:
-            printToStderr( VERBOSITY_NORMAL, "ERROR: Out of memory.\n" );
-            break;
-        case Z_DATA_ERROR:
-            if ( strlen(file_name) > 0 )
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
-            else
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in stdin.\n" );
-            break;
-        case Z_ERRNO:
-            if ( strlen(file_name) > 0 )
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
-            else
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on stdin.\n" );
-            break;
-        default:
-           printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
+            case Z_MEM_ERROR:
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Out of memory.\n" );
+                break;
+            case Z_DATA_ERROR:
+                if ( strlen(file_name) > 0 )
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
+                else
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in stdin.\n" );
+                break;
+            case Z_ERRNO:
+                if ( strlen(file_name) > 0 )
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
+                else
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on stdin.\n" );
+                break;
+            default:
+               printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
        }
        return EXIT_GENERIC_ERROR;
     }
