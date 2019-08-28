@@ -2265,7 +2265,8 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                 if( access( gzip_filename, F_OK ) != -1 ) {
                     check_index_file( index, gzip_filename, file_name );
                     stat( gzip_filename, &st_gzip );
-                    if ( st_gzip.st_size > 0 ) {
+                    if ( st_gzip.st_size > 0 &&
+                         verbosity_level > VERBOSITY_NONE) {
                         fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
                         fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
                         if ( index->file_size > 0 )
@@ -2273,7 +2274,8 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                         fprintf( stdout, " ( %ld Bytes )", st_gzip.st_size );
                     }
                 } else {
-                    fprintf( stdout, "\n\tIndicated gzip file '%s' doesn't exist", gzip_filename );
+                    if ( verbosity_level > VERBOSITY_NONE )
+                        fprintf( stdout, "\n\tIndicated gzip file '%s' doesn't exist", gzip_filename );
                 }
             }
 
@@ -3073,7 +3075,15 @@ int main(int argc, char **argv)
 
             }
 
-            printToStderr( VERBOSITY_NORMAL, "\n" );
+            if ( action == ACT_LIST_INFO ) {
+                // as ACT_LIST_INFO prints to stdout,
+                // file input separator must be printed also to stdout
+                if ( verbosity_level >= VERBOSITY_NORMAL )
+                    fprintf( stdout, "\n" );
+            } else {
+                printToStderr( VERBOSITY_NORMAL, "\n" );
+            }
+
             printToStderr( VERBOSITY_MANIAC, "ERROR code = %d\n", ret_value );
 
             if ( ret_value != EXIT_OK )
