@@ -1684,7 +1684,6 @@ local struct returned_output build_index(
 struct access *deserialize_index_from_file( FILE *input_file, int load_windows, unsigned char *file_name ) {
     struct point here;
     struct access *index = NULL;
-    uint32_t i;
     uint32_t index_complete = 1;
     uint64_t number_of_index_points = 0;
     uint64_t index_have, index_size, file_size;
