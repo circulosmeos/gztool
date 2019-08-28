@@ -910,6 +910,8 @@ local struct returned_output build_index(
     unsigned window_size = 0;      // restarted on every reinitiation of strm data
     unsigned char window2[WINSIZE];// TODO: convert to malloc
     unsigned window2_size = 0;     // size of data stored in window2 buffer
+    uint64_t index_points_0 = 0;   // marker to detect index updates (and to not write if index isn't updated)
+    uint64_t index_file_size_0 = 0;// marker to detect index updates (and to not write if index isn't updated)
 
     ret.value = 0;
     ret.error = Z_OK;
@@ -926,7 +928,7 @@ local struct returned_output build_index(
             ret.value = (*built)->have;
             return ret;
         } else {
-            printToStderr( VERBOSITY_NORMAL, "Index already complete - using it.\n" );
+            printToStderr( VERBOSITY_NORMAL, "Using index ...\n" );
         }
     } else {
         if ( write_index_to_disk == 1 )
@@ -967,13 +969,16 @@ local struct returned_output build_index(
        also validates the integrity of the compressed data using the check
        information at the end of the gzip or zlib stream */
 
-    // if and index is already passed, use it:
+    // if an index is already passed, use it:
     if ( NULL != (*built) &&
         (*built)->have > 0 ) {
         // NULL != *built (there is a previous index available: use it!)
         // if index->have == 0 index is superfluous
 
         index = *built;
+        index_points_0 = index->have;   // marker to detect index updates (and to not write if index isn't updated)
+        index_file_size_0 = index->file_size;// marker to detect index updates (and to not write if index isn't updated)
+
         /* initialize file and inflate state to start there */
         strm.zalloc = Z_NULL;
         strm.zfree = Z_NULL;
@@ -1385,15 +1390,20 @@ local struct returned_output build_index(
                 totin += 8;         // data is discarded from strm input, but it MUST be counted in total input
                 if ( offset_in > 0 )
                     offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
-                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
+                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld while in raw mode (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
                 gzip_eof_detected = 1;
                 break;
                 // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
             // end of treat possible gzip tail
             // .................................................
-            if ( ret.error != Z_OK )
-                printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(in) );
+            if ( ret.error != Z_OK ) {
+                if ( ret.error != Z_STREAM_END )
+                    printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(in) );
+                else
+                    printToStderr( VERBOSITY_MANIAC, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(in) );
+            }
+
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
@@ -1603,8 +1613,12 @@ local struct returned_output build_index(
     if ( NULL != index &&
          index->index_complete == 0 &&
          write_index_to_disk == 1 ) {
-        if ( ! serialize_index_to_file( index_file, index, index->have ) )
-            goto build_index_error;
+        // use markers to detect index updates and to not write if index isn't updated
+        if ( index_points_0 != index->have ||
+             index_file_size_0 != index->file_size ) {
+            if ( ! serialize_index_to_file( index_file, index, index->have ) )
+                goto build_index_error;
+        }
     }
 
     if ( NULL != index_file )
