@@ -1730,17 +1730,20 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     fread_endian(&(index_have), sizeof(index_have), input_file);
     fread_endian(&(index_size), sizeof(index_size), input_file);
 
+    printToStderr( VERBOSITY_MANIAC, "Number of index points declared: %ld - %ld\n", index_have, index_size );
+
     number_of_index_points = index_have;
 
     // index->size equals index->have when the index file is correctly closed,
     // and index->have on disk == 0 && index->have on disk = index->size whilst the index is growing:
-    if ( index_have == 0 && index_size > 0 ) {
+    if ( index_have != index_size ) {
         printToStderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
         index_complete = 0;
         number_of_index_points = index_size;
     }
 
-    printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %ld\n", number_of_index_points );
+    if ( verbosity_level == VERBOSITY_EXCESSIVE )
+        printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %ld\n", number_of_index_points );
 
     position_at_file = GZIP_INDEX_HEADER_SIZE + sizeof(index_have)*2;
 
