@@ -1433,3 +1433,52 @@ Claramente es:
 ++++++++++++++++++++++++
 
 
+-------------------------------------------------------------------------------
+
+
+ed9cfce360999cd47f9af223d34a365c0530765f
+ce947635fd78960c8031a74f13d908e7eca37c0d
+f2c6278067c48e0abb06858f4bd8509a3183925d
+2acf4f16aac688504f4f16aa37645f518b2b6854
+
+
+8d14b7b576c932f588ef382a201e8fc9577cf145
+c81a31792946a7b829f5dbc4ea5cfdf5fc110d89
+629d503497df6567e7ff07c843ac4645acae2bdb
+2a60fb97fd3164298597cd76ad224afc8d0a6254
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190828]] [[tag]] :<#renombrar un tag> 
+
+D:\Instalaciones\GitHub reps\gztool>git tag v0.3.14 0.3.14
+
+D:\Instalaciones\GitHub reps\gztool>git tag
+0.3.14
+v0.1
+v0.2
+v0.3.14
+v0.3.141
+v0.3.1415
+v0.4
+v0.4.1
+v0.6.28
+v0.6.283
+v0.7
+
+D:\Instalaciones\GitHub reps\gztool>git tag -d 0.3.14
+Deleted tag '0.3.14' (was 2297a61)
+
+D:\Instalaciones\GitHub reps\gztool>git push origin :refs/tags/0.3.14
+To https://github.com/circulosmeos/gztool.git
+ - [deleted]         0.3.14
+
+D:\Instalaciones\GitHub reps\gztool>git push origin master --tags
+Counting objects: 1, done.
+Writing objects: 100% (1/1), 164 bytes | 82.00 KiB/s, done.
+Total 1 (delta 0), reused 0 (delta 0)
+To https://github.com/circulosmeos/gztool.git
+ * [new tag]         v0.3.14 -> v0.3.14
+
+
+-------------------------------------------------------------------------------
