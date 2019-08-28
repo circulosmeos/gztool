@@ -641,7 +641,7 @@ local struct access *addpoint(struct access *index, uint32_t bits,
             /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
             next->window_size = size;
         }
-        printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have, index->size, next->window_size);
+        printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have+1, index->size, next->window_size);
     } else {
         // if NULL == window, this creates a NULL window: it resides on file,
         // and can/will later loaded on memory with its correct ->window_size;
@@ -673,7 +673,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
     struct point *here = NULL;
     uint64_t temp;
     uint64_t offset;
-    int i;
+    uint64_t i;
 
     ///* access point entry */
     //struct point {
@@ -744,12 +744,13 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
     fseeko( output_file, offset, SEEK_SET);
     printToStderr( VERBOSITY_MANIAC, "index_last_written_point = %ld\n", index_last_written_point );
     if (NULL!=here) {
-        printToStderr( VERBOSITY_MANIAC, "%d->window_size = %d\n", i, here->window_size );
+        printToStderr( VERBOSITY_MANIAC, "%ld->window_size = %d\n", i, here->window_size );
     }
-    printToStderr( VERBOSITY_MANIAC, "offset = %ld\n", offset );
+    printToStderr( VERBOSITY_MANIAC, "have = %ld, offset = %ld\n", index->have, offset );
 
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
+            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%ld\n", i+1 );
             here = &(index->list[i]);
             fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
             fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
@@ -939,6 +940,7 @@ local struct returned_output build_index(
     if ( strlen(index_filename) > 0 &&
         ( NULL == index || index->index_complete == 0 )
         ) {
+        printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
         if ( write_index_to_disk == 1 ) {
             if ( access( index_filename, F_OK ) != -1 ) {
                 // index_filename already exist:
@@ -946,13 +948,16 @@ local struct returned_output build_index(
                 // r+, because the index may be incomplete, and so build_index() will
                 // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
                 index_file = fopen( index_filename, "r+b" );
+                printToStderr( VERBOSITY_EXCESSIVE, " (r+b)\n" );
             } else {
                 // index_filename does not exist:
                 index_file = fopen( index_filename, "w+b" );
+                printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
             }
         } else {
             // open index file in read-only mode (if file does not exist, NULL == index_file)
             index_file = fopen( index_filename, "rb" );
+            printToStderr( VERBOSITY_EXCESSIVE, " (rb)\n" );
         }
     } else {
         // restrictions to not collide index output with data output to stdout
@@ -1511,7 +1516,7 @@ local struct returned_output build_index(
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
-                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld\n", actual_index_point );
+                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld\n", actual_index_point+1 );
                 printToStderr( VERBOSITY_MANIAC, "\t(%ld, %ld)\n", totout, last );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
