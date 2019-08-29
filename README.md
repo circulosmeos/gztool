@@ -111,7 +111,7 @@ Usage
      -t: tail (extract last bytes) to STDOUT on indicated gzip file
      -T: tail (extract last bytes) to STDOUT on indicated still-growing
          gzip file, and continue Supervising & extracting to STDOUT.
-     -v #: output verbosity: from `0` (none) to `4` (crazy)
+     -v #: output verbosity: from `0` (none) to `5` (nuts)
          Default is `1` (normal).
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
