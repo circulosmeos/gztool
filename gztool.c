@@ -196,7 +196,8 @@ enum ACTION
       ACT_CREATE_INDEX, ACT_LIST_INFO, ACT_HELP, ACT_SUPERVISE, ACT_EXTRACT_TAIL,
       ACT_EXTRACT_TAIL_AND_CONTINUE };
 
-enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESSIVE = 2, VERBOSITY_MANIAC = 3, VERBOSITY_CRAZY = 4 };
+enum VERBOSITY_LEVEL { VERBOSITY_NONE = 0, VERBOSITY_NORMAL = 1, VERBOSITY_EXCESSIVE = 2,
+                       VERBOSITY_MANIAC = 3, VERBOSITY_CRAZY = 4, VERBOSITY_NUTS = 5 };
 
 enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
 
@@ -865,7 +866,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 // off_t offset         : if indx_n_extraction_opts == EXTRACT_FROM_BYTE, this is the offset byte in
 //                        in the uncompressed stream from which to extract to stdout.
 //                        0 otherwise.
-// unsigned char *index_filename    : in case of SUPERVISE_DO, index will be written on-the-fly
+// unsigned char *index_filename    : index will be read/written on-the-fly
 //                                    to this index file name.
 // int write_index_to_disk  : 1: will write/update the index as usual;
 //                            0: will just read, but do not write nor update (overwrite) the index on disk,
@@ -917,23 +918,18 @@ local struct returned_output build_index(
     ret.value = 0;
     ret.error = Z_OK;
 
-    // previous condition: if passed index is complete end processing
-    // if indx_n_extraction_opts allows it.
+    // Inform index filename
     if ( NULL != (*built) &&
         // if index->have == 0 index is superfluous
         (*built)->have > 0 &&
         (*built)->index_complete == 1 ) {
-        if ( indx_n_extraction_opts == SUPERVISE_DO ||
-             indx_n_extraction_opts == JUST_CREATE_INDEX ) {
-            printToStderr( VERBOSITY_NORMAL, "Index already complete. Nothing to do.\n" );
-            ret.value = (*built)->have;
-            return ret;
-        } else {
-            printToStderr( VERBOSITY_NORMAL, "Using index ...\n" );
-        }
+        // even though index is complete, processing will occur because gzip file may have changed!
+        printToStderr( VERBOSITY_NORMAL, "Using index '%s'...\n", index_filename );
     } else {
         if ( write_index_to_disk == 1 )
-            printToStderr( VERBOSITY_NORMAL, "Processing index ...\n" );
+            printToStderr( VERBOSITY_NORMAL, "Processing index to '%s'...\n", index_filename );
+        else
+            printToStderr( VERBOSITY_NORMAL, "Reading index '%s'...\n", index_filename );
     }
 
     /* open index_filename for binary reading & writing */
@@ -1449,7 +1445,7 @@ local struct returned_output build_index(
             // EXTRACT_FROM_BYTE: extract all:
             if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                 unsigned have = avail_out_0 - strm.avail_out;
-                printToStderr( VERBOSITY_CRAZY, ">1> %ld, %d, %d, %d ", offset, have, strm.avail_out, strm.avail_in );
+                printToStderr( VERBOSITY_NUTS, "[>1>%ld,%d,%d,%d]", offset, have, strm.avail_out, strm.avail_in );
                 if ( offset > have ) {
                     offset -= have;
                 } else {
@@ -1458,7 +1454,7 @@ local struct returned_output build_index(
                         // print offset - have bytes
                         // If offset==0 (from offset byte on) this prints always all bytes:
                         output_data_counter += have - offset;
-                        printToStderr( VERBOSITY_MANIAC, "[>1>%d]", have - offset );
+                        printToStderr( VERBOSITY_CRAZY, "[>1>%d]", have - offset );
                         if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, stdout) != (have - offset) ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
@@ -1476,7 +1472,7 @@ local struct returned_output build_index(
                     unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
-                    printToStderr( VERBOSITY_CRAZY, ">2> %ld, %d, %d ", offset_in, have_in, strm.avail_in );
+                    printToStderr( VERBOSITY_NUTS, "[>2>%ld,%d,%d]", offset_in, have_in, strm.avail_in );
                     if ( offset_in > 0 )
                         offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
@@ -1485,7 +1481,7 @@ local struct returned_output build_index(
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
                         output_data_counter += have;
-                        printToStderr( VERBOSITY_MANIAC, "[>2>%d]", have );
+                        printToStderr( VERBOSITY_CRAZY, "[>2>%d]", have );
                         if (fwrite(window + (WINSIZE - avail_out_0), 1, have, stdout) != have ||
                             ferror(stdout)) {
                             (void)inflateEnd(&strm);
@@ -1516,8 +1512,8 @@ local struct returned_output build_index(
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
-                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld\n", actual_index_point+1 );
-                printToStderr( VERBOSITY_MANIAC, "\t(%ld, %ld)\n", totout, last );
+                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld,", actual_index_point+1 );
+                printToStderr( VERBOSITY_MANIAC, "(%ld, %ld)\n", totout, last );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -2500,7 +2496,7 @@ local void print_help() {
     fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
     fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
-    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `4` (crazy)\n" );
+    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
@@ -2639,8 +2635,8 @@ int main(int argc, char **argv)
                 verbosity_level = atoi(optarg);
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
                      strlen( optarg ) > 1 ||
-                     verbosity_level > VERBOSITY_CRAZY ) {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..4]`).\n", optarg );
+                     verbosity_level > VERBOSITY_NUTS ) {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..5]`).\n", optarg );
                     verbosity_level = VERBOSITY_NORMAL;
                 }
                 break;
