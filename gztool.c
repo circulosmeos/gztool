@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.7 by Roberto S. Galende, 2019
+// v0.1 to v0.7* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.7"
+#define GZTOOL_VERSION "0.7.1"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
