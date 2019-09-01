@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.7 by Roberto S. Galende, 2019
+// v0.1 to v0.7* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.7"
+#define GZTOOL_VERSION "0.7.1"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -808,7 +808,8 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 
     if ( NULL != file_name &&
          strlen( file_name ) > 0 ) {
-        if ( NULL != index ) {
+        if ( NULL != index &&
+             index->have > 0 ) {
             // size of input file
             struct stat st;
             stat( file_name, &st );
@@ -1213,7 +1214,10 @@ local struct returned_output build_index(
         index = NULL;               /* will be allocated by first addpoint() */
     }
 
-    strm.avail_out = 0;
+    // initialize output window
+    strm.next_out = window;
+    strm.avail_out = WINSIZE;
+    avail_out_0 = strm.avail_out;
     do {
         /* get some compressed data from input file */
 
@@ -1235,7 +1239,7 @@ local struct returned_output build_index(
         // .................................................
         // decompressor state MUST be reinitiated after Z_STREAM_END
         if ( ret.error == Z_STREAM_END ) {
-            printToStderr( VERBOSITY_MANIAC, "Reinitiating zlib strm data...\n" );
+            printToStderr( VERBOSITY_MANIAC, "Reinitializing zlib strm data...\n" );
             strm_avail_in0 = strm.avail_in;
             (void)inflateEnd(&strm);
             strm.zalloc = Z_NULL;
@@ -1373,8 +1377,10 @@ local struct returned_output build_index(
                  ( indx_n_extraction_opts == EXTRACT_TAIL ||
                    indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
                 if ( WINSIZE - strm.avail_out > 0 ) { // if have == 0, maintain previous (data and) window2_size value
-                    window2_size = WINSIZE - strm.avail_out;
-                    memcpy( window2, window, window2_size );
+                    window2_size = WINSIZE - avail_out_0;
+                    printToStderr( VERBOSITY_NUTS, "(w2s=%d)", window2_size );
+                    if ( window2_size <= WINSIZE )
+                        memcpy( window2, window, window2_size );
                 }
                 // TODO: change to pointer flip instead of memcpy (possible?)
             }
@@ -1391,8 +1397,13 @@ local struct returned_output build_index(
                 totin += 8;         // data is discarded from strm input, but it MUST be counted in total input
                 if ( offset_in > 0 )
                     offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
-                printToStderr( VERBOSITY_EXCESSIVE, "END OF GZIP passed @%ld while in raw mode (totout=%ld, ftello=%ld)\n", totin, totout, ftello(in) );
-                gzip_eof_detected = 1;
+                printToStderr( VERBOSITY_EXCESSIVE,
+                    "END OF GZIP passed @%ld while in raw mode (totout=%ld, avail_in=%d, ftello=%ld)\n",
+                    totin, totout, strm.avail_in, ftello(in) );
+                if ( end_on_first_proper_gzip_eof == 1 )
+                    gzip_eof_detected = 0;
+                else
+                    gzip_eof_detected = 1;
                 break;
                 // avail_in_0 doesn't need to be decremented as it tries to count raw stream input bytes
             }
@@ -1713,11 +1724,18 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
     //    struct point *list; /* allocated list */
     //};
 
-    if (fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file) < GZIP_INDEX_HEADER_SIZE ||
-        *((uint64_t *)header) != 0 ||
-        strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
-        printToStderr( VERBOSITY_NORMAL, "File is not a valid gzip index file.\n" );
-        return NULL;
+    // check index size == 0
+    if ( file_size != 0 ) {
+        if (fread(header, 1, GZIP_INDEX_HEADER_SIZE, input_file) < GZIP_INDEX_HEADER_SIZE ||
+            *((uint64_t *)header) != 0 ||
+            strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0) {
+            printToStderr( VERBOSITY_NORMAL, "File is not a valid gzip index file.\n" );
+            return NULL;
+        }
+    } else {
+        // for an empty index, return a pointer with zero data
+        index = create_empty_index();
+        return index;
     }
 
     index = create_empty_index();
