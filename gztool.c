@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.7.1"
+#define GZTOOL_VERSION "0.7.2"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -2330,10 +2330,10 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                 if ( list_verbosity == VERBOSITY_MANIAC )
                     fprintf( stdout, "Checking compressed windows...\n\t" );
             }
-            for (j=0; j<index->have; j++) {
+            for ( j=0; j<index->have; j++ ) {
                 if ( list_verbosity == VERBOSITY_EXCESSIVE &&
                      verbosity_level > VERBOSITY_NONE )
-                    fprintf( stdout, "@ %ld / %ld ( %d @%ld ), ", index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
+                    fprintf( stdout, "#%ld: @ %ld / %ld ( %d @%ld ), ", j +1, index->list[j].in, index->list[j].out, index->list[j].window_size, index->list[j].window_beginning );
                 if ( list_verbosity == VERBOSITY_MANIAC ) {
                     uint64_t local_window_size = index->list[j].window_size;
                     if ( local_window_size > 0 ) {
@@ -2350,8 +2350,8 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                     if ( verbosity_level > VERBOSITY_NONE ) {
                         comp_win_counter   += index->list[j].window_size;
                         uncomp_win_counter += local_window_size;
-                        fprintf( stdout, "@ %ld / %ld ( %d/%ld %.2f%% ), ",
-                            index->list[j].in, index->list[j].out, index->list[j].window_size,
+                        fprintf( stdout, "#%ld: @ %ld / %ld ( %d/%ld %.2f%% ), ",
+                            j +1, index->list[j].in, index->list[j].out, index->list[j].window_size,
                             local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
                     }
                 }
