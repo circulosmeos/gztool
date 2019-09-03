@@ -72,7 +72,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.7)
+      gztool (v0.7.2)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -199,7 +199,7 @@ Examples of use
             Size of uncompressed file: 147773440 Bytes
             List of points:
             @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
-            @ 10 / 0 ( 0 @56 ), @ 3059779 / 10495261 ( 13127 @80 ), @ 6418423 / 21210594 ( 6818 @13231 ), @ 9534259 / 31720206 ( 7238 @20073 )...
+            #1: @ 10 / 0 ( 0 @56 ), #2: @ 3059779 / 10495261 ( 13127 @80 ), #3: @ 6418423 / 21210594 ( 6818 @13231 ), #4: @ 9534259 / 31720206 ( 7238 @20073 )...
         ...
 
 If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. 
@@ -210,7 +210,7 @@ Also, if the gzip is complete, the size of the uncompressed data is shown. This 
 
         $ gztool -l gzip_filename -I index_filename
 
-In this latter case only a pair of index+gzip filenames can be indicated on each use.
+In this latter case only a pair of index+gzip filenames can be indicated with each use.
 
 Index file format
 =================
@@ -262,7 +262,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.7**.
+This version is **v0.7.2**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
