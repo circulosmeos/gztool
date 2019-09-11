@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.7* by Roberto S. Galende, 2019
+// v0.1 to v0.8* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.7.2"
+#define GZTOOL_VERSION "0.8"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -877,7 +877,9 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                           is not (actually) used later in the app. (Windows could be also emptied, but again,
 //                           index points are not used later.)
 // int end_on_first_proper_gzip_eof : end file processing on first proper (at feof()) GZIP EOF
-//                                  (to be used when the file contains surely only one gzip stream)
+//                                    (to be used when the file contains surely only one gzip stream)
+// int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
+//                                      Also an index pointer (**built) is returned, instead of NULL.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -886,7 +888,7 @@ local struct returned_output build_index(
     FILE *in, unsigned char *file_name, off_t span, struct access **built,
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset,
     unsigned char *index_filename, int write_index_to_disk,
-    int end_on_first_proper_gzip_eof )
+    int end_on_first_proper_gzip_eof, int always_create_a_complete_index )
 {
     struct returned_output ret;
     off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
@@ -1665,9 +1667,17 @@ local struct returned_output build_index(
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
     (void)inflateEnd(&strm);
-    if (index != NULL)
-        free_index(index);
-    *built = NULL;
+    if ( always_create_a_complete_index == 1 ) {
+        index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
+        // return index pointer and write index to index file, ignoring the decompression error
+        *built = index;
+        if ( ! serialize_index_to_file( index_file, index, index->have ) )
+            printToStderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
+    } else {
+        if (index != NULL)
+            free_index(index);
+        *built = NULL;
+    }
     if (index_file != NULL)
         fclose(index_file);
     return ret;
@@ -2053,13 +2063,15 @@ local int decompress_file(FILE *source, FILE *dest)
 //                                0: will just read, but do not write nor update (overwrite) it
 // int end_on_first_proper_gzip_eof: end file processing on first proper (at feof()) GZIP EOF
 //                                   (to be used when the file contains surely only one gzip stream)
+// int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
+//                                      Also an index pointer (**built) is returned, instead of NULL.
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
     unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
     off_t offset, off_t span_between_points, int write_index_to_disk,
-    int end_on_first_proper_gzip_eof )
+    int end_on_first_proper_gzip_eof, int always_create_a_complete_index )
 {
 
     FILE *in;
@@ -2149,7 +2161,7 @@ wait_for_file_creation:
 
     ret = build_index( in, file_name, span_between_points, index,
             indx_n_extraction_opts, offset, index_filename, write_index_to_disk,
-            end_on_first_proper_gzip_eof );
+            end_on_first_proper_gzip_eof, always_create_a_complete_index );
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -2467,7 +2479,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -2484,7 +2496,7 @@ local void print_help() {
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -2494,6 +2506,7 @@ local void print_help() {
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
+    fprintf( stderr, " -C: always create a 'Complete' index file, ignoring possible errors\n" );
     fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
     fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
@@ -2551,6 +2564,7 @@ int main(int argc, char **argv)
     int force_strict_order = 0;
     int write_index_to_disk = 1;
     int end_on_first_proper_gzip_eof = 0;
+    int always_create_a_complete_index = 0;
     int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -2565,7 +2579,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cdeEfFhiI:ls:StTv:W")) != -1)
+    while ((opt = getopt(argc, argv, "b:cCdeEfFhiI:ls:StTv:W")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -2584,6 +2598,10 @@ int main(int argc, char **argv)
             case 'c':
                 action = ACT_COMPRESS_CHUNK;
                 actions_set++;
+                break;
+            // `-C` generates always a complete index file, ignoring possible decompression errors
+            case 'C':
+                always_create_a_complete_index = 1;
                 break;
             // `-d` decompress <FILE> (or stdin if none) to stdout
             case 'd':
@@ -2665,7 +2683,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcdeEfFhiIlSstTvW", optopt) ) {
+                    if ( NULL == strchr("bcCdeEfFhiIlSstTvW", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -2703,15 +2721,16 @@ int main(int argc, char **argv)
     if ( ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK ) &&
         ( force_action == 1 || force_strict_order == 1 || write_index_to_disk == 0 ||
             span_between_points != SPAN || index_filename_indicated == 1 ||
-            end_on_first_proper_gzip_eof == 1 )
+            end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-EfFIsW` with `-[cd]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-CEfFIsW` with `-[cd]`\n" );
         force_action = 0;
         force_strict_order = 0;
         write_index_to_disk = 1;
         span_between_points = SPAN;
         index_filename_indicated = 0;
         end_on_first_proper_gzip_eof = 0;
+        always_create_a_complete_index = 0;
     }
 
     if ( span_between_points <= 0 ) {
@@ -2828,7 +2847,8 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points,
-                        write_index_to_disk, end_on_first_proper_gzip_eof );
+                        write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -2867,10 +2887,12 @@ int main(int argc, char **argv)
                 // stdin is a gzip file that must be indexed
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX,
-                        0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof );
+                        0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 } else {
                     ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX,
-                        0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof );
+                        0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2890,10 +2912,12 @@ int main(int argc, char **argv)
                 // stdin is a gzip file for which an index file must be created on-the-fly
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, 0,
-                        span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof );
+                        span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 } else {
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0,
-                        span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof );
+                        span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2903,7 +2927,8 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points,
-                        write_index_to_disk, end_on_first_proper_gzip_eof );
+                        write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -2916,11 +2941,13 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename,
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
-                        write_index_to_disk, end_on_first_proper_gzip_eof );
+                        write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
-                        write_index_to_disk, end_on_first_proper_gzip_eof );
+                        write_index_to_disk, end_on_first_proper_gzip_eof,
+                        always_create_a_complete_index );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -3013,7 +3040,7 @@ int main(int argc, char **argv)
             if ( force_strict_order == 1 ) {
                 ret_value = action_create_index( file_name, &index, index_filename,
                             JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk,
-                            end_on_first_proper_gzip_eof );
+                            end_on_first_proper_gzip_eof, always_create_a_complete_index );
             }
 
 
@@ -3023,7 +3050,7 @@ int main(int argc, char **argv)
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -3061,7 +3088,7 @@ int main(int argc, char **argv)
                         // if force_strict_order == 1 action has already been done!
                         ret_value = action_create_index( file_name, &index, index_filename,
                             JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk,
-                            end_on_first_proper_gzip_eof );
+                            end_on_first_proper_gzip_eof, always_create_a_complete_index );
                     break;
 
                 case ACT_LIST_INFO:
@@ -3077,20 +3104,20 @@ int main(int argc, char **argv)
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
