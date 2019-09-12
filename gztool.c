@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.8"
+#define GZTOOL_VERSION "0.8.1"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -1402,7 +1402,10 @@ local struct returned_output build_index(
                 printToStderr( VERBOSITY_EXCESSIVE,
                     "END OF GZIP passed @%ld while in raw mode (totout=%ld, avail_in=%d, ftello=%ld)\n",
                     totin, totout, strm.avail_in, ftello(in) );
-                if ( end_on_first_proper_gzip_eof == 1 )
+                if ( end_on_first_proper_gzip_eof == 1 ||
+                    ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
+                    indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
+                    indx_n_extraction_opts == EXTRACT_TAIL ) )
                     gzip_eof_detected = 0;
                 else
                     gzip_eof_detected = 1;
