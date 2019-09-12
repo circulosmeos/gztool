@@ -586,7 +586,7 @@ gcc -static -O3 -I.. -o gztool gztool.c libz.a
 
 gcc -O3 -o gztool gztool.c -lz
 
-zip gztool.zip -r . -x bgzip_project.20190530.2.tar.gz*
+zip gztool.zip -r . -x bgzip_project.20190530.2.tar.gz* -x bitcoin* -x T*
 
 .................................................
 20190815:
