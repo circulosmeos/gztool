@@ -1236,7 +1236,9 @@ local struct returned_output build_index(
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with feof(in)==1 already!
-            if ( waiting_time > 0 )
+            if ( ( indx_n_extraction_opts != SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+                   indx_n_extraction_opts != SUPERVISE_DO ) ||
+                waiting_time > 0 )
                 printToStderr( VERBOSITY_MANIAC, "[reading %d B]", CHUNK - strm_avail_in0 );
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
             strm.avail_in += strm_avail_in0;
