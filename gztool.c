@@ -1403,9 +1403,9 @@ local struct returned_output build_index(
                     "END OF GZIP passed @%ld while in raw mode (totout=%ld, avail_in=%d, ftello=%ld)\n",
                     totin, totout, strm.avail_in, ftello(in) );
                 if ( end_on_first_proper_gzip_eof == 1 ||
-                    ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
+                    ( ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
                     indx_n_extraction_opts == EXTRACT_FROM_BYTE ||
-                    indx_n_extraction_opts == EXTRACT_TAIL ) )
+                    indx_n_extraction_opts == EXTRACT_TAIL ) && feof( in ) ) )
                     gzip_eof_detected = 0;
                 else
                     gzip_eof_detected = 1;
