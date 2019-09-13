@@ -2603,6 +2603,11 @@ int main(int argc, char **argv)
             // `-a #` default waiting time in seconds when supervising a growing gzip file (`-[ST]`)
             case 'a':
                 waiting_time = (int)strtol( optarg, NULL, 10 );
+                if ( waiting_time == 0 &&
+                     ( strlen( optarg ) != 1 || '0' != optarg[0] ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%s'\n", optarg );
+                    waiting_time = WAITING_TIME;
+                }
                 break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
@@ -2752,12 +2757,8 @@ int main(int argc, char **argv)
         always_create_a_complete_index = 0;
     }
 
-    if ( waiting_time >= UINT32_MAX ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring excessive waiting value of '%d'\n", waiting_time );
-        waiting_time = WAITING_TIME;
-    }
-    if ( waiting_time < 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring negative waiting value of '%d'\n", waiting_time );
+    if ( waiting_time >= UINT32_MAX || waiting_time < 0 ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%d'\n", waiting_time );
         waiting_time = WAITING_TIME;
     }
 
