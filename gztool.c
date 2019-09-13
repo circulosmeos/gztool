@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.8.1"
+#define GZTOOL_VERSION "0.8.2"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -2671,7 +2671,7 @@ int main(int argc, char **argv)
             // `-s #` span between index points, in MiB
             case 's':
                 // span is converted to from MiB to bytes for internal use
-                span_between_points = atoll(optarg) * 1024 * 1024;
+                span_between_points = strtoll( optarg, NULL, 10 ) * 1024 * 1024;
                 break;
             // `-S` supervise a still-growing gzip <FILE> and create index for it
             case 'S':
@@ -2690,7 +2690,7 @@ int main(int argc, char **argv)
                 break;
             // `-v` verbosity
             case 'v':
-                verbosity_level = atoi(optarg);
+                verbosity_level = (int)strtol( optarg, NULL, 10 );
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
                      strlen( optarg ) > 1 ||
                      verbosity_level > VERBOSITY_NUTS ) {

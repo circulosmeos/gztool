@@ -72,14 +72,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.8.1)
+      gztool (v0.8.2)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-b #] [-s #] [-v #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...
+      $ gztool [-[absv] #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...
 
       Note that actions `-bStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data extraction. As extraction and
@@ -88,6 +88,7 @@ Usage
       index file will be reused (and completed if necessary) on the
       next gztool run over the same data.
 
+     -a #: Await # seconds between reads when `-[ST]`. Default is 4 s.
      -b #: extract data from indicated uncompressed byte position of
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
@@ -263,7 +264,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.8.1**.
+This version is **v0.8.2**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
