@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.8.1"
+#define GZTOOL_VERSION "0.8.2"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
