@@ -1482,3 +1482,44 @@ To https://github.com/circulosmeos/gztool.git
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190913]] [[v0.8.1]] 
+
+With version < v0.8.1 :
+
+odroid@odroid64:~/PROYECTOS/bitcoin$ ~/SD/dev/zlib/gztool/gztool -v2 -i bitcoin-lottery.201909081851.gz
+
+Index file 'bitcoin-lottery.201909081851.gzi' already exists and will be used.
+Processing 'bitcoin-lottery.201909081851.gz' ...
+Number of index points declared: 2
+(6300549 >= 3484213)
+Processing index to 'bitcoin-lottery.201909081851.gzi'...
+write_index_to_disk = 1 (r+b)
+Starting from index point 2 (@3484213->10489072).
+END OF GZIP passed @6300549 while in raw mode (totout=18981031, avail_in=0, ftello=6300549)
+ERROR: Compressed data error in 'bitcoin-lottery.201909081851.gz'.
+
+Aborted.
+1 files processed with errors!
+
+
+.................................................
+With version == v0.8.1 :
+
+odroid@odroid64:~/PROYECTOS/bitcoin$ ~/SD/dev/zlib/gztool/gztool -v2 -i bitcoin-lottery.201909081851.gz
+ACTION: Create index
+
+Index file 'bitcoin-lottery.201909081851.gzi' already exists and will be used.
+Processing 'bitcoin-lottery.201909081851.gz' ...
+Number of index points declared: 2
+(6300549 >= 3484213)
+Processing index to 'bitcoin-lottery.201909081851.gzi'...
+write_index_to_disk = 1 (r+b)
+Starting from index point 2 (@3484213->10489072).
+END OF GZIP passed @6300549 while in raw mode (totout=18981031, avail_in=0, ftello=6300549)
+Index written to 'bitcoin-lottery.201909081851.gzi'.
+
+1 files processed
+
+
+
+-------------------------------------------------------------------------------
