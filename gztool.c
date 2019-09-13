@@ -156,7 +156,7 @@
 #define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
 #define GZIP_INDEX_HEADER_SIZE 16
-// waiting time in seconds when supervising a growing gzip file:
+// default waiting time in seconds when supervising a growing gzip file:
 #define WAITING_TIME 4
 
 /* access point entry */
@@ -880,6 +880,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                                    (to be used when the file contains surely only one gzip stream)
 // int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
 //                                      Also an index pointer (**built) is returned, instead of NULL.
+// int waiting_time             : waiting time in seconds between reads when `-[ST]`
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -888,7 +889,8 @@ local struct returned_output build_index(
     FILE *in, unsigned char *file_name, off_t span, struct access **built,
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset,
     unsigned char *index_filename, int write_index_to_disk,
-    int end_on_first_proper_gzip_eof, int always_create_a_complete_index )
+    int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
+    int waiting_time )
 {
     struct returned_output ret;
     off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
@@ -1234,7 +1236,10 @@ local struct returned_output build_index(
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( in )) { // on last block, strm.avail_in > 0 is possible with feof(in)==1 already!
-            printToStderr( VERBOSITY_MANIAC, "[reading %d B]", CHUNK - strm_avail_in0 );
+            if ( ( indx_n_extraction_opts != SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
+                   indx_n_extraction_opts != SUPERVISE_DO ) ||
+                waiting_time > 0 )
+                printToStderr( VERBOSITY_MANIAC, "[reading %d B]", CHUNK - strm_avail_in0 );
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, in);
             strm.avail_in += strm_avail_in0;
         }
@@ -1321,7 +1326,7 @@ local struct returned_output build_index(
             }
 
             // sleep and retry
-            sleep( WAITING_TIME );
+            sleep( waiting_time );
             clearerr( in );
             continue;
 
@@ -2068,13 +2073,15 @@ local int decompress_file(FILE *source, FILE *dest)
 //                                   (to be used when the file contains surely only one gzip stream)
 // int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
 //                                      Also an index pointer (**built) is returned, instead of NULL.
+// int waiting_time             : waiting time in seconds between reads when `-[ST]`
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
     unsigned char *file_name, struct access **index,
     unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
     off_t offset, off_t span_between_points, int write_index_to_disk,
-    int end_on_first_proper_gzip_eof, int always_create_a_complete_index )
+    int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
+    int waiting_time )
 {
 
     FILE *in;
@@ -2107,7 +2114,7 @@ wait_for_file_creation:
                     printToStderr( VERBOSITY_NORMAL, "Waiting for creation of file '%s'\n", file_name );
                     waiting++;
                 }
-                sleep( WAITING_TIME );
+                sleep( waiting_time );
                 goto wait_for_file_creation;
             }
             printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
@@ -2164,7 +2171,8 @@ wait_for_file_creation:
 
     ret = build_index( in, file_name, span_between_points, index,
             indx_n_extraction_opts, offset, index_filename, write_index_to_disk,
-            end_on_first_proper_gzip_eof, always_create_a_complete_index );
+            end_on_first_proper_gzip_eof, always_create_a_complete_index,
+            waiting_time );
     fclose(in);
 
     if ( ret.error < 0 ) {
@@ -2482,7 +2490,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -2499,13 +2507,14 @@ local void print_help() {
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-b #] [-s #] [-v #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
+    fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]`. Default is 4 s.\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
@@ -2568,6 +2577,7 @@ int main(int argc, char **argv)
     int write_index_to_disk = 1;
     int end_on_first_proper_gzip_eof = 0;
     int always_create_a_complete_index = 0;
+    int waiting_time = WAITING_TIME;
     int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -2582,13 +2592,22 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "b:cCdeEfFhiI:ls:StTv:W")) != -1)
+    while ((opt = getopt(argc, argv, "a:b:cCdeEfFhiI:ls:StTv:W")) != -1)
         switch (opt) {
             // help
             case 'h':
                 help_verbosity++;
                 if ( help_verbosity > VERBOSITY_EXCESSIVE )
                     help_verbosity = VERBOSITY_EXCESSIVE;
+                break;
+            // `-a #` default waiting time in seconds when supervising a growing gzip file (`-[ST]`)
+            case 'a':
+                waiting_time = (int)strtol( optarg, NULL, 10 );
+                if ( waiting_time == 0 &&
+                     ( strlen( optarg ) != 1 || '0' != optarg[0] ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%s'\n", optarg );
+                    waiting_time = WAITING_TIME;
+                }
                 break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
@@ -2686,7 +2705,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("bcCdeEfFhiIlSstTvW", optopt) ) {
+                    if ( NULL == strchr("abcCdeEfFhiIlSstTvW", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -2724,9 +2743,11 @@ int main(int argc, char **argv)
     if ( ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK ) &&
         ( force_action == 1 || force_strict_order == 1 || write_index_to_disk == 0 ||
             span_between_points != SPAN || index_filename_indicated == 1 ||
-            end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 )
+            end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
+            waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-CEfFIsW` with `-[cd]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-[cd]`\n" );
+        waiting_time = WAITING_TIME;
         force_action = 0;
         force_strict_order = 0;
         write_index_to_disk = 1;
@@ -2734,6 +2755,11 @@ int main(int argc, char **argv)
         index_filename_indicated = 0;
         end_on_first_proper_gzip_eof = 0;
         always_create_a_complete_index = 0;
+    }
+
+    if ( waiting_time >= UINT32_MAX || waiting_time < 0 ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%d'\n", waiting_time );
+        waiting_time = WAITING_TIME;
     }
 
     if ( span_between_points <= 0 ) {
@@ -2851,7 +2877,7 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -2891,11 +2917,11 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, JUST_CREATE_INDEX,
                         0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 } else {
                     ret_value = action_create_index( "", &index, "", JUST_CREATE_INDEX,
                         0, span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2916,11 +2942,11 @@ int main(int argc, char **argv)
                 if ( index_filename_indicated == 1 ) {
                     ret_value = action_create_index( "", &index, index_filename, SUPERVISE_DO, 0,
                         span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 } else {
                     ret_value = action_create_index( "", &index, "", SUPERVISE_DO, 0,
                         span_between_points, write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -2931,7 +2957,7 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -2945,12 +2971,12 @@ int main(int argc, char **argv)
                     ret_value = action_create_index( "", &index, index_filename,
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index );
+                        always_create_a_complete_index, waiting_time );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -3043,7 +3069,8 @@ int main(int argc, char **argv)
             if ( force_strict_order == 1 ) {
                 ret_value = action_create_index( file_name, &index, index_filename,
                             JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk,
-                            end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                            end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                            waiting_time );
             }
 
 
@@ -3053,7 +3080,8 @@ int main(int argc, char **argv)
                 case ACT_EXTRACT_FROM_BYTE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_FROM_BYTE, extract_from_byte, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                        waiting_time );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -3091,7 +3119,8 @@ int main(int argc, char **argv)
                         // if force_strict_order == 1 action has already been done!
                         ret_value = action_create_index( file_name, &index, index_filename,
                             JUST_CREATE_INDEX, 0, span_between_points, write_index_to_disk,
-                            end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                            end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                            waiting_time );
                     break;
 
                 case ACT_LIST_INFO:
@@ -3107,20 +3136,23 @@ int main(int argc, char **argv)
                 case ACT_SUPERVISE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                        waiting_time );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         EXTRACT_TAIL, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                        waiting_time );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
                     ret_value = action_create_index( file_name, &index, index_filename,
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, span_between_points, write_index_to_disk,
-                        end_on_first_proper_gzip_eof, always_create_a_complete_index );
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index,
+                        waiting_time );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
