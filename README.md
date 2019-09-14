@@ -72,7 +72,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.8.2)
+      gztool (v0.8.3)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -105,7 +105,7 @@ Usage
          the default index file name will be 'file.gzi').
      -I INDEX: index file name will be 'INDEX'
      -l: check and list info contained in indicated index file.
-         `-ll` and `-lll` increase the level of index detail checking.
+         `-ll` and `-lll` increase the level of index checking detail.
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
@@ -264,7 +264,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.8.2**.
+This version is **v0.8.3**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 

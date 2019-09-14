@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.8.2"
+#define GZTOOL_VERSION "0.8.3"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -2531,7 +2531,7 @@ local void print_help() {
     fprintf( stderr, "     the default index file name will be 'file.gzi').\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: check and list info contained in indicated index file.\n" );
-    fprintf( stderr, "     `-ll` and `-lll` increase the level of index detail checking.\n" );
+    fprintf( stderr, "     `-ll` and `-lll` increase the level of index checking detail.\n" );
     fprintf( stderr, " -s #: span in uncompressed MiB between index points when\n" );
     fprintf( stderr, "     creating the index. By default is `10`.\n" );
     fprintf( stderr, " -S: Supervise indicated file: create a growing index,\n" );
@@ -2830,6 +2830,25 @@ int main(int argc, char **argv)
             printToStderr( VERBOSITY_NORMAL, "ACTION: %s%ld\n\n", action_string, extract_from_byte );
         else
             printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
+    }
+
+
+    // inform parameters with verbosity_level > VERBOSITY_NORMAL
+    if ( verbosity_level > VERBOSITY_NORMAL ) {
+        printToStderr( VERBOSITY_EXCESSIVE, "  -a : %d, \t-b: %ld, \t-c: %d\n",
+            waiting_time, extract_from_byte, ( (action==ACT_COMPRESS_CHUNK)? 1: 0 ) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -C : %d, \t-d: %d, \t-e: %d\n",
+            always_create_a_complete_index, ( (action==ACT_DECOMPRESS_CHUNK)? 1: 0 ), continue_on_error );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -E : %d, \t-f: %d, \t-F: %d\n",
+            end_on_first_proper_gzip_eof, force_action, force_strict_order );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -i : %d, \t-I: %s, \t-l: %d\n",
+            ( (action==ACT_CREATE_INDEX)? 1: 0 ),
+            ( (index_filename_indicated>0)? index_filename: NULL ),
+            ( (action==ACT_LIST_INFO)? list_verbosity: 0 ) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -s : %ld, \t-S: %d, \t-t: %d\n",
+            span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -T : %d, \t-v: %d, \t-W: %d\n\n",
+            ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), verbosity_level, ( (write_index_to_disk==0)? 1: 0 ) );
     }
 
 
