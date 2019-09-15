@@ -255,11 +255,13 @@ Other tools which try to provide random access to gzipped files
 
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
+* [*GZinga*](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/): Seekable and Splittable GZip, provides Java language classes to create gzip-compatible compressed files using [using the Z_FULL_FLUSH option](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/), to later access or split them.
+
 * [indexed_gzip](https://github.com/pauldmccarthy/indexed_gzip) Fast random access of gzip files in Python: it also creates file indexes, but they are not as small and they cannot be reused as easily as with `gztool`.
 
-* [zindex](https://github.com/mattgodbolt/zindex) creates SQLite indexes for text files based on regular expressions
+* [zindex](https://github.com/mattgodbolt/zindex) creates SQLite indexes for text files based on regular expressions.
 
-* interesting article on parallel gzip decompression: [`Parallel decompression of gzip-compressed files and random access to DNA sequences`](https://arxiv.org/pdf/1905.07224.pdf)
+* interesting article on parallel gzip decompression: [`Parallel decompression of gzip-compressed files and random access to DNA sequences`](https://arxiv.org/pdf/1905.07224.pdf).
 
 Version
 =======
