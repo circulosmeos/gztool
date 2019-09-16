@@ -593,6 +593,8 @@ zip gztool.zip -r . -x bgzip_project.20190530.2.tar.gz* -x bitcoin* -x T*
 
 gcc -static -O3 -I.. -o gztool gztool.c libz.a -lm
 
+cp gztool.exe d:\Instalaciones\MSDOS
+
 .................................................
 
 gcc -O3 -o gztool gztool.c -lz -lm
@@ -1519,6 +1521,70 @@ END OF GZIP passed @6300549 while in raw mode (totout=18981031, avail_in=0, ftel
 Index written to 'bitcoin-lottery.201909081851.gzi'.
 
 1 files processed
+
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190915]] [[gztool]] [[chunk]] :<#acceder a chunks aislados de un gzip> 
+
+
+<https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/541903#541903> 
+++++++++++++++++++++++++
+Just FWIW, **gzip can be accessed randomly, if a previous *index* file has been created...**
+
+I've developed a command line tool that can quickly and (almost-)randomly access access a gzip if an index is provided (if it is not provided, it is automatically created):
+
+https://github.com/circulosmeos/gztool
+
+I think this could be used to access chunks of the original gzip file, if those chunks are retrieved at the specific byte points the index has pointed to. Later data extraction would require to fill zeroes, which can be done with *sparse data* to which the chunk would be appended:
+
+For example if an index points starts at byte compressed byte 1508611 of the gzip file and we want 1M compressed bytes after that:
+
+    $ dd if=/dev/zero of=chunk.gz seek=1508610 bs=1 count=0
+    $ curl -r 1508611-2508611 https://example.com/db/backups/db.sql.gz >> chunk.gz
+
+Note that `chunk.gz` will occupy on disk only the chunck size!
+
+Now the complete (previously only-once created) index must also be retrieved. Note that indexes are ~0.3% of gzip size.
+
+    $ curl https://example.com/db/backups/db.sql.gzi -o chunk.gzi
+
+And now the extraction can be done with [gztool][1]. The corresponding uncompressed byte of compressed-1508611 must be known, but the index can show this info with `gztool -ll`. Let's suppose it is byte 9009009:
+
+    $ gztool -b 9009009 chunk.gz > extracted_chunk.sql
+
+`gztool` will stop when the `chunk.gz` file ends.
+
+Maybe tricky, but would run without changing compression method nor already compressed files. But indexes would need to be created for them.
+
+  [1]: https://github.com/circulosmeos/gztool
+++++++++++++++++++++++++
+
+
+
+
+odroid@odroid64:~/PROYECTOS/bitcoin$ gztool -ll bitcoin-lottery.201909112252.gzi
+ACTION: Check & list info in index file
+
+Checking index file 'bitcoin-lottery.201909112252.gzi' ...
+Index file is incomplete.
+        Size of index file:        21879 Bytes (0.28%/gzip)
+        Guessed gzip file name:    'bitcoin-lottery.201909112252.gz' ( 7880704 Bytes )
+        Number of index points:    3
+        List of points:
+           @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file), ...
+        #1: @ 10 / 0 ( 0 @56 ), #2: @ 3480721 / 10495263 ( 10904 @80 ), #3: @ 6962641 / 20991818 ( 10871 @11008 ),
+
+1 files processed
+
+
+.................................................
+
+
+dd if=/dev/zero of=T seek=3480720 ibs=1 obs=1 count=0
+cp T TT
+dd if=bitcoin-lottery.201909112252.gz skip=3480720 ibs=1 obs=1M >> TT
+gztool -b 10495263 -v4 -WI bitcoin-lottery.201909112252.gzi TT | wc
 
 
 
