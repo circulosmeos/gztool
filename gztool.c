@@ -148,7 +148,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.8.3"
+#define GZTOOL_VERSION "0.8.3b"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -2519,8 +2519,10 @@ local void print_help() {
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
     fprintf( stderr, " -C: always create a 'Complete' index file, ignoring possible errors\n" );
-    fprintf( stderr, " -c: utility: raw-gzip-compress indicated file to STDOUT\n" );
-    fprintf( stderr, " -d: utility: raw-gzip-decompress indicated file to STDOUT\n" );
+    fprintf( stderr, " -c: utility: this is not to compress data, it is just to\n" );
+    fprintf( stderr, "     raw-gzip-compress (not gzip-compress) indicated file to STDOUT\n" );
+    fprintf( stderr, " -d: utility: this is not to decompress data, it is just to\n" );
+    fprintf( stderr, "     raw-gzip-decompress (not gzip-decompress) indicated file to STDOUT\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
     fprintf( stderr, " -E: end processing on first GZIP end of file marker at EOF\n" );
     fprintf( stderr, " -f: force index overwriting from scratch, if one exists\n" );
