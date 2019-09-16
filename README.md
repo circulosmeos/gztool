@@ -72,7 +72,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.8.3)
+      gztool (v0.8.3b)
       GZIP files indexer and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -93,8 +93,10 @@ Usage
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -C: always create a 'Complete' index file, ignoring possible errors
-     -c: utility: raw-gzip-compress indicated file to STDOUT
-     -d: utility: raw-gzip-decompress indicated file to STDOUT
+     -c: utility: this is not to compress data, it is just to
+         raw-gzip-compress (not gzip-compress) indicated file to STDOUT
+     -d: utility: this is not to decompress data, it is just to
+         raw-gzip-decompress (not gzip-decompress) indicated file to STDOUT
      -e: if multiple files are indicated, continue on error (if any)
      -E: end processing on first GZIP end of file marker at EOF
      -f: force index overwriting from scratch, if one exists
@@ -125,6 +127,8 @@ Usage
 
 
 Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
+
+Please, note that `-c` and `-d` options are *utilities* to manage raw-zlib data, they're not intended to compress nor decompress gzip data. `gztool` actually cannot by itself compress data. Decompression is obtained with `-b #` (so `b0` to decompress all the gzip file).
 
 When using `S` (*Supervise*), the gzipped file may not yet exist when the command is executed, but it will wait patiently for its creation.
 
@@ -255,7 +259,7 @@ Other tools which try to provide random access to gzipped files
 
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
-* [*GZinga*](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/): Seekable and Splittable GZip, provides Java language classes to create gzip-compatible compressed files using [using the Z_FULL_FLUSH option](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/), to later access or split them.
+* [*GZinga*](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/): Seekable and Splittable GZip, provides Java language classes to create gzip-compatible compressed files [using the Z_FULL_FLUSH option](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/), to later access or split them.
 
 * [indexed_gzip](https://github.com/pauldmccarthy/indexed_gzip) Fast random access of gzip files in Python: it also creates file indexes, but they are not as small and they cannot be reused as easily as with `gztool`.
 
@@ -266,7 +270,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.8.3**.
+This version is **v0.8.3b**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
