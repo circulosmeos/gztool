@@ -2883,7 +2883,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cd]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -2900,9 +2900,9 @@ local void print_help() {
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW] [-I <INDEX>] <FILE>...\n\n" );
-    fprintf( stderr, "  Note that actions `-bStT` proceed to an index file creation (if\n" );
-    fprintf( stderr, "  none exists) INTERLEAVED with data extraction. As extraction and\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cd]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
+    fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
@@ -2933,6 +2933,8 @@ local void print_help() {
     fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
     fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
+    fprintf( stderr, " -u [cd]: utility to compress (`-u c`) or decompress (`-u d`)\n" );
+    fprintf( stderr, "          zlib-format files to STDOUT. No index involved.\n" );
     fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
@@ -2987,7 +2989,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "a:b:cCdDeEfFhiI:ls:StTv:W")) != -1)
+    while ((opt = getopt(argc, argv, "a:b:cCdDeEfFhiI:ls:StTu:v:W")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -3087,6 +3089,26 @@ int main(int argc, char **argv)
                 action = ACT_EXTRACT_TAIL_AND_CONTINUE;
                 actions_set++;
                 break;
+            // `-u [cd]`: utility to compress (`-u c`) or decompress (`-u d`) zlib-format files
+            case 'u':
+                // span is converted to from MiB to bytes for internal use
+                if ( strlen(optarg) == 1 ) {
+                    switch ( optarg[0] ) {
+                        case 'c':
+                            action = ACT_COMPRESS_CHUNK;
+                            actions_set++;
+                            break;
+                        case 'd':
+                            action = ACT_DECOMPRESS_CHUNK;
+                            actions_set++;
+                            break;
+                        default:
+                            printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cd]`).\n", optarg );
+                    }
+                } else {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cd]`).\n", optarg );
+                }
+                break;
             // `-v` verbosity
             case 'v':
                 verbosity_level = (int)strtol( optarg, NULL, 10 );
@@ -3104,7 +3126,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("abcCdDeEfFhiIlSstTvW", optopt) ) {
+                    if ( NULL == strchr("abcCdDeEfFhiIlSstTuvW", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -3128,7 +3150,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStT`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStTu`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -3187,7 +3209,7 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            printToStderr( VERBOSITY_NORMAL, "Please, indicate one parameter of `-bcdilStT`, or `-h` for help.\nAborted.\n\n" );
+            printToStderr( VERBOSITY_NORMAL, "Please, indicate one parameter of `-bcdilStTu`, or `-h` for help.\nAborted.\n\n" );
             return EXIT_INVALID_OPTION;
         }
     }
