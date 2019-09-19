@@ -1589,3 +1589,116 @@ gztool -b 10495263 -v4 -WI bitcoin-lottery.201909112252.gzi TT | wc
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190916]] 
+
+Qué hace gztool cuando un gzip se cambia de nombre mientras lo supervisa (`-S`):
+
+++++++++++++++++++++++++
+Sep 17 01:01:46 motoko slapd[16328]: conn=56171 fd=62 closed
+[reading 16384 B][reading 16384 B][reading 16384 B][reading 16384 B][reading 16384 B]END OF GZIP passed @70189203 while in raw mode (totout=969676611, avail_in=0, ftello=70189203)
+Reinitializing zlib strm data...
+[reading 16384 B][reading 16384 B]
+++++++++++++++++++++++++
+
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190918]] [[20190919]] [[gztool]] [[gzip]] [[-cd]] 
+
+> gztool -v5 -b0 TT.gz | wc
+ACTION: Extract from byte = 0
+
+  -a : 4,       -b: 0,  -c: 0
+  -C : 0,       -d: 0,  -e: 0
+  -E : 0,       -f: 0,  -F: 0
+  -i : 0,       -I: (null),     -l: 0
+  -s : 10485760,        -S: 0,  -t: 0
+  -T : 0,       -v: 5,  -W: 0
+
+Index file 'TT.gzi' already exists and will be used.
+Processing 'TT.gz' ...
+Number of index points declared: 6 - 6
+READ window_size = 0
+(00000000010081E0, 2, 10, 0, 0, 56), READ window_size = 0
+(00000000010081E0, 0, 1036698, 1048576, 0, 80), READ window_size = 0
+(00000000010081E0, 0, 2078864, 2097152, 0, 104), READ window_size = 0
+(00000000010081E0, 0, 3117564, 3145728, 0, 128), READ window_size = 0
+(00000000010081E0, 0, 4158601, 4194304, 0, 152), (5954265 >= 4158601)
+Processing index to 'TT.gzi'...
+write_index_to_disk = 1 (r+b)
+Starting from index point 1 (@10->0).
+[read 16384 B]output_data_counter=0,totin=10,totout=0,ftello=16394,avail_in=16384
+ERR -3: totin=15, totout=0, ftello=16394
+ERROR: Compressed data error in 'TT.gz'.
+
+ERROR code = 1
+Aborted.
+1 files processed with errors!
+
+      0       0       0
+
+
+> gztool -v5 -b0 -WI none TT.gz | wc
+ACTION: Extract from byte = 0
+
+  -a : 4,       -b: 0,  -c: 0
+  -C : 0,       -d: 0,  -e: 0
+  -E : 0,       -f: 0,  -F: 0
+  -i : 0,       -I: none,       -l: 0
+  -s : 10485760,        -S: 0,  -t: 0
+  -T : 0,       -v: 5,  -W: 1
+
+Processing 'TT.gz' ...
+Reading index 'none'...
+write_index_to_disk = 0 (rb)
+ret.error = 0
+[read 16384 B]output_data_counter=0,totin=0,totout=0,ftello=16384,avail_in=16384
+[>1>0,0,32768,16374][>1>0]actual_index_point = 1,(0, 0)
+[>1>0,17391,15377,0][>1>17391][read 16384 B]output_data_counter=17391,totin=16384,totout=17391,ftello=32768,avail_in=16384
+
+
+
+
+.................................................
+
+
+
+
+> od -t x1 2.TT.gz | head
+0000000 1f 8b 08 08 a2 4f 66 5d 00 03 67 7a 74 6f 6f 6c
+              CM (Compression Method) = 08
+                 FLG (FLaGs) = bit 4   FCOMMENT
+                    MTIME (Modification TIME)
+                                XFL (eXtra FLags)
+                                   OS (Operating System) = 03 Unix
+                                      FCOMMENT=> null terminated string
+0000020 2e 7a 69 70 00                <= end of null terminated string
+0000020                94 fd 03 b0 2d c1 96 2d 0c ef b3
+0000040 6d db b6 6d db b6 6d db b6 79 b6 6d db b6 6d db
+0000060 d6 d9 fe cf bd fd f5 eb be fd ba 5f f4 bf 22 c6
+0000100 8a 5d 11 bb c6 aa 1a 33 73 e6 cc ac 39 b3 e4 a5
+0000120 80 80 21 01 fe f1 e9 ce c1 92 03 f8 4f 1f 10 00
+0000140 6c 00 5a 33 0b 67 3a 15 65 08 00 20 16 5b 13 9d
+0000160 6f 49 75 1d 17 77 28 80 5f c0 67 40 00 00 ff fc
+0000200 92 ff 7b 3a f2 df 7f 06 07 b8 8b 47 95 13 61 13
+0000220 6a 4d fe 7b b4 f2 17 90 ff df e9 16 66 b6 76 8e
+
+
+> od -t x1 TT.gz | head
+0000000 1f 8b 08 00 00 00 00 00 00 0a 94 ba 05 50 65 4d
+              CM (Compression Method) = 08
+                 FLG (FLaGs) = 0 (no bit set)
+                    MTIME (Modification TIME)
+                                XFL (eXtra FLags)
+                                   OS (Operating System) = 0a TOSP-20 (?)
+0000020 b2 2d 8c bb fb c1 a1 71 77 77 77 6f dc dd 39 b8
+0000040 d3 b8 bb bb 4b e3 0e 8d bb bb 36 ee ee 4e 23 0d
+0000060 7f 7f f3 de dc 91 fb ee 8d f9 77 c4 da 71 2a e2
+0000100 54 46 d5 ca ac 55 b9 ab 52 49 16 1c 02 0e e4 af
+0000120 a7 2b 17 4f 11 e4 9f 1e 48 10 7c 10 06 0b 2b 17
+0000140 c6 af 6a b0 20 e0 ec f6 66 7a 1f 32 9a 7a ae 1e
+0000160 f0 20 a0 10 27 e0 20 20 7f 7b 29 fd e9 8e f1 e7
+0000200 cf 30 20 37 f1 58 8a e2 9c a2 ad c9 7f 5a cb 7f
+0000220 00 f7 7f bb 5b 59 d8 3b 38 99 fd cd c6 60 97 be
+
+
+-------------------------------------------------------------------------------
