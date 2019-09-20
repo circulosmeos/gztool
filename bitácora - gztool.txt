@@ -1702,3 +1702,48 @@ ret.error = 0
 
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190921]] [[git]] [[commit]] [[amend]] :<#deshacer un commit modificado con amend> 
+
+Hice un "git commit --amend" sin querer ...
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git log
+    commit 8ee2f7a2ffb5c6754c470e5d82534a20ea29b0a4
+    Author: circulosmeos <roberto.s.galende@gmail.com>
+    Date:   Sat Sep 21 00:06:10 2019 +0200
+
+        Correctly manage `-Ec` compression on still growing source files with a Z_SYNC_FLUSH;
+        Patch VERBOSITY_MANIAC "[read %d B]" byte count message;
+
+    commit 92ce1602e414c925ddb24c0096a502bfdfc43b9d
+    Author: circulosmeos <roberto.s.galende@gmail.com>
+    Date:   Thu Sep 19 22:32:13 2019 +0200
+
+        Added `-u [CD]` for raw compressing;
+        Corrected error managing write_index_to_disk == 1 in loop
+        "if ( strlen(index_filename) > 0 )" at compress_and_build_index()
+        and indx_n_extraction_opts != DECOMPRESS in loop at decompress_and_build_index()
+...
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout 92ce1602e414c925ddb24c0096a502bfdfc43b9d
+odroid@odroid64:~/SD/dev/zlib/gztool$ git commit --amend
+[detached HEAD d0321e8] Added `-u [CD]` for raw compressing; Corrected error managing write_index_to_disk == 1 in loop "if ( strlen(index_filename) > 0 )" at compress_and_build_index() and indx_n_extraction_opts != DECOMPRESS in loop at decompress_and_build_index()
+ Date: Thu Sep 19 22:32:13 2019 +0200
+ 1 file changed, 152 insertions(+), 91 deletions(-)
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout
+odroid@odroid64:~/SD/dev/zlib/gztool$ git status
+HEAD detached from 92ce160
+nothing to commit, working directory clean
+
+Ops...
+<https://stackoverflow.com/questions/1459150/how-to-undo-git-commit-amend-done-instead-of-git-commit> 
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git reset 92ce1602e414c925ddb24c0096a502bfdfc43b9d --hard
+HEAD is now at 92ce160 Added `-u [CD]` for raw compressing;
+odroid@odroid64:~/SD/dev/zlib/gztool$ git cherry-pick 8ee2f7a2ffb5c6754c470e5d82534a20ea29b0a4
+[detached HEAD a281408] Correctly manage `-Ec` compression on still growing source files with a Z_SYNC_FLUSH; Patch VERBOSITY_MANIAC "[read %d B]" byte count message;
+ Date: Sat Sep 21 00:06:10 2019 +0200
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+
+
+ -------------------------------------------------------------------------------
