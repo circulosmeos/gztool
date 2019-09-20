@@ -150,8 +150,12 @@
 #define CHUNK 16384         /* file input buffer size */
 #define UNCOMPRESSED_WINDOW UINT32_MAX // window is an uncompressed WINSIZE size window
 #define GZIP_INDEX_IDENTIFIER_STRING "gzipindx"
-#define GZIP_INDEX_HEADER_SIZE   16  // header size of gztool's .gzi files
-#define GZIP_HEADER_SIZE_BY_ZLIB 10  // header size of gzip files created by zlib
+#define GZIP_INDEX_HEADER_SIZE   16  // header size in bytes of gztool's .gzi files
+#define GZIP_HEADER_SIZE_BY_ZLIB 10  // header size in bytes of gzip files created by zlib:
+        //github.com/madler/zlib/blob/master/zlib.h
+        //     If deflateSetHeader is not used, the default gzip header has text false,
+        //   the time set to zero, and os set to 255, with no extra, name, or comment
+        //   fields.
 // default waiting time in seconds when supervising a growing gzip file:
 #define WAITING_TIME 4
 
@@ -324,6 +328,7 @@ local size_t fwrite_endian( void * ptr, size_t size, FILE * stream ) {
 
 
 // Compress source stream using zlib format.
+// Used internally to compress the index' windows.
 // based on def() from zlib/examples/zpipe.c by Mark Adler :
     /* Compress from file source to file dest until EOF on source.
        def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
@@ -411,6 +416,7 @@ local unsigned char *compress_chunk(unsigned char *source, uint64_t *size, int l
 
 
 // Decompress a source stream with zlib format.
+// Used internally to decompress the index' windows.
 // based on inf() from zlib/examples/zpipe.c by Mark Adler
     /* Decompress from file source to file dest until stream ends or EOF.
        inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
@@ -942,27 +948,27 @@ local struct returned_output decompress_and_build_index(
 
     /* open index_filename for binary reading & writing */
     if ( strlen(index_filename) > 0 &&
-        ( NULL == index || index->index_complete == 0 ) &&
-        indx_n_extraction_opts != DECOMPRESS
-        ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
-        if ( write_index_to_disk == 1 ) {
-            if ( access( index_filename, F_OK ) != -1 ) {
-                // index_filename already exist:
-                // "r+": Open a file for update (both for input and output). The file must exist.
-                // r+, because the index may be incomplete, and so decompress_and_build_index() will
-                // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
-                index_file = fopen( index_filename, "r+b" );
-                printToStderr( VERBOSITY_EXCESSIVE, " (r+b)\n" );
+        ( NULL == index || index->index_complete == 0 ) ) {
+        if ( indx_n_extraction_opts != DECOMPRESS ) {
+            printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
+            if ( write_index_to_disk == 1 ) {
+                if ( access( index_filename, F_OK ) != -1 ) {
+                    // index_filename already exist:
+                    // "r+": Open a file for update (both for input and output). The file must exist.
+                    // r+, because the index may be incomplete, and so decompress_and_build_index() will
+                    // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
+                    index_file = fopen( index_filename, "r+b" );
+                    printToStderr( VERBOSITY_EXCESSIVE, " (r+b)\n" );
+                } else {
+                    // index_filename does not exist:
+                    index_file = fopen( index_filename, "w+b" );
+                    printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+                }
             } else {
-                // index_filename does not exist:
-                index_file = fopen( index_filename, "w+b" );
-                printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+                // open index file in read-only mode (if file does not exist, NULL == index_file)
+                index_file = fopen( index_filename, "rb" );
+                printToStderr( VERBOSITY_EXCESSIVE, " (rb)\n" );
             }
-        } else {
-            // open index file in read-only mode (if file does not exist, NULL == index_file)
-            index_file = fopen( index_filename, "rb" );
-            printToStderr( VERBOSITY_EXCESSIVE, " (rb)\n" );
         }
     } else {
         // restrictions to not collide index output with data output to stdout
@@ -1664,7 +1670,7 @@ local struct returned_output decompress_and_build_index(
         if ( strlen(index_filename) > 0 )
             printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
-            printToStderr( VERBOSITY_NORMAL, "Index written to stdout.\n" );
+            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
     }
 
     // print output_data_counter info
@@ -1818,12 +1824,12 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
                 uint64_t position = here.window_size;
                 unsigned char *input = malloc(CHUNK);
                 if ( NULL == input ) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from stdin.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from STDIN.\n" );
                     goto deserialize_index_from_file_error;
                 }
                 while ( pos < position ) {
                     if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), input_file) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Could not read index from stdin.\n" );
+                        printToStderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
                         goto deserialize_index_from_file_error;
                     }
                     pos += CHUNK;
@@ -1902,7 +1908,7 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
 
 // Compress source stream to dest stream using zlib compression format
-// that is, with 2-byte header and adler-32 crc.
+// that is, with 2-byte header and adler-32 crc, or raw format.
 // based on def from zlib/examples/zpipe.c by Mark Adler
     /* Compress from file source to file dest until EOF on source.
        def() returns Z_OK on success, Z_MEM_ERROR if memory could not be
@@ -1911,12 +1917,14 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
        version of the library linked do not match, or Z_ERRNO if there is
        an error reading or writing the files. */
 // INPUT:
-// FILE *source : source stream
-// FILE *dest   : destination stream
-// int level    : level of compression
+// FILE *source  : source stream
+// FILE *dest    : destination stream
+// int level     : level of compression
+// int raw_method: 0: zlib compression (header+Adler-32)
+//                 1: raw compression (no header nor tail)
 // OUTPUT:
 // Z_* error code or Z_OK on success
-local int compress_file( FILE *source, FILE *dest, int level )
+local int compress_file( FILE *source, FILE *dest, int level, int raw_method )
 {
     int ret, flush;
     unsigned have;
@@ -1928,7 +1936,13 @@ local int compress_file( FILE *source, FILE *dest, int level )
     strm.zalloc = Z_NULL;
     strm.zfree = Z_NULL;
     strm.opaque = Z_NULL;
-    ret = deflateInit(&strm, level);
+    if ( raw_method == 0 ) {
+        ret = deflateInit(&strm, level);
+    } else {
+        ret = deflateInit2(
+        &strm, level, Z_DEFLATED, -15,
+        8, Z_DEFAULT_STRATEGY);
+    }
     if (ret != Z_OK)
         return ret;
 
@@ -1979,7 +1993,7 @@ local int compress_file( FILE *source, FILE *dest, int level )
 
 
 // Decompress source stream to dest stream using zlib compression format
-// that is, with 2-byte header and adler-32 crc.
+// that is, with 2-byte header and adler-32 crc, or raw format.
 // based on inf from zlib/examples/zpipe.c by Mark Adler
     /* Decompress from file source to file dest until stream ends or EOF.
        inf() returns Z_OK on success, Z_MEM_ERROR if memory could not be
@@ -1990,9 +2004,11 @@ local int compress_file( FILE *source, FILE *dest, int level )
 // INPUT:
 // FILE *source : source stream
 // FILE *dest   : destination stream
+// int raw_method: 0: zlib decompression (header+Adler-32)
+//                 1: raw decompression (no header nor tail)
 // OUTPUT:
 // Z_* error code or Z_OK on success
-local int decompress_file( FILE *source, FILE *dest )
+local int decompress_file( FILE *source, FILE *dest, int raw_method )
 {
     int ret;
     unsigned have;
@@ -2006,7 +2022,11 @@ local int decompress_file( FILE *source, FILE *dest )
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
-    ret = inflateInit(&strm);
+    if ( raw_method == 0 ) {
+        ret = inflateInit(&strm);
+    } else {
+        ret = inflateInit2(&strm, -15);
+    }
     if (ret != Z_OK)
         return ret;
 
@@ -2146,19 +2166,19 @@ local struct returned_output compress_and_build_index(
 
     /* open index_filename for binary writing */
     // index_filename DOES NOT previously exists: this has has been checked on caller
-    if ( strlen(index_filename) > 0 &&
-         write_index_to_disk == 1
-        ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
-        if ( access( index_filename, F_OK ) != -1 ) {
-            // index_filename already exist:
-            // Abort, as we would overwrite it:
-            printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exist. Aborted.\n", index_filename );
-            goto compress_and_build_index_error;
-        } else {
-            // index_filename does not exist:
-            index_file = fopen( index_filename, "w+b" );
-            printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+    if ( strlen(index_filename) > 0 ) {
+        if ( write_index_to_disk == 1 ) {
+            printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
+            if ( access( index_filename, F_OK ) != -1 ) {
+                // index_filename already exist:
+                // Abort, as we would overwrite it:
+                printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exist. Aborted.\n", index_filename );
+                goto compress_and_build_index_error;
+            } else {
+                // index_filename does not exist:
+                index_file = fopen( index_filename, "w+b" );
+                printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+            }
         }
     } else {
         SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
@@ -2258,6 +2278,9 @@ local struct returned_output compress_and_build_index(
                 goto compress_and_build_index_error;
             }
 
+            // flush written content to disk
+            fflush( file_out );
+
         } while ( strm.avail_out == 0 );
         assert(strm.avail_in == 0);     /* all input will be used */
 
@@ -2302,7 +2325,7 @@ local struct returned_output compress_and_build_index(
         if ( strlen(index_filename) > 0 )
             printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
-            printToStderr( VERBOSITY_NORMAL, "Index written to stdout.\n" );
+            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
     }
 
     // print totin info
@@ -2325,6 +2348,9 @@ local struct returned_output compress_and_build_index(
   compress_and_build_index_error:
     free(input);
     free(output);
+
+    // flush written content to disk
+    fflush( file_out );
 
     // print output_data_counter info
     if ( totin > 0 )
@@ -2374,7 +2400,7 @@ local struct returned_output compress_and_build_index(
 // int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
 //                                      Also an index pointer (**built) is returned, instead of NULL.
 // int waiting_time             : waiting time in seconds between reads when `-[ST]`
-// int force_action             : with `-c`, force destination file (file_name + ".gz") overwriting if it exists
+// int force_action             : with `-[cd]`, force destination file overwriting if it exists
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
@@ -2427,7 +2453,7 @@ wait_for_file_creation:
         // stdin
         SET_BINARY_MODE(STDIN); // sets binary mode for stdin in Windows
         file_in = stdin;
-        printToStderr( VERBOSITY_NORMAL, "Processing stdin ...\n" );
+        printToStderr( VERBOSITY_NORMAL, "Processing STDIN ...\n" );
     }
 
     if ( indx_n_extraction_opts == COMPRESS_AND_CREATE_INDEX ) {
@@ -2465,7 +2491,8 @@ wait_for_file_creation:
 
         ret = compress_and_build_index( file_in, file_out, Z_DEFAULT_COMPRESSION,
                 file_name, span_between_points, index, index_filename,
-                write_index_to_disk, end_on_first_proper_gzip_eof,
+                write_index_to_disk,
+                ((end_on_first_proper_gzip_eof==0)?1:0), // `-E` behaviour is inverted with `-c` for ease of use
                 always_create_a_complete_index, waiting_time );
 
     } else {
@@ -2577,13 +2604,13 @@ wait_for_file_creation:
                 if ( strlen(file_name) > 0 )
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
                 else
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in stdin.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in STDIN.\n" );
                 break;
             case Z_ERRNO:
                 if ( strlen(file_name) > 0 )
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
                 else
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on stdin.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on STDIN.\n" );
                 break;
             default:
                printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
@@ -2646,7 +2673,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
         }
     } else {
         // stdin
-        printToStderr( VERBOSITY_NORMAL, "Checking index from stdin ...\n" );
+        printToStderr( VERBOSITY_NORMAL, "Checking index from STDIN ...\n" );
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
     }
@@ -2879,11 +2906,11 @@ local void print_brief_help() {
 
     fprintf( stderr, "\n" );
     fprintf( stderr, "  gztool (v%s)\n", GZTOOL_VERSION );
-    fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
+    fprintf( stderr, "  GZIP files indexer, compressor and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cd]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -2895,12 +2922,12 @@ local void print_help() {
 
     fprintf( stderr, "\n" );
     fprintf( stderr, "  gztool (v%s)\n", GZTOOL_VERSION );
-    fprintf( stderr, "  GZIP files indexer and data retriever.\n" );
+    fprintf( stderr, "  GZIP files indexer, compressor and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cd]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -2917,12 +2944,13 @@ local void print_help() {
     fprintf( stderr, " -D: do not delete original file when using `-[cd]`\n" );
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
     fprintf( stderr, " -E: end processing on first GZIP end of file marker at EOF\n" );
-    fprintf( stderr, " -f: force index overwriting from scratch, if one exists\n" );
+    fprintf( stderr, "     Nonetheless with `-c`, `-E` waits for more data even at EOF.\n" );
+    fprintf( stderr, " -f: force file overwriting if destination file already exists\n" );
     fprintf( stderr, " -F: force index creation/completion first, and then action: if\n" );
     fprintf( stderr, "     `-F` is not used, index is created interleaved with actions.\n" );
     fprintf( stderr, " -h: print brief help; `-hh` prints this help.\n" );
-    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz'\n" );
-    fprintf( stderr, "     the default index file name will be 'file.gzi').\n" );
+    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz the default'\n" );
+    fprintf( stderr, "     index file name will be 'file.gzi'). This is the default action.\n" );
     fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
     fprintf( stderr, " -l: check and list info contained in indicated index file.\n" );
     fprintf( stderr, "     `-ll` and `-lll` increase the level of index checking detail.\n" );
@@ -2933,8 +2961,9 @@ local void print_help() {
     fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
     fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
-    fprintf( stderr, " -u [cd]: utility to compress (`-u c`) or decompress (`-u d`)\n" );
-    fprintf( stderr, "          zlib-format files to STDOUT. No index involved.\n" );
+    fprintf( stderr, " -u [cCdD]: utility to compress (`-u c`) or decompress (`-u d`)\n" );
+    fprintf( stderr, "          zlib-format files to STDOUT. Use `-u C` and `-u D`\n" );
+    fprintf( stderr, "          to produce raw compressed files. No index involved.\n" );
     fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
@@ -2975,6 +3004,8 @@ int main(int argc, char **argv)
     int always_create_a_complete_index = 0;
     int waiting_time = WAITING_TIME;
     int do_not_delete_original_file = 0;
+    int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
+    unsigned char utility_option = '\0';
     int count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -3035,7 +3066,8 @@ int main(int argc, char **argv)
             case 'e':
                 continue_on_error = 1;
                 break;
-            // `-E` ends gzip processing on first proper (at feof()) GZIP EOF
+            // `-E` ends gzip processing on first proper (at feof()) GZIP EOF,
+            // or with `-c` continue waiting for data even at eof()
             case 'E':
                 end_on_first_proper_gzip_eof = 1;
                 break;
@@ -3097,16 +3129,30 @@ int main(int argc, char **argv)
                         case 'c':
                             action = ACT_COMPRESS_CHUNK;
                             actions_set++;
+                            utility_option = optarg[0];
                             break;
                         case 'd':
                             action = ACT_DECOMPRESS_CHUNK;
                             actions_set++;
+                            utility_option = optarg[0];
+                            break;
+                        case 'C':
+                            action = ACT_COMPRESS_CHUNK;
+                            raw_method = 1;
+                            actions_set++;
+                            utility_option = optarg[0];
+                            break;
+                        case 'D':
+                            action = ACT_DECOMPRESS_CHUNK;
+                            raw_method = 1;
+                            actions_set++;
+                            utility_option = optarg[0];
                             break;
                         default:
-                            printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cd]`).\n", optarg );
+                            printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cCdD]`).\n", optarg );
                     }
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cd]`).\n", optarg );
+                    printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cCdD]`).\n", optarg );
                 }
                 break;
             // `-v` verbosity
@@ -3167,7 +3213,7 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-[cd]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-[cCdD]`\n" );
         waiting_time = WAITING_TIME;
         force_action = 0;
         force_strict_order = 0;
@@ -3185,7 +3231,7 @@ int main(int argc, char **argv)
 
     if ( do_not_delete_original_file == 1 &&
          ( action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-D` option when not using `-[cd]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-D` option when not using `-[cCdD]`\n" );
         do_not_delete_original_file = 0;
     }
 
@@ -3232,10 +3278,16 @@ int main(int argc, char **argv)
                 action_string = "Extract from byte = ";
                 break;
             case ACT_COMPRESS_CHUNK:
-                action_string = "Compress chunk";
+                if ( raw_method == 1 )
+                    action_string = "zlib raw compress";
+                else
+                    action_string = "zlib compress";
                 break;
             case ACT_DECOMPRESS_CHUNK:
-                action_string = "Decompress chunk";
+                if ( raw_method == 1 )
+                    action_string = "zlib raw decompress";
+                else
+                    action_string = "zlib decompress";
                 break;
             case ACT_CREATE_INDEX:
                 action_string = "Create index";
@@ -3281,8 +3333,9 @@ int main(int argc, char **argv)
             ( (action==ACT_LIST_INFO)? list_verbosity: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -s : %ld, \t-S: %d, \t-t: %d\n",
             span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -T : %d, \t-v: %d, \t-W: %d\n\n",
-            ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), verbosity_level, ( (write_index_to_disk==0)? 1: 0 ) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -T : %d, \t-u: %c, \t-v: %d, \t-W: %d\n\n",
+            ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), utility_option,
+              verbosity_level, ( (write_index_to_disk==0)? 1: 0 ) );
     }
 
 
@@ -3319,12 +3372,16 @@ int main(int argc, char **argv)
                         ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 }
             } else {
-                // force_action == 1 => delete index file
-                printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                // delete it
-                if ( remove( index_filename ) != 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
-                    return EXIT_GENERIC_ERROR;
+                if ( write_index_to_disk == 1 ) {
+                    // force_action == 1 => delete index file
+                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                    // delete it
+                    if ( remove( index_filename ) != 0 ) {
+                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                        return EXIT_GENERIC_ERROR;
+                    }
+                } else {
+                    printToStderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
                 }
             }
 
@@ -3332,7 +3389,7 @@ int main(int argc, char **argv)
 
         // `-F` has no sense with stdin
         if ( force_strict_order == 1 ) {
-            printToStderr( VERBOSITY_NORMAL, "WARNING: There is no sense in using `-F` with stdin input: ignoring `F`.\n" );
+            printToStderr( VERBOSITY_NORMAL, "WARNING: There is no sense in using `-F` with STDIN input: ignoring `F`.\n" );
             force_strict_order = 0;
         }
 
@@ -3355,7 +3412,7 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "`-I INDEX` must be used when extracting from stdin.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "`-I INDEX` must be used when extracting from STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3365,8 +3422,8 @@ int main(int argc, char **argv)
                 // If we're here it's because stdin will be used
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
-                if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Error while compressing stdin.\nAborted.\n\n" );
+                if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Error while compressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3378,8 +3435,8 @@ int main(int argc, char **argv)
                 // If we're here it's because stdin will be used
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
-                if ( Z_OK != decompress_file( stdin, stdout ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Error while decompressing stdin.\nAborted.\n\n" );
+                if ( Z_OK != decompress_file( stdin, stdout, raw_method ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Error while decompressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3435,7 +3492,7 @@ int main(int argc, char **argv)
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename is needed if stdin is used as gzip input.\nAborted.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename is needed if STDIN is used as gzip input.\nAborted.\n" );
                     ret_value = EXIT_INVALID_OPTION;
                 }
                 break;
@@ -3536,11 +3593,15 @@ int main(int argc, char **argv)
                         ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                 } else {
                     // force_action == 1
-                    // delete index file
-                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
-                    if ( remove( index_filename ) != 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
-                        ret_value = EXIT_GENERIC_ERROR;
+                    if ( write_index_to_disk == 1 ) {
+                        // delete index file
+                        printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                        if ( remove( index_filename ) != 0 ) {
+                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                            ret_value = EXIT_GENERIC_ERROR;
+                        }
+                    } else {
+                        printToStderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
                     }
                 }
 
@@ -3586,7 +3647,7 @@ int main(int argc, char **argv)
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
-                    if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION ) ) {
+                    if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
                         printToStderr( VERBOSITY_NORMAL, "Error while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
@@ -3601,7 +3662,7 @@ int main(int argc, char **argv)
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
-                    if ( Z_OK != decompress_file( in, stdout ) ) {
+                    if ( Z_OK != decompress_file( in, stdout, raw_method ) ) {
                         printToStderr( VERBOSITY_NORMAL, "Error while decompressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
