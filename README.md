@@ -1,7 +1,7 @@
 gztool
 ======
 
-GZIP files indexer and data retriever.
+GZIP files indexer, compressor and data retriever.
 Create small indexes for gzipped files and use them for quick and random data extraction.
 No more waiting when the end of a 10 GiB gzip is needed!
 
@@ -10,17 +10,19 @@ See the [Release page](https://github.com/circulosmeos/gztool/releases) for exec
 Considerations
 ==============
 
-* Please, note that the initial complete index creation still consumes as much time as a complete file decompression.   
-Once created the index will reduce this time.
+* Please, note that the initial complete **index creation for an already gzip-compressed file** (`-i`) still consumes as much time as a complete file decompression.   
+Once created the index will reduce access time to the gzip file data.
 
-Nonetheless, note that `gztool` **creates index interleaved with extraction of data**, so in the practice there's no waste of time. Note that if extraction of data or just index creation are stopped at any moment, `gztool` will reuse the remaining index on the next run over the same data, so time consumption is always minimized.
+Nonetheless, note that `gztool` **creates index interleaved with extraction of data** (`-b`), so in the practice there's no waste of time. Note that if extraction of data or just index creation are stopped at any moment, `gztool` will reuse the remaining index on the next run over the same data, so time consumption is always minimized.
 
 Also **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
 
-* Index size is always less than 1% of compressed gzip file. The bigger the gzip usually the better the proportion.
+* Index size is about 0.33% of a compressed gzip file size if the index is created **after** the file was compressed, or 10-100 times smaller (just a few Bytes or kiB) if `gztool` itself compress the data (`-c`).
 
-Note that the size of the index depends on the span between index points on the uncompressed stream: by default it is 10 MiB, this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (on average) no matter the size of the gzip file - which is a fairly low value!    
-The span between index points can be adjusted with `-s` (*span*) option.
+Note that the size of the index depends on the span between index points on the uncompressed stream - by default it is 10 MiB: this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (on average) no matter the size of the gzip file - which is a fairly low value!    
+The span between index points can be adjusted with `-s` (*span*) option (the minimum is `-s 1` or 1 MiB).    
+For example, a span of `-s 20` will create indexes half the size, and `-s 5` will create indexes twice bigger.
+
 
 Background
 ==========
@@ -128,7 +130,7 @@ Usage
       $ gztool -b 1G myfile.gz > myfile.txt
 
 
-Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
+Please, **note that STDOUT is used for data extraction** with `-btTu` modifiers.
 
 When using `S` (*Supervise*), the gzipped file may not yet exist when the command is executed, but it will wait patiently for its creation.
 
