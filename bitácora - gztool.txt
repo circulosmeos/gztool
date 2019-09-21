@@ -1745,5 +1745,57 @@ odroid@odroid64:~/SD/dev/zlib/gztool$ git cherry-pick 8ee2f7a2ffb5c6754c470e5d82
  1 file changed, 20 insertions(+), 12 deletions(-)
 
 
+INCOMPLETO: VER <#fix HEAD detached> 
 
- -------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+[[RSG]] [[20190921]] [[git]] [[branch]] :<#fix HEAD detached> 
+
+Ayer no debí dejar las cosas bien al hacer el git reset...
+
+<https://loekvandenouweland.com/content/head-detached-from-origin-master.html> 
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout
+odroid@odroid64:~/SD/dev/zlib/gztool$ git status
+HEAD detached from 92ce160
+nothing to commit, working directory clean
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout master
+Warning: you are leaving 3 commits behind, not connected to
+any of your branches:
+
+  11b8e70 Patched loop condition at deserialize_index_from_file(); Commented out fflush() on normal operation at compress_and_build_index() hoping to gain speed; loop simplification at compress_and_build_index() and decompress_and_build_index(); Some messages added or retouched;
+  888aa96 bitácora - gztool.txt: deshacer un commit modificado con amend
+  a281408 Correctly manage `-Ec` compression on still growing source files with a Z_SYNC_FLUSH; Patch VERBOSITY_MANIAC "[read %d B]" byte count message;
+
+If you want to keep them by creating a new branch, this may be a good time
+to do so with:
+
+ git branch <new-branch-name> 11b8e70
+
+Switched to branch 'master'
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch fix-detached-HEAD 11b8e70
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout -B compression fix-detached-HEAD
+Switched to and reset branch 'compression'
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch
+  bgzip_compatible
+* compression
+  fix-detached-HEAD
+  master
+  supervise
+  tail_n_supervise
+  tail_problems
+
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch -d fix-detached-HEAD
+Deleted branch fix-detached-HEAD (was 11b8e70).
+odroid@odroid64:~/SD/dev/zlib/gztool$ git branch
+  bgzip_compatible
+* compression
+  master
+  supervise
+  tail_n_supervise
+  tail_problems
+odroid@odroid64:~/SD/dev/zlib/gztool$ git status
+On branch compression
+
+-------------------------------------------------------------------------------
+
