@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.8* by Roberto S. Galende, 2019
+// v0.1 to v0.9* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -1251,11 +1251,11 @@ local struct returned_output decompress_and_build_index(
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( file_in )) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
+            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
             if ( ( indx_n_extraction_opts != SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
                    indx_n_extraction_opts != SUPERVISE_DO ) ||
                 waiting_time > 0 )
-                printToStderr( VERBOSITY_MANIAC, "[read %d B]", CHUNK - strm_avail_in0 );
-            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
+                printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
         }
         // .................................................
@@ -2237,21 +2237,20 @@ local struct returned_output compress_and_build_index(
             goto compress_and_build_index_error;
         }
 
-        if ( end_on_first_eof == 0 &&
-             strm.avail_in == 0 &&
-             feof( file_in ) ) {
-            // wait for file to grow
-            sleep( waiting_time );
-            clearerr( file_in );
-            continue;
+        if ( feof( file_in ) ) {
+            if ( end_on_first_eof == 1 )
+                flush = Z_FINISH;
+            else
+                flush = Z_SYNC_FLUSH;
+        } else {
+            flush = Z_NO_FLUSH;
         }
-
-        flush = ( feof( file_in ) && end_on_first_eof == 1 )? Z_FINISH : Z_NO_FLUSH;
         if ( totin - last >= span ) {
             // create a FLUSH point for an index point with window of size zero
             // With gzip compression this should not affect compression performance
             flush = Z_FULL_FLUSH;
         }
+
         strm.next_in = input;
 
         /* run deflate() on input until output buffer not full, finish
@@ -2283,6 +2282,14 @@ local struct returned_output compress_and_build_index(
 
         } while ( strm.avail_out == 0 );
         assert(strm.avail_in == 0);     /* all input will be used */
+
+        if ( end_on_first_eof == 0 &&
+             strm.avail_in == 0 &&
+             feof( file_in ) ) {
+            // wait for file to grow
+            sleep( waiting_time );
+            clearerr( file_in );
+        }
 
         /* done when last data in file processed */
 
