@@ -35,15 +35,14 @@ Also, some optimizations has been made:
 * extraction of data and index creation are interleaved, so there's no waste of time for the index creation.
 * **index files are reusable**, so they can be stopped at any time and reused and/or completed later.
 * an *ex novo* index file format has been created to store the index
-* span between index points is raised by default from 1 to 10 MiB, and can be adjusted with `-s` (*span*).
+* span between index points is raised by default from 1 MiB to 10 MiB, and can be adjusted with `-s` (*span*).
 * windows **are compressed** in file
 * windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
+* `gztool` can compress files (`-c`) and at the same time generate an index that is about 10-100 times smaller than if the index is generated after the file has already been compressed with gzip.
 * **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)**
 * **Compatible with complete `gzip` concatenated files**
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
-
-More functionality is planned.
 
 Compilation
 ===========
@@ -72,17 +71,17 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.8.3b)
-      GZIP files indexer and data retriever.
+      gztool (v0.9)
+      GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[absv] #] [-cCdeEfFhilStTW] [-I <INDEX>] <FILE>...
+      $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cCdD]] [-I <INDEX>] <FILE>...
 
-      Note that actions `-bStT` proceed to an index file creation (if
-      none exists) INTERLEAVED with data extraction. As extraction and
+      Note that actions `-bcStT` proceed to an index file creation (if
+      none exists) INTERLEAVED with data flow. As data flow and
       index creation occur at the same time there's no waste of time.
       Also you can interrupt actions at any moment and the remaining
       index file will be reused (and completed if necessary) on the
@@ -93,18 +92,18 @@ Usage
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -C: always create a 'Complete' index file, ignoring possible errors
-     -c: utility: this is not to compress data, it is just to
-         raw-gzip-compress (not gzip-compress) indicated file to STDOUT
-     -d: utility: this is not to decompress data, it is just to
-         raw-gzip-decompress (not gzip-decompress) indicated file to STDOUT
+     -c: compress a file like with gzip, creating an index at the same time
+     -d: decompress a file like with gzip
+     -D: do not delete original file when using `-[cd]`
      -e: if multiple files are indicated, continue on error (if any)
      -E: end processing on first GZIP end of file marker at EOF
-     -f: force index overwriting from scratch, if one exists
+         Nonetheless with `-c`, `-E` waits for more data even at EOF.
+     -f: force file overwriting if destination file already exists
      -F: force index creation/completion first, and then action: if
          `-F` is not used, index is created interleaved with actions.
      -h: print brief help; `-hh` prints this help.
-     -i: create index for indicated gzip file (For 'file.gz'
-         the default index file name will be 'file.gzi').
+     -i: create index for indicated gzip file (For 'file.gz the default'
+         index file name will be 'file.gzi'). This is the default action.
      -I INDEX: index file name will be 'INDEX'
      -l: check and list info contained in indicated index file.
          `-ll` and `-lll` increase the level of index checking detail.
@@ -115,6 +114,9 @@ Usage
      -t: tail (extract last bytes) to STDOUT on indicated gzip file
      -T: tail (extract last bytes) to STDOUT on indicated still-growing
          gzip file, and continue Supervising & extracting to STDOUT.
+     -u [cCdD]: utility to compress (`-u c`) or decompress (`-u d`)
+              zlib-format files to STDOUT. Use `-u C` and `-u D`
+              to produce raw compressed files. No index involved.
      -v #: output verbosity: from `0` (none) to `5` (nuts)
          Default is `1` (normal).
      -W: do not Write index to disk. But if one is already available
@@ -127,8 +129,6 @@ Usage
 
 
 Please, **note that STDOUT is used for data extraction** with `-bcdtT` modifiers.
-
-Please, note that `-c` and `-d` options are *utilities* to manage raw-zlib data, they're not intended to compress nor decompress gzip data. `gztool` actually cannot by itself compress data. Decompression is obtained with `-b #` (so `b0` to decompress all the gzip file).
 
 When using `S` (*Supervise*), the gzipped file may not yet exist when the command is executed, but it will wait patiently for its creation.
 
@@ -194,6 +194,18 @@ Examples of use
 
         $ gztool -WT still-growing-gzip-file.gz
 
+* Compress (`-c`) an still growing (`-E`) file: in this case both `still-growing-file.gz` and `still-growing-file.gzi` files will be created *on-the-fly* as the source file grows. Note that in order to terminate compression, Ctrl+C must be used to kill gztool: this results in an incomplete-gzip-file as per GZIP standard, but this is not important as it will contain all the source data, and both `gzip` and `gztool` (or any other tool) can correctly and completely decompress it.
+
+        $ gztool -Ec still-growing-file
+
+* Decompress a file like with gzip (`-d`), but do not delete (`-D`) the original one: Decompressed file will be `myfile`. Note that gzipped file **must** have a ".gz" extension or `gztool` will complain.
+
+        $ gztool -Dd myfile.gz
+
+* Decompress a file that do not have ".gz" file extension, like with gzip (`-d`):
+
+        $ cat mycompressedfile | gztool -d > my_uncompressed_file
+
 * Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity:
 
         $ gztool -ell *.gzi
@@ -210,7 +222,7 @@ Examples of use
 
 If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. 
 
-Also, if the gzip is complete, the size of the uncompressed data is shown. This number is interesting if the gzip file is bigger than 2 GiB, in which case `gunzip -l` cannot correctly calculate it as it is [limited to a 32 bit counter](https://tools.ietf.org/html/rfc1952#page-5), or if the gzip file is in `bgzip` format, in which case `gunzip -l` would only show data about the first block (< 64 kiB).
+Also, if the gzip is complete, the size of the uncompressed data is shown. This number is interesting if the gzip file is bigger than 4 GiB, in which case `gunzip -l` cannot correctly calculate it as it is [limited to a 32 bit counter](https://tools.ietf.org/html/rfc1952#page-5), or if the gzip file is in `bgzip` format, in which case `gunzip -l` would only show data about the first block (< 64 kiB).
 
 * Note that `gztool -l` tries to guess the companion gzip file of the index looking for a file with the same name, but without the `i` of the `.gzi` file name extension, or without the `.gzi`. But the gzip file name can also be directly indicated with this format:
 
@@ -270,7 +282,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.8.3b**.
+This version is **v0.9**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
