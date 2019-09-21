@@ -200,6 +200,10 @@ Examples of use
 
         $ gztool -Ec still-growing-file
 
+* If you have an *incomplete* index file (they just do not have the length of the source data, as it didn't correctly finish) and want to make it complete and so that the length of the uncompressed data be stored, just unconditionally *complete* it with `-C` with a new `-i` run over your gzip file: note that as the existent index data is used (in this case the file `my-incomplete-gzip-data.gzi`), only last compressed bytes are decompressed to complete this action:
+
+        $ gztool -Ci my-incomplete-gzip-data.gz
+
 * Decompress a file like with gzip (`-d`), but do not delete (`-D`) the original one: Decompressed file will be `myfile`. Note that gzipped file **must** have a ".gz" extension or `gztool` will complain.
 
         $ gztool -Dd myfile.gz
