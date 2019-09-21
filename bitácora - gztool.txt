@@ -1798,4 +1798,16 @@ odroid@odroid64:~/SD/dev/zlib/gztool$ git status
 On branch compression
 
 -------------------------------------------------------------------------------
+[[RSG]] [[20190921]] [[merge]] [[compression]] 
 
+odroid@odroid64:~/SD/dev/zlib/gztool$ git checkout master
+    Switched to branch 'master'
+odroid@odroid64:~/SD/dev/zlib/gztool$ git merge compression
+    Updating 594f1b3..b344eb2
+    Fast-forward
+     "bit\303\241cora - gztool.txt" |  276 ++++++++++++++++++++++++++
+     gztool.c                       | 1052 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---------------------
+     2 files changed, 1101 insertions(+), 227 deletions(-)
+
+
+-------------------------------------------------------------------------------
