@@ -756,8 +756,8 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
-            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%ld\n", i+1 );
             here = &(index->list[i]);
+            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%ld (%ld, %ld)\n", i+1, here->in, here->out );
             fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
             fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
             fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
@@ -1640,6 +1640,7 @@ local struct returned_output decompress_and_build_index(
         if (next == NULL) {
             ret.error = Z_MEM_ERROR;
             ret.value = 0;
+            printToStderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
             goto build_index_error;
         }
         index->list = next;
@@ -1655,23 +1656,20 @@ local struct returned_output decompress_and_build_index(
         // use markers to detect index updates and to not write if index isn't updated
         if ( index_points_0 != index->have ||
              index_file_size_0 != index->file_size ) {
+            printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %d points and uncompressed file size of %d B.\n",
+                index->have, index->file_size );
             if ( ! serialize_index_to_file( index_file, index, index->have ) )
                 goto build_index_error;
+            if ( strlen(index_filename) > 0 )
+                printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
+            else
+                printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
             /* index is now complete */
         }
     }
 
     if ( NULL != index_file )
         fclose(index_file);
-
-    if ( NULL != index &&
-         index->index_complete == 0 &&
-         write_index_to_disk == 1 ) {
-        if ( strlen(index_filename) > 0 )
-            printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
-        else
-            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
-    }
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
@@ -1801,7 +1799,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
-        printToStderr( VERBOSITY_MANIAC, "READ window_size = %d\n", here.window_size );
+        printToStderr( VERBOSITY_MANIAC, "#%ld: READ window_size=%d",
+            ((NULL==index)? 1: index->have +1), here.window_size );
 
         if ( here.bits > 8 ||
              here.window_size < 0 )
@@ -1859,7 +1858,8 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
             }
         }
         position_at_file += here.window_size;
-        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld), ", index, here.bits, here.in, here.out, here.window_size, here.window_beginning);
+        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld)\n",
+            index, here.bits, here.in, here.out, here.window_size, here.window_beginning);
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
         index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size, 0 );
@@ -1869,11 +1869,15 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
 
+        printToStderr( VERBOSITY_NUTS, "{%ld>=%ld && %ld>0}", ( file_size - position_at_file ),
+            ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
+              sizeof(here.window_size) + sizeof(index->file_size) ), number_of_index_points -1 );
+
     } while (
-        ( file_size - position_at_file ) >
+        ( file_size - position_at_file ) >=
         // at least an empty window must enter, otherwise end loop:
-        ( sizeof(here.out)+sizeof(here.in)+sizeof(here.bits)+
-          sizeof(here.window_beginning)+sizeof(index->file_size) )
+        ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
+          sizeof(here.window_size) + sizeof(index->file_size) )
         &&
         --number_of_index_points > 0
         );
@@ -2278,7 +2282,7 @@ local struct returned_output compress_and_build_index(
             }
 
             // flush written content to disk
-            fflush( file_out );
+            //fflush( file_out );
 
         } while ( strm.avail_out == 0 );
         assert(strm.avail_in == 0);     /* all input will be used */
@@ -2286,6 +2290,8 @@ local struct returned_output compress_and_build_index(
         if ( end_on_first_eof == 0 &&
              strm.avail_in == 0 &&
              feof( file_in ) ) {
+            // flush written content to disk
+            fflush( file_out );
             // wait for file to grow
             sleep( waiting_time );
             clearerr( file_in );
@@ -2306,6 +2312,7 @@ local struct returned_output compress_and_build_index(
         if (next == NULL) {
             ret.error = Z_MEM_ERROR;
             ret.value = 0;
+            printToStderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
             goto compress_and_build_index_error;
         }
         index->list = next;
@@ -2318,27 +2325,24 @@ local struct returned_output compress_and_build_index(
     if ( NULL != index &&
          index->index_complete == 0 &&
          write_index_to_disk == 1 ) {
+        printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %d points and uncompressed file size of %d B.\n",
+            index->have, index->file_size );
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto compress_and_build_index_error;
+        if ( strlen(index_filename) > 0 )
+            printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
+        else
+            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
         /* index is now complete */
     }
 
     if ( NULL != index_file )
         fclose(index_file);
 
-    if ( NULL != index &&
-         index->index_complete == 0 &&
-         write_index_to_disk == 1 ) {
-        if ( strlen(index_filename) > 0 )
-            printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
-        else
-            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
-    }
-
     // print totin info
     if ( totin > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data compressed.\n", totin );
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of gzip data.\n", totout );
+        printToStderr( VERBOSITY_NORMAL, "%ld bytes of gzip data (%.2f%%).\n", totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
     *built = index;
