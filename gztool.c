@@ -978,7 +978,7 @@ local struct returned_output decompress_and_build_index(
     }
     if ( NULL == index_file && write_index_to_disk == 1 ) {
         printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
-        goto build_index_error;
+        goto decompress_and_build_index_error;
     }
 
     if ( indx_n_extraction_opts == DECOMPRESS ) {
@@ -1078,13 +1078,13 @@ local struct returned_output decompress_and_build_index(
             ret.error = fseeko(file_in, here->in - (here->bits ? 1 : 0), SEEK_SET);
         }
         if (ret.error == -1)
-            goto build_index_error;
+            goto decompress_and_build_index_error;
         if (here->bits) {
             int i;
             i = getc(file_in);
             if (i == -1) {
                 ret.error = ferror(file_in) ? Z_ERRNO : Z_DATA_ERROR;
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
         }
@@ -1098,14 +1098,14 @@ local struct returned_output decompress_and_build_index(
                 strlen(index->file_name) == 0 ) {
                 printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             if (NULL == (index_file = fopen(index->file_name, "rb")) ||
                 0 != fseeko(index_file, here->window_beginning, SEEK_SET)
                 ) {
                 printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             // here->window_beginning = 0; // this is not needed
             if ( here->window_size > 0 &&
@@ -1114,7 +1114,7 @@ local struct returned_output decompress_and_build_index(
                 ) {
                 printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             fclose(index_file);
         }
@@ -1130,7 +1130,7 @@ local struct returned_output decompress_and_build_index(
             decompressed_window = decompress_chunk(here->window, &local_window_size);
             if ( NULL == decompressed_window ) {
                 ret.error = Z_ERRNO;
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             (void)inflateSetDictionary(&strm, decompressed_window, local_window_size); // (local_window_size may not be WINSIZE)
             free( decompressed_window );
@@ -1308,7 +1308,7 @@ local struct returned_output decompress_and_build_index(
                         if (fwrite(window2, 1, window2_size, file_out) != window2_size || ferror(file_out)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
-                            goto build_index_error;
+                            goto decompress_and_build_index_error;
                         }
                     }
                 } else {
@@ -1317,7 +1317,7 @@ local struct returned_output decompress_and_build_index(
                     if (fwrite(strm.next_out, 1, have, file_out) != have || ferror(file_out)) {
                         (void)inflateEnd(&strm);
                         ret.error = Z_ERRNO;
-                        goto build_index_error;
+                        goto decompress_and_build_index_error;
                     }
                 }
                 fflush(file_out);
@@ -1337,7 +1337,7 @@ local struct returned_output decompress_and_build_index(
                 if ( NULL != index ) {
                     ret.value = index->have;
                 }
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
 
             // sleep and retry
@@ -1361,11 +1361,11 @@ local struct returned_output decompress_and_build_index(
 
         if (ferror(file_in)) {
             ret.error = Z_ERRNO;
-            goto build_index_error;
+            goto decompress_and_build_index_error;
         }
         if (strm.avail_in == 0) {
             ret.error = Z_DATA_ERROR;
-            goto build_index_error;
+            goto decompress_and_build_index_error;
         }
         strm.next_in = input;
 
@@ -1444,7 +1444,7 @@ local struct returned_output decompress_and_build_index(
             if (ret.error == Z_NEED_DICT)
                 ret.error = Z_DATA_ERROR;
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             }
             if (ret.error == Z_STREAM_END) {
                 if ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
@@ -1495,7 +1495,7 @@ local struct returned_output decompress_and_build_index(
                             ferror(file_out)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
-                            goto build_index_error;
+                            goto decompress_and_build_index_error;
                         }
                         offset = 0;
                         fflush(file_out);
@@ -1522,7 +1522,7 @@ local struct returned_output decompress_and_build_index(
                             ferror(file_out)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
-                            goto build_index_error;
+                            goto decompress_and_build_index_error;
                         }
                         fflush(file_out);
                         // continue extracting data as usual
@@ -1578,14 +1578,14 @@ local struct returned_output decompress_and_build_index(
                                          totout, strm.avail_out, window, window_size, 1);
                         if (index == NULL) {
                             ret.error = Z_MEM_ERROR;
-                            goto build_index_error;
+                            goto decompress_and_build_index_error;
                         }
 
                         // write added point!
                         // note that points written are automatically emptied of its window values
                         // in order to use as less memory a s possible
                         if ( ! serialize_index_to_file( index_file, index, index_last_written_point ) )
-                            goto build_index_error;
+                            goto decompress_and_build_index_error;
 
                     }
 
@@ -1641,7 +1641,7 @@ local struct returned_output decompress_and_build_index(
             ret.error = Z_MEM_ERROR;
             ret.value = 0;
             printToStderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
-            goto build_index_error;
+            goto decompress_and_build_index_error;
         }
         index->list = next;
         index->size = index->have;
@@ -1659,7 +1659,7 @@ local struct returned_output decompress_and_build_index(
             printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %d points and uncompressed file size of %d B.\n",
                 index->have, index->file_size );
             if ( ! serialize_index_to_file( index_file, index, index->have ) )
-                goto build_index_error;
+                goto decompress_and_build_index_error;
             if ( strlen(index_filename) > 0 )
                 printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
             else
@@ -1683,7 +1683,7 @@ local struct returned_output decompress_and_build_index(
     return ret;
 
     /* return error */
-  build_index_error:
+  decompress_and_build_index_error:
     // print output_data_counter info
     if ( output_data_counter > 0 )
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
@@ -1871,13 +1871,13 @@ struct access *deserialize_index_from_file( FILE *input_file, int load_windows, 
 
         printToStderr( VERBOSITY_NUTS, "{%ld>=%ld && %ld>0}", ( file_size - position_at_file ),
             ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
-              sizeof(here.window_size) + sizeof(index->file_size) ), number_of_index_points -1 );
+              sizeof(here.window_size) ), number_of_index_points -1 );
 
     } while (
         ( file_size - position_at_file ) >=
         // at least an empty window must enter, otherwise end loop:
         ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
-          sizeof(here.window_size) + sizeof(index->file_size) )
+          sizeof(here.window_size) )
         &&
         --number_of_index_points > 0
         );
@@ -2482,6 +2482,8 @@ wait_for_file_creation:
                     printToStderr( VERBOSITY_NORMAL, "Compress destination file '%s' already exist.\nAborted\n", out_filename );
                     free( out_filename );
                     return EXIT_GENERIC_ERROR;
+                } else {
+                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", out_filename );
                 }
             }
             file_out = fopen( out_filename, "w+b" );
@@ -2945,7 +2947,7 @@ local void print_help() {
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
-    fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]`. Default is 4 s.\n" );
+    fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
@@ -3207,7 +3209,7 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStTu`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStT|u[cCdD]`.\nAborted.\n\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -3224,7 +3226,7 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-[cCdD]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-u[cCdD]`\n" );
         waiting_time = WAITING_TIME;
         force_action = 0;
         force_strict_order = 0;
@@ -3242,7 +3244,7 @@ int main(int argc, char **argv)
 
     if ( do_not_delete_original_file == 1 &&
          ( action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-D` option when not using `-[cCdD]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-D` option when not using `-u[cCdD]`\n" );
         do_not_delete_original_file = 0;
     }
 
@@ -3276,8 +3278,14 @@ int main(int argc, char **argv)
           action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
           action == ACT_LIST_INFO ||
           action == ACT_COMPRESS_CHUNK ||
-          action == ACT_DECOMPRESS_CHUNK ) ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: There's no sense in using `-F` with `-cdlST`: ignoring `-F`.\n" );
+          action == ACT_DECOMPRESS_CHUNK ||
+          action == ACT_DECOMPRESS ) ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: There's no sense in using `-F` with `-dlST|u[cCdD]`: ignoring `-F`.\n" );
+        force_strict_order = 0;
+    }
+
+    if ( force_strict_order && action == ACT_COMPRESS_AND_CREATE_INDEX ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: `-F` not implemented with `-c`: ignoring `-F`.\n" );
         force_strict_order = 0;
     }
 
