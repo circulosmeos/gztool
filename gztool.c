@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.9"
+#define GZTOOL_VERSION "0.9.1"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -978,7 +978,8 @@ local struct returned_output decompress_and_build_index(
     }
     if ( NULL == index_file && write_index_to_disk == 1 ) {
         printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
-        goto decompress_and_build_index_error;
+        ret.error = Z_ERRNO;
+        return ret;
     }
 
     if ( indx_n_extraction_opts == DECOMPRESS ) {
@@ -2368,17 +2369,21 @@ local struct returned_output compress_and_build_index(
         printToStderr( VERBOSITY_NORMAL, "%ld bytes of data compressed.\n", totin );
     (void)deflateEnd(&strm);
     if ( always_create_a_complete_index == 1 ) {
-        index->file_size = totin; /* size of uncompressed file */
-        // return index pointer and write index to index file, ignoring the compression error
-        *built = index;
-        if ( ! serialize_index_to_file( index_file, index, index->have ) )
-            printToStderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
+        if ( NULL != index ) {
+            index->file_size = totin; /* size of uncompressed file */
+            // return index pointer and write index to index file, ignoring the compression error
+            *built = index;
+            if ( write_index_to_disk == 1 ) {
+                if ( ! serialize_index_to_file( index_file, index, index->have ) )
+                    printToStderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
+            }
+        }
     } else {
-        if (index != NULL)
+        if ( NULL != index )
             free_index(index);
         *built = NULL;
     }
-    if (index_file != NULL)
+    if ( NULL != index_file )
         fclose(index_file);
     if ( Z_OK == ret.error )
         ret.error = Z_ERRNO;
@@ -3226,7 +3231,7 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-aCEfFIsW` with `-u[cCdD]`\n" );
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-[aCEfFIsW]` with `-u[cCdD]`\n" );
         waiting_time = WAITING_TIME;
         force_action = 0;
         force_strict_order = 0;
@@ -3733,7 +3738,7 @@ int main(int argc, char **argv)
                     // if code reaches here, and index_filename exists
                     ret_value = action_create_index( file_name, &index, index_filename,
                         COMPRESS_AND_CREATE_INDEX, 0, span_between_points, write_index_to_disk,
-                        1, always_create_a_complete_index, // end_on_first_proper_gzip_eof = 1
+                        end_on_first_proper_gzip_eof, always_create_a_complete_index,
                         waiting_time, force_action );
                     if ( ret_value == EXIT_OK &&
                          do_not_delete_original_file == 0 ) {
