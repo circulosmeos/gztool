@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.9.1"
+#define GZTOOL_VERSION "0.9.2"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -3238,6 +3238,22 @@ int main(int argc, char **argv)
         write_index_to_disk = 1;
         span_between_points = SPAN;
         index_filename_indicated = 0;
+        end_on_first_proper_gzip_eof = 0;
+        always_create_a_complete_index = 0;
+    }
+
+    if ( ( action == ACT_LIST_INFO ) &&
+        ( force_action == 1 || force_strict_order == 1 || write_index_to_disk == 0 ||
+            span_between_points != SPAN ||
+            end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
+            waiting_time != WAITING_TIME )
+        ) {
+        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-[aCEfFsW]` with `-l`\n" );
+        waiting_time = WAITING_TIME;
+        force_action = 0;
+        force_strict_order = 0;
+        write_index_to_disk = 1;
+        span_between_points = SPAN;
         end_on_first_proper_gzip_eof = 0;
         always_create_a_complete_index = 0;
     }
