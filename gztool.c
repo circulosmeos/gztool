@@ -887,7 +887,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                                    (to be used when the file contains surely only one gzip stream)
 // int always_create_a_complete_index : create a 'complete' index file even in case of decompressing errors.
 //                                      Also an index pointer (**built) is returned, instead of NULL.
-// int waiting_time             : waiting time in seconds between reads when `-[ST]`
+// int waiting_time             : waiting time in seconds between reads when `-[ST]` (always >0)
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -1253,10 +1253,7 @@ local struct returned_output decompress_and_build_index(
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( file_in )) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
-            if ( ( indx_n_extraction_opts != SUPERVISE_DO_AND_EXTRACT_FROM_TAIL &&
-                   indx_n_extraction_opts != SUPERVISE_DO ) ||
-                waiting_time > 0 )
-                printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
+            printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
         }
         // .................................................
@@ -1273,7 +1270,7 @@ local struct returned_output decompress_and_build_index(
             ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
             decompressing_with_gzip_headers = 1;
             if (ret.error != Z_OK)
-                return ret;
+                goto decompress_and_build_index_error;
             strm.avail_in = strm_avail_in0;
             // it is compulsory to reinitiate also output data:
             strm.avail_out = WINSIZE;
@@ -2246,7 +2243,7 @@ local struct returned_output compress_and_build_index(
             if ( end_on_first_eof == 1 )
                 flush = Z_FINISH;
             else
-                flush = Z_SYNC_FLUSH;
+                flush = Z_SYNC_FLUSH; // Z_SYNC_FLUSH doesn't occupy space
         } else {
             flush = Z_NO_FLUSH;
         }
@@ -2264,7 +2261,7 @@ local struct returned_output compress_and_build_index(
 
             strm.avail_out = CHUNK;
             strm.next_out = output;
-            printToStderr( VERBOSITY_NUTS, "(avail_in)=%d,",
+            printToStderr( VERBOSITY_NUTS, "(avail_in=%d),",
                 strm.avail_in );
             ret.error = deflate(&strm, flush);    /* no bad return value */
             assert(ret.error != Z_STREAM_ERROR);  /* state not clobbered */
