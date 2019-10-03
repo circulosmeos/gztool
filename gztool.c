@@ -1271,8 +1271,6 @@ local struct returned_output decompress_and_build_index(
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
                     // this condition won't arise because (0 < 0) is false )
                     printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting, so ending process\n", file_name );
-                    gzip_eof_detected = 0; // to exit loop, as "gzip_eof_detected == 1" is one ORed condition
-                                           // and now this variable is not needed anymore.
                     break;
                 }
             }
