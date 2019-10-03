@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.9.2"
+#define GZTOOL_VERSION "0.9.3"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -1256,6 +1256,25 @@ local struct returned_output decompress_and_build_index(
             printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
         }
+        if ( feof( file_in ) ) {
+            // generic check for growing files (not related to bgzip-compatible-streams code):
+            // check that file hasn't shrunk, what would mean that the file
+            // has been overwritten from the beginning (possible with rsyslog logs, for example)
+            if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
+                struct stat st;
+                stat(file_name, &st);
+                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size, totin );
+                if ( st.st_size < totin ) {
+                    // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
+                    // (Note that it is not possible that this condition arises when accessing a truncated gzip
+                    // file with its corresponding (not-truncated) complete index file, because in this case
+                    // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
+                    // this condition won't arise because (0 < 0) is false )
+                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting, so ending process\n", file_name );
+                    break;
+                }
+            }
+        }
         // .................................................
         // decompressor state MUST be reinitiated after Z_STREAM_END
         if ( ret.error == Z_STREAM_END ) {
@@ -2104,6 +2123,11 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 // FILE *file_in : source stream
 // FILE *file_out   : destination stream
 // int level    : level of compression
+// unsigned char *file_name : name of the input file associated with FILE *in.
+//                            Can be "" (no file name: stdin used), but not NULL.
+//                            Used only if input (FILE *in)
+//                            is associated with a file (not stdin) to detect a
+//                            possible overwriting of the source file (and then stop).
 // off_t span   : span
 // struct access **built: address of index pointer, equivalent to passed by reference.
 //                        Note that *built == NULL on call ALWAYS, because index is
@@ -2284,6 +2308,28 @@ local struct returned_output compress_and_build_index(
 
         } while ( strm.avail_out == 0 );
         assert(strm.avail_in == 0);     /* all input will be used */
+
+        // generic check for growing files:
+        // check that file hasn't shrunk, what would mean that the file
+        // has been overwritten from the beginning (possible with logs, for example)
+        if ( feof( file_in ) &&
+             end_on_first_eof == 0 ) { // if end_on_first_eof == 1, ret.error == Z_STREAM_END already
+            if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
+                struct stat st;
+                stat(file_name, &st);
+                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size, totin );
+                if ( st.st_size < totin ) {
+                    // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
+                    // (Note that it is not possible that this condition arises when accessing a file
+                    // with size 0 (which is possible and allowed) because (0 < 0) is false )
+                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' file overwriting, so ending process\n", file_name );
+                    end_on_first_eof = 1;
+                    // loop will continue and because feof() will activate again (because source file
+                    // won't be overwritten so quick as to surpase actual total_in bytes) a Z_FINISH
+                    // will be written, and a Z_STREAM_END will be returned to end the process.
+                }
+            }
+        }
 
         if ( end_on_first_eof == 0 &&
              strm.avail_in == 0 &&
