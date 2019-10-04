@@ -73,14 +73,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.9.3)
+      gztool (v0.9.4)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[absv] #] [-cCdDeEfFhilStTW|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[absv] #] [-cCdDeEfFhilStTwW|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -89,7 +89,7 @@ Usage
       index file will be reused (and completed if necessary) on the
       next gztool run over the same data.
 
-     -a #: Await # seconds between reads when `-[ST]`. Default is 4 s.
+     -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.
      -b #: extract data from indicated uncompressed byte position of
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
@@ -121,6 +121,7 @@ Usage
               to produce raw compressed files. No index involved.
      -v #: output verbosity: from `0` (none) to `5` (nuts)
          Default is `1` (normal).
+     -w: if file doesn't exist wait for creation, when using `-[cdST]`
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
 
@@ -131,8 +132,6 @@ Usage
 
 
 Please, **note that STDOUT is used for data extraction** with `-btTu` modifiers.
-
-When using `S` (*Supervise*), the gzipped file may not yet exist when the command is executed, but it will wait patiently for its creation.
 
 Examples of use
 ===============
@@ -149,7 +148,7 @@ Examples of use
 
         $ gztool -b 1m test.gz
 
-* **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until the gzip-file data is terminated.
+* **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until interrupted (it can also stop at first end-of-gzip data with `-E`).
 
         $ gztool -S openldap.log.gz
 
@@ -232,7 +231,7 @@ Also, if the gzip is complete, the size of the uncompressed data is shown. This 
 
 * Note that `gztool -l` tries to guess the companion gzip file of the index looking for a file with the same name, but without the `i` of the `.gzi` file name extension, or without the `.gzi`. But the gzip file name can also be directly indicated with this format:
 
-        $ gztool -l gzip_filename -I index_filename
+        $ gztool -l -I index_filename gzip_filename
 
 In this latter case only a pair of index+gzip filenames can be indicated with each use.
 
@@ -288,7 +287,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.9.3**.
+This version is **v0.9.4**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
 
