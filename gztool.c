@@ -3268,22 +3268,22 @@ int main(int argc, char **argv)
 
     // Checking parameter merging and absence
     if ( actions_set > 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "Please, do not merge parameters `-bcdilStT|u[cCdD]`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: do not merge parameters `-[bcdilStTu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( write_index_to_disk == 0 &&
            ( force_action == 1 || force_strict_order == 1)
         ) {
-        printToStderr( VERBOSITY_NORMAL, "Please, do not merge contradictory parameters `-W` and `-fF`.\nAborted.\n\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: do not merge contradictory parameters `-W` and `-[fF]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( ( action != ACT_SUPERVISE && action != ACT_EXTRACT_TAIL_AND_CONTINUE &&
            action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) &&
         wait_for_file_creation == 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-w` without `-[cdST]`\n" );
-        wait_for_file_creation = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-w` only apply to `-[cdST]`\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK ) &&
@@ -3292,15 +3292,8 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-[aCEfFIsW]` with `-u[cCdD]`\n" );
-        waiting_time = WAITING_TIME;
-        force_action = 0;
-        force_strict_order = 0;
-        write_index_to_disk = 1;
-        span_between_points = SPAN;
-        index_filename_indicated = 0;
-        end_on_first_proper_gzip_eof = 0;
-        always_create_a_complete_index = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFIsW]` does not apply to `-u`\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( ( action == ACT_LIST_INFO ) &&
@@ -3309,25 +3302,19 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-[aCEfFsW]` with `-l`\n" );
-        waiting_time = WAITING_TIME;
-        force_action = 0;
-        force_strict_order = 0;
-        write_index_to_disk = 1;
-        span_between_points = SPAN;
-        end_on_first_proper_gzip_eof = 0;
-        always_create_a_complete_index = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFsW]` does not apply to `-l`\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( waiting_time >= UINT32_MAX || waiting_time < 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%d'\n", waiting_time );
-        waiting_time = WAITING_TIME;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%d'\n", waiting_time );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( do_not_delete_original_file == 1 &&
          ( action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring `-D` option when not using `-u[cCdD]`\n" );
-        do_not_delete_original_file = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-D` option invalid when not using `-u`\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( span_between_points <= 0 ) {
@@ -3337,7 +3324,8 @@ int main(int argc, char **argv)
     if ( span_between_points != SPAN &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "`-s` parameter will be ignored.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-s` parameter does not apply to `-[lu]`.\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( actions_set == 0 ) {
@@ -3363,13 +3351,13 @@ int main(int argc, char **argv)
           action == ACT_COMPRESS_CHUNK ||
           action == ACT_DECOMPRESS_CHUNK ||
           action == ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: There's no sense in using `-F` with `-dlST|u[cCdD]`: ignoring `-F`.\n" );
-        force_strict_order = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: There's no sense in using `-F` with `-[dlSTu]`.\n" );
+        return EXIT_INVALID_OPTION;
     }
 
     if ( force_strict_order && action == ACT_COMPRESS_AND_CREATE_INDEX ) {
-        printToStderr( VERBOSITY_NORMAL, "WARNING: `-F` not implemented with `-c`: ignoring `-F`.\n" );
-        force_strict_order = 0;
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-F` not implemented with `-c`.\n" );
+        return EXIT_INVALID_OPTION;
     }
 
 
@@ -3449,7 +3437,7 @@ int main(int argc, char **argv)
              0 == index_filename_indicated
             ) {
             // if no index filename is set (`-I`), compression cannot proceed
-            printToStderr( VERBOSITY_NORMAL, "Index filename must be provided with `-I` when compressing STDIN\n" );
+            printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename must be provided with `-I` when compressing STDIN.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
@@ -3464,7 +3452,7 @@ int main(int argc, char **argv)
 
             if ( force_action == 0 ) {
                 if ( action == ACT_COMPRESS_AND_CREATE_INDEX ) {
-                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists.\nAborted\n", index_filename );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index file '%s' already exists.\n\n", index_filename );
                     return EXIT_GENERIC_ERROR;
                 } else {
                     printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
@@ -3479,7 +3467,7 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
                     // delete it
                     if ( remove( index_filename ) != 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\n\n", index_filename );
                         return EXIT_GENERIC_ERROR;
                     }
                 } else {
@@ -3515,7 +3503,7 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "`-I INDEX` must be used when extracting from STDIN.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-I INDEX` must be used when extracting from STDIN.\nAborted.\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3526,7 +3514,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Error while compressing STDIN.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR while compressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3539,7 +3527,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout, raw_method ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Error while decompressing STDIN.\nAborted.\n\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR while decompressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -3753,13 +3741,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Error while opening file '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Error while compressing '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
@@ -3768,13 +3756,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Error while opening file '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != decompress_file( in, stdout, raw_method ) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Error while decompressing '%s'\n", file_name );
+                        printToStderr( VERBOSITY_NORMAL, "ERROR while decompressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
