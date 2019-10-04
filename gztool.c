@@ -3350,8 +3350,9 @@ int main(int argc, char **argv)
                 return EXIT_INVALID_OPTION;
             }
         } else {
-            printToStderr( VERBOSITY_NORMAL, "Please, indicate one parameter of `-bcdilStTu`, or `-h` for help.\nAborted.\n\n" );
-            return EXIT_INVALID_OPTION;
+            // default action is `-i`
+            action = ACT_CREATE_INDEX;
+            actions_set = 1;
         }
     }
 
