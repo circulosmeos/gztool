@@ -1263,13 +1263,14 @@ local struct returned_output decompress_and_build_index(
             if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size, totin );
-                if ( st.st_size < totin ) {
+                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
+                if ( ( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a truncated gzip
                     // file with its corresponding (not-truncated) complete index file, because in this case
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
-                    // this condition won't arise because (0 < 0) is false )
+                    // this condition won't arise because (10 < 0) is false (index doesn't exist) and
+                    // (10 < 10) is false (index contains always the first access point))
                     printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting, so ending process\n", file_name );
                     break;
                 }
@@ -3032,7 +3033,7 @@ local void print_help() {
     fprintf( stderr, "          to produce raw compressed files. No index involved.\n" );
     fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts)\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
-    fprintf( stderr, " -w: if file doesn't exist wait for creation, when using `-[cdST]`\n" );
+    fprintf( stderr, " -w: wait for creation if file doesn't exist, when using `-[cdST]`\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
     fprintf( stderr, "\n" );
