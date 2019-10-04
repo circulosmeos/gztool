@@ -3313,7 +3313,7 @@ int main(int argc, char **argv)
 
     if ( do_not_delete_original_file == 1 &&
          ( action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-D` option invalid when not using `-u`\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-D` option invalid when not using `-[cd]`\n" );
         return EXIT_INVALID_OPTION;
     }
 
