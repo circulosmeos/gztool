@@ -33,6 +33,7 @@ Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), pr
 `gztool` builds upon zran.c to provide a useful command line tool.    
 Also, some optimizations has been made:
 
+* `gztool` can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
 * **`gztool` can *Supervise* an still-growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
 * extraction of data and index creation are interleaved, so there's no waste of time for the index creation.
 * **index files are reusable**, so they can be stopped at any time and reused and/or completed later.
@@ -73,14 +74,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.9.4)
+      gztool (v0.10.0)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[absv] #] [-cCdDeEfFhilStTwW|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -109,6 +110,9 @@ Usage
      -I INDEX: index file name will be 'INDEX'
      -l: check and list info contained in indicated index file.
          `-ll` and `-lll` increase the level of index checking detail.
+     -L #: extract data from indicated uncompressed line position of
+         gzip file (creating or reusing an index file) to STDOUT.
+         Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
@@ -121,17 +125,18 @@ Usage
               to produce raw compressed files. No index involved.
      -v #: output verbosity: from `0` (none) to `5` (nuts)
          Default is `1` (normal).
-     -w: if file doesn't exist wait for creation, when using `-[cdST]`
+     -w: wait for creation if file doesn't exist, when using `-[cdST]`
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
+     -x: create index with line number information (win/*nix compatible)
+     -X: like `-x`, but newline character is '\r' (old mac)
 
       Example: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
       create (or reuse, or complete) an index file named `myfile.gzi`:
       $ gztool -b 1G myfile.gz > myfile.txt
 
-
-Please, **note that STDOUT is used for data extraction** with `-btTu` modifiers.
+Please, **note that STDOUT is used for data extraction** with `-bLtTu` modifiers.
 
 Examples of use
 ===============
@@ -287,9 +292,9 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.9.4**.
+This version is **v0.10.0**.
 
-Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an *Issue*.
+Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
 License
 =======
