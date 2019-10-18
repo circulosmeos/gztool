@@ -1871,12 +1871,12 @@ local struct returned_output decompress_and_build_index(
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
+        printToStderr( VERBOSITY_NORMAL, "%llu bytes of data extracted.\n", output_data_counter );
 
     // print output_lines_counter info
     if ( indx_n_extraction_opts == EXTRACT_FROM_LINE &&
         output_lines_counter > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld lines extracted.\n", output_lines_counter );
+        printToStderr( VERBOSITY_NORMAL, "%llu lines extracted.\n", output_lines_counter );
 
     *built = index;
     if ( NULL != index )
@@ -1890,12 +1890,12 @@ local struct returned_output decompress_and_build_index(
 
     // print output_data_counter info
     if ( output_data_counter > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data extracted.\n", output_data_counter );
+        printToStderr( VERBOSITY_NORMAL, "%llu bytes of data extracted.\n", output_data_counter );
 
     // print output_lines_counter info
     if ( indx_n_extraction_opts == EXTRACT_FROM_LINE &&
         output_lines_counter > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld lines extracted.\n", output_lines_counter );
+        printToStderr( VERBOSITY_NORMAL, "%llu lines extracted.\n", output_lines_counter );
 
     (void)inflateEnd(&strm);
 
@@ -2656,8 +2656,8 @@ local struct returned_output compress_and_build_index(
 
     // print totin info
     if ( totin > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data compressed.\n", totin );
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of gzip data (%.2f%%).\n", totout, 100.0 - (double)totout / (double)totin * 100.0 );
+        printToStderr( VERBOSITY_NORMAL, "%llu bytes of data compressed.\n", totin );
+        printToStderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n", totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
     *built = index;
@@ -2680,7 +2680,7 @@ local struct returned_output compress_and_build_index(
 
     // print output_data_counter info
     if ( totin > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%ld bytes of data compressed.\n", totin );
+        printToStderr( VERBOSITY_NORMAL, "%llu bytes of data compressed.\n", totin );
     (void)deflateEnd(&strm);
     if ( always_create_a_complete_index == 1 ) {
         if ( NULL != index ) {
@@ -3762,10 +3762,10 @@ int main(int argc, char **argv)
         }
         switch( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%lu\n\n", action_string, extract_from_byte );
+                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_byte );
                 break;
             case ACT_EXTRACT_FROM_LINE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%lu\n\n", action_string, extract_from_line );
+                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_line );
                 break;
             default:
                 printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
@@ -3775,7 +3775,7 @@ int main(int argc, char **argv)
 
     // inform parameters with verbosity_level > VERBOSITY_NORMAL
     if ( verbosity_level > VERBOSITY_NORMAL ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-b: %ld, \t-c: %d\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-b: %llu, \t-c: %d\n",
             waiting_time, extract_from_byte, ( (action==ACT_COMPRESS_AND_CREATE_INDEX)? 1: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -C: %d, \t-d: %d, \t-D: %d, \t-e: %d\n",
             always_create_a_complete_index, ( (action==ACT_DECOMPRESS)? 1: 0 ),
@@ -3786,7 +3786,7 @@ int main(int argc, char **argv)
             ( (action==ACT_CREATE_INDEX)? 1: 0 ),
             ( (index_filename_indicated>0)? index_filename: NULL ),
             ( (action==ACT_LIST_INFO)? list_verbosity: 0 ) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -L: %ld, \t-s: %ld, \t-S: %d, \t-t: %d\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "  -L: %llu, \t-s: %llu, \t-S: %d, \t-t: %d\n",
             extract_from_line, span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d, \t-W: %d\n",
             ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), utility_option,
