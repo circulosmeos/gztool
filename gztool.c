@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.9* by Roberto S. Galende, 2019
+// v0.1 to v0.10* by Roberto S. Galende, 2019
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.10.0"
+#define GZTOOL_VERSION "0.10.1"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -162,14 +162,14 @@
 
 /* access point entry */
 struct point {
-    off_t out;             /* corresponding offset in uncompressed data */
-    off_t in;              /* offset in input file of first full byte */
+    uint64_t out;             /* corresponding offset in uncompressed data */
+    uint64_t in;              /* offset in input file of first full byte */
     uint32_t bits;         /* number of bits (1-7) from byte at in - 1, or 0 */
-    off_t window_beginning;/* offset at index file where this compressed window is stored */
+    uint64_t window_beginning;/* offset at index file where this compressed window is stored */
     uint32_t window_size;  /* size of (compressed) window */
     unsigned char *window; /* preceding 32K of uncompressed data, compressed */
     // index v1:
-    off_t line_number;  /* if index_version == 1 stores line number at this index point */
+    uint64_t line_number;  /* if index_version == 1 stores line number at this index point */
 };
 // NOTE: window_beginning is not stored on disk, it's an on-memory-only value
 
@@ -591,21 +591,21 @@ local struct access *create_empty_index()
 // INPUT:
 // struct access *index : pointer to original index
 // uint32_t bits        : (new entry data)
-// off_t in             : (new entry data)
-// off_t out            : (new entry data)
+// uint64_t in          : (new entry data)
+// uint64_t out         : (new entry data)
 // unsigned left        : (new entry data)
 // unsigned char *window: window data, already compressed with size window_size,
 //                        or uncompressed with size WINSIZE,
 //                        or store an empty window (NULL) because it resides on file.
 // uint32_t window_size : size of passed *window (may be already compressed o not)
-// off_t line_number    : actual line number if index v1, 0 otherwise
+// uint64_t line_number : actual line number if index v1, 0 otherwise
 // int compress_window  : 0: store window of size window_size, as it is, in point structure
 //                        1: compress passed window of size window_size
 // OUTPUT:
 // pointer to (new) index (NULL on error)
 local struct access *addpoint( struct access *index, uint32_t bits,
-    off_t in, off_t out, unsigned left, unsigned char *window, uint32_t window_size,
-    off_t line_number, int compress_window )
+    uint64_t in, uint64_t out, unsigned left, unsigned char *window, uint32_t window_size,
+    uint64_t line_number, int compress_window )
 {
     struct point *next;
     uint64_t size = window_size;
@@ -877,7 +877,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                            is associated with a file (not stdin) &&
 //                            indx_n_extraction_opts == *_TAIL, for the use of the file
 //                            size as approximation of the size of the tail to be output.
-// off_t span               : span
+// uint64_t span            : span
 // struct access **built: address of index pointer, equivalent to passed by reference.
 //                        Note that index may be received with some (all) points already set
 //                        from caller, if an index file was already available - and so this
@@ -891,13 +891,13 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //                          the last available bytes (tail) on gzip when called.
 //                      = EXTRACT_FROM_BYTE: extract from indicated offset byte, to stdout
 //                      = EXTRACT_FROM_LINE: extract from indicated line, to stdout
-// off_t offset         : if indx_n_extraction_opts == EXTRACT_FROM_BYTE, this is the offset byte
+// uint64_t offset      : if indx_n_extraction_opts == EXTRACT_FROM_BYTE, this is the offset byte
 //                        in the uncompressed stream from which to extract to stdout.
 //                        0 otherwise.
-// off_t line_number_offset : if indx_n_extraction_opts == EXTRACT_FROM_LINE, this is the offset line
-//                        in the uncompressed stream from which to extract to stdout.
-//                        0 otherwise.
-// unsigned char *index_filename    : index will be read/written on-the-fly
+// uint64_t line_number_offset : if indx_n_extraction_opts == EXTRACT_FROM_LINE, this is the offset line
+//                               in the uncompressed stream from which to extract to stdout.
+//                               0 otherwise.
+// unsigned char *index_filename   : index will be read/written on-the-fly
 //                                    to this index file name.
 // int write_index_to_disk  : 1: will write/update the index as usual;
 //                            0: will just read, but do not write nor update (overwrite) the index on disk,
@@ -923,22 +923,22 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->have)
 local struct returned_output decompress_and_build_index(
-    FILE *file_in, FILE *file_out, unsigned char *file_name, off_t span, struct access **built,
-    enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, off_t offset, off_t line_number_offset,
+    FILE *file_in, FILE *file_out, unsigned char *file_name, uint64_t span, struct access **built,
+    enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, uint64_t offset, uint64_t line_number_offset,
     unsigned char *index_filename, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
     int waiting_time, int extend_index_with_lines )
 {
     struct returned_output ret;
-    off_t totin  = 0;           /* our own total counters to avoid 4GB limit */
-    off_t totout = 0;           /* our own total counters to avoid 4GB limit */
-    off_t totlines = 1;         /* counts total line numbers in uncompressed data from file_in */
+    uint64_t totin  = 0;           /* our own total counters to avoid 4GB limit */
+    uint64_t totout = 0;           /* our own total counters to avoid 4GB limit */
+    uint64_t totlines = 1;         /* counts total line numbers in uncompressed data from file_in */
     int   there_are_more_chars = 0; /* totlines may need to be decremented at the end depending on last stream char */
-    off_t last   = 0;           /* totout value of last access point */
-    off_t offset_in = 0;        /* offset in compressed data to reach (opposed to "offset" in uncompressed data) */
-    off_t have_lines = 0;       /* number of lines in last chunk of uncompressed data */
-    off_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
-    off_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
+    uint64_t last   = 0;           /* totout value of last access point */
+    uint64_t offset_in = 0;        /* offset in compressed data to reach (opposed to "offset" in uncompressed data) */
+    uint64_t have_lines = 0;       /* number of lines in last chunk of uncompressed data */
+    uint64_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
+    uint64_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0;  // only set initially to >0 if NULL != *built
@@ -1556,8 +1556,10 @@ local struct returned_output decompress_and_build_index(
                 strm.avail_in -= 8;
                 strm.next_in += 8;
                 totin += 8;         // data is discarded from strm input, but it MUST be counted in total input
-                if ( offset_in > 0 )
-                    offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
+                if ( offset_in >= 8 )
+                    offset_in -= 8; // data is discarded from strm input, and also from offset_in
+                else
+                    offset_in = 0;
                 printToStderr( VERBOSITY_EXCESSIVE,
                     "END OF GZIP passed @%ld while in raw mode (totout=%ld, avail_in=%d, ftello=%ld)\n",
                     totin, totout, strm.avail_in, ftello(file_in) );
@@ -1611,8 +1613,10 @@ local struct returned_output decompress_and_build_index(
                         end_on_first_proper_gzip_eof = 0;
                     }
                 }
-                if ( offset_in > 0 )
-                    offset_in -= 8; // data is discarded from strm input, but it MUST be counted in input offset
+                if ( offset_in >= 8 )
+                    offset_in -= 8; // data is discarded from strm input, and also from offset_in
+                else
+                    offset_in = 0;
                 break;
             }
 
@@ -1698,11 +1702,8 @@ local struct returned_output decompress_and_build_index(
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
                     printToStderr( VERBOSITY_NUTS, "[>2>%ld,%d,%d]", offset_in, have_in, strm.avail_in );
-                    if ( offset_in > 0 )
-                        offset_in -= have_in;
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
                         offset_in <= 0 ) {
-                        offset_in = 0;
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
                         output_data_counter += have;
@@ -1713,10 +1714,10 @@ local struct returned_output decompress_and_build_index(
                             ret.error = Z_ERRNO;
                             goto decompress_and_build_index_error;
                         }
+                        offset_in = 0;
                         fflush(file_out);
-                        // continue extracting data as usual
-                        offset = 0;
-                        // though indx_n_extraction_opts != EXTRACT_FROM_BYTE
+                    } else {
+                        offset_in -= have_in;
                     }
                 }
                 avail_out_0 = strm.avail_out;
@@ -2355,7 +2356,7 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 //                            Used only if input (FILE *in)
 //                            is associated with a file (not stdin) to detect a
 //                            possible overwriting of the source file (and then stop).
-// off_t span   : span
+// uint64_t span    : span
 // struct access **built: address of index pointer, equivalent to passed by reference.
 //                        Note that *built == NULL on call ALWAYS, because index is
 //                        constructed from scratch here.
@@ -2381,19 +2382,19 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->have)
 local struct returned_output compress_and_build_index(
-    FILE *file_in, FILE *file_out, int level, unsigned char *file_name, off_t span,
+    FILE *file_in, FILE *file_out, int level, unsigned char *file_name, uint64_t span,
     struct access **built, unsigned char *index_filename, int write_index_to_disk,
     int end_on_first_eof, int always_create_a_complete_index,
     int waiting_time, int extend_index_with_lines )
 {
     struct returned_output ret;
-    off_t last   = 0;           /* uncompressed byte position of last access point */
+    uint64_t last   = 0;           /* uncompressed byte position of last access point */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0;
-    off_t totin  = 0;           // counts uncompressed bytes read from file_in
-    off_t totout = 0;           // counts compressed bytes deflated to file_out
-    off_t totlines = 1;         // counts total line numbers in file_in
+    uint64_t totin  = 0;           // counts uncompressed bytes read from file_in
+    uint64_t totout = 0;           // counts compressed bytes deflated to file_out
+    uint64_t totlines = 1;         // counts total line numbers in file_in
     int   there_are_more_chars = 0; // totlines may need to be decremented at the end depending on last stream char
     int flush;
     unsigned have;
@@ -2721,10 +2722,13 @@ local struct returned_output compress_and_build_index(
 // enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
 //                                  value passed to decompress_and_build_index();
 //                                  in case of SUPERVISE_DO* (not *DONT), wait here until gzip file exists.
-// off_t offset                 : if supervise == EXTRACT_FROM_BYTE, this is the offset byte in
+// uint64_t offset                 : if supervise == EXTRACT_FROM_BYTE, this is the offset byte in
 //                                the uncompressed stream from which to extract to stdout.
 //                                0 otherwise.
-// off_t span_between_points    : span between index points in bytes
+// uint64_t line_number_offset  : if indx_n_extraction_opts == EXTRACT_FROM_LINE, this is the offset line
+//                                in the uncompressed stream from which to extract to stdout.
+//                                0 otherwise.
+// uint64_t span_between_points    : span between index points in bytes
 // int write_index_to_disk      : 1: will write/update the index as usual;
 //                                0: will just read, but do not write nor update (overwrite) it
 // int end_on_first_proper_gzip_eof: end file processing on first proper (at feof()) GZIP EOF
@@ -2742,7 +2746,7 @@ local struct returned_output compress_and_build_index(
 local int action_create_index(
     unsigned char *file_name, struct access **index,
     unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
-    off_t offset, off_t line_number_offset, off_t span_between_points, int write_index_to_disk,
+    uint64_t offset, uint64_t line_number_offset, uint64_t span_between_points, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
     int waiting_time, int force_action, int wait_for_file_creation,
     int extend_index_with_lines )
@@ -3374,7 +3378,6 @@ int main(int argc, char **argv)
 {
     // variables for used for the different actions:
     struct returned_output ret;
-    off_t offset;
     unsigned char *file_name = NULL;
     FILE *in = NULL;
     FILE *index_file = NULL;
@@ -3384,7 +3387,7 @@ int main(int argc, char **argv)
     // variables for grabbing the options:
     uint64_t extract_from_byte = 0;
     uint64_t extract_from_line = 0;
-    off_t span_between_points = SPAN;
+    uint64_t span_between_points = SPAN;
     unsigned char *index_filename = NULL;
     int continue_on_error = 0;
     int index_filename_indicated = 0;
@@ -3432,7 +3435,7 @@ int main(int argc, char **argv)
                 break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
-                extract_from_byte = giveMeAnInteger( optarg );
+                extract_from_byte = (uint64_t)giveMeAnInteger( optarg );
                 // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_BYTE;
                 actions_set++;
@@ -3496,7 +3499,7 @@ int main(int argc, char **argv)
                 break;
             // `-L #` extracts data from indicated line in uncompressed stream of <FILE>
             case 'L':
-                extract_from_line = giveMeAnInteger( optarg );
+                extract_from_line = (uint64_t)giveMeAnInteger( optarg );
                 // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_LINE;
                 actions_set++;
@@ -3759,10 +3762,10 @@ int main(int argc, char **argv)
         }
         switch( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%ld\n\n", action_string, extract_from_byte );
+                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%lu\n\n", action_string, extract_from_byte );
                 break;
             case ACT_EXTRACT_FROM_LINE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%ld\n\n", action_string, extract_from_line );
+                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%lu\n\n", action_string, extract_from_line );
                 break;
             default:
                 printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
