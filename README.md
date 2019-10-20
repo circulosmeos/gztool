@@ -74,7 +74,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.10.1)
+      gztool (v0.10.2)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -192,6 +192,14 @@ Examples of use
 
         $ gztool -Wb 100k still-growing-gzip-file.gz > mytext
 
+* Extract data from line 10 million, to STDOUT:
+
+        $ gztool -L 10m compressed_text_file.gz
+
+* Nonetheless note that if in the precedent example an index was previously created for the gzip file without the `-x` parameter (or not using `-L`), **as it doesn't contain line numbering info**, `gztool` will complain and stop. This can be circumvented by telling `gztool` to use another new index file name (`-I`), or even not using anyone at all with `-W` (do not write index) and an index file name that doesn't exists (in this case `None` - it won't be created because of `-W`), and so ((just) this time) the gzip will be processed from the beginning:
+
+        $ gztool -L 10m -WI None compressed_text_file.gz
+
 * To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
 
         $ gztool -T still-growing-gzip-file.gz
@@ -292,7 +300,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.10.1**.
+This version is **v0.10.2**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
