@@ -2657,7 +2657,12 @@ local struct returned_output compress_and_build_index(
     // print totin info
     if ( totin > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%llu bytes of data compressed.\n", totin );
-        printToStderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n", totout, 100.0 - (double)totout / (double)totin * 100.0 );
+        if ( extend_index_with_lines > 0 &&
+            totlines > 0 )
+            printToStderr( VERBOSITY_NORMAL, "%llu lines compressed.\n", totlines );
+        if ( totout > 0 )
+            printToStderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n",
+                totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
     *built = index;
@@ -2678,10 +2683,19 @@ local struct returned_output compress_and_build_index(
     // flush written content to disk
     fflush( file_out );
 
-    // print output_data_counter info
-    if ( totin > 0 )
+    // print totin info
+    if ( totin > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%llu bytes of data compressed.\n", totin );
+        if ( extend_index_with_lines > 0 &&
+            totlines > 0 )
+            printToStderr( VERBOSITY_NORMAL, "%llu lines compressed.\n", ( (0 == there_are_more_chars)? totlines-1: totlines ) );
+        if ( totout > 0 )
+            printToStderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n",
+                totout, 100.0 - (double)totout / (double)totin * 100.0 );
+    }
+
     (void)deflateEnd(&strm);
+
     if ( always_create_a_complete_index == 1 ) {
         if ( NULL != index ) {
             index->file_size = totin; /* size of uncompressed file */
@@ -2700,6 +2714,7 @@ local struct returned_output compress_and_build_index(
             free_index(index);
         *built = NULL;
     }
+
     if ( NULL != index_file )
         fclose(index_file);
     if ( Z_OK == ret.error )
