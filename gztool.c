@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.10.1"
+#define GZTOOL_VERSION "0.10.2"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -661,7 +661,7 @@ local struct access *addpoint( struct access *index, uint32_t bits,
             /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
             next->window_size = size;
         }
-        printToStderr( VERBOSITY_EXCESSIVE, "\t[%ld/%ld] window_size = %d\n", index->have+1, index->size, next->window_size);
+        printToStderr( VERBOSITY_EXCESSIVE, "\t[%llu/%llu] window_size = %d\n", index->have+1, index->size, next->window_size);
     } else {
         // if NULL == window, this creates a NULL window: it resides on file,
         // and can/will later loaded on memory with its correct ->window_size;
@@ -757,16 +757,16 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
                   ( (index->index_version == 1)? sizeof(here->line_number): 0 );
     }
     fseeko( output_file, offset, SEEK_SET);
-    printToStderr( VERBOSITY_MANIAC, "index_last_written_point = %ld\n", index_last_written_point );
+    printToStderr( VERBOSITY_MANIAC, "index_last_written_point = %llu\n", index_last_written_point );
     if (NULL!=here) {
-        printToStderr( VERBOSITY_MANIAC, "%ld->window_size = %d\n", i, here->window_size );
+        printToStderr( VERBOSITY_MANIAC, "%llu->window_size = %d\n", i, here->window_size );
     }
-    printToStderr( VERBOSITY_MANIAC, "have = %ld, offset = %ld\n", index->have, offset );
+    printToStderr( VERBOSITY_MANIAC, "have = %llu, offset = %llu\n", index->have, offset );
 
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
             here = &(index->list[i]);
-            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%ld (%ld, %ld)\n", i+1, here->in, here->out );
+            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%llu (%llu, %llu)\n", i+1, here->in, here->out );
             fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
             fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
             fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
@@ -838,7 +838,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
             // size of input file
             struct stat st;
             stat( file_name, &st );
-            printToStderr( VERBOSITY_EXCESSIVE, "(%ld >= %ld)\n", st.st_size, ( index->list[index->have - 1].in ) );
+            printToStderr( VERBOSITY_EXCESSIVE, "(%llu >= %llu)\n", st.st_size, ( index->list[index->have - 1].in ) );
             if ( index->have > 1 &&
                 st.st_size < ( index->list[index->have - 1].in )
                 ) {
@@ -1122,7 +1122,7 @@ local struct returned_output decompress_and_build_index(
 
         assert( NULL != here );
 
-        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %d (@%ld->%ld,L%ld).\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %llu (@%llu->%llu,L%llu).\n",
             actual_index_point+1, here->in, here->out, here->line_number );
 
         // fseek in data for correct position
@@ -1244,7 +1244,7 @@ local struct returned_output decompress_and_build_index(
                         } else {
                             offset_in = st.st_size - CHUNK;
                         }
-                        printToStderr( VERBOSITY_EXCESSIVE, "offset_in=%ld\n", offset_in );
+                        printToStderr( VERBOSITY_EXCESSIVE, "offset_in=%llu\n", offset_in );
                     } else {
                         extraction_from_offset_in = 1;
                         start_extraction_on_first_depletion = 1;
@@ -1395,7 +1395,7 @@ local struct returned_output decompress_and_build_index(
 
         avail_in_0 = strm.avail_in;
 
-        printToStderr( VERBOSITY_CRAZY, "output_data_counter=%ld,totin=%ld,totout=%ld,totlines=%ld,ftello=%ld,avail_in=%d\n",
+        printToStderr( VERBOSITY_CRAZY, "output_data_counter=%llu,totin=%llu,totout=%llu,totlines=%llu,ftello=%llu,avail_in=%d\n",
             output_data_counter, totin, totout, totlines, ftello(file_in), strm.avail_in );
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
@@ -1561,7 +1561,7 @@ local struct returned_output decompress_and_build_index(
                 else
                     offset_in = 0;
                 printToStderr( VERBOSITY_EXCESSIVE,
-                    "END OF GZIP passed @%ld while in raw mode (totout=%ld, avail_in=%d, ftello=%ld)\n",
+                    "END OF GZIP passed @%llu while in raw mode (totout=%llu, avail_in=%d, ftello=%llu)\n",
                     totin, totout, strm.avail_in, ftello(file_in) );
                 if ( end_on_first_proper_gzip_eof == 1 ||
                     ( ( indx_n_extraction_opts == JUST_CREATE_INDEX ||
@@ -1578,9 +1578,9 @@ local struct returned_output decompress_and_build_index(
             // .................................................
             if ( ret.error != Z_OK ) {
                 if ( ret.error != Z_STREAM_END )
-                    printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%ld, totout=%ld, ftello=%ld\n", ret.error, totin, totout, ftello(file_in) );
+                    printToStderr( VERBOSITY_EXCESSIVE, "ERR %d: totin=%llu, totout=%llu, ftello=%llu\n", ret.error, totin, totout, ftello(file_in) );
                 else
-                    printToStderr( VERBOSITY_MANIAC, "Z_STREAM_END: totin=%ld, totout=%ld, ftello=%ld\n", totin, totout, ftello(file_in) );
+                    printToStderr( VERBOSITY_MANIAC, "Z_STREAM_END: totin=%llu, totout=%llu, ftello=%llu\n", totin, totout, ftello(file_in) );
             }
 
             if (ret.error == Z_NEED_DICT)
@@ -1628,7 +1628,7 @@ local struct returned_output decompress_and_build_index(
                  indx_n_extraction_opts == EXTRACT_FROM_LINE ) {
                 if ( indx_n_extraction_opts == EXTRACT_FROM_BYTE ) {
                     unsigned have = avail_out_0 - strm.avail_out;
-                    printToStderr( VERBOSITY_NUTS, "[>1>%ld,%d,%d,%d]", offset, have, strm.avail_out, strm.avail_in );
+                    printToStderr( VERBOSITY_NUTS, "[>1>%llu,%d,%d,%d]", offset, have, strm.avail_out, strm.avail_in );
                     if ( offset > have ) {
                         offset -= have;
                     } else {
@@ -1652,7 +1652,7 @@ local struct returned_output decompress_and_build_index(
                 } else {
                     // indx_n_extraction_opts == EXTRACT_FROM_LINE
                     unsigned have = avail_out_0 - strm.avail_out;
-                    printToStderr( VERBOSITY_NUTS, "[>3>%ld,%d,%d,%d]",
+                    printToStderr( VERBOSITY_NUTS, "[>3>%llu,%d,%d,%d]",
                         line_number_offset, have_lines, strm.avail_out, strm.avail_in );
                     if ( line_number_offset > have_lines ) {
                         line_number_offset -= have_lines;
@@ -1701,7 +1701,7 @@ local struct returned_output decompress_and_build_index(
                     unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
-                    printToStderr( VERBOSITY_NUTS, "[>2>%ld,%d,%d]", offset_in, have_in, strm.avail_in );
+                    printToStderr( VERBOSITY_NUTS, "[>2>%llu,%d,%d]", offset_in, have_in, strm.avail_in );
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
                         offset_in <= 0 ) {
                         // print all "have" bytes as with offset_in it is not possible
@@ -1738,8 +1738,8 @@ local struct returned_output decompress_and_build_index(
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must addpoint() from now on :
-                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %ld,", actual_index_point+1 );
-                printToStderr( VERBOSITY_MANIAC, "(%ld, %ld)\n", totout, last );
+                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %llu,", actual_index_point+1 );
+                printToStderr( VERBOSITY_MANIAC, "(%llu, %llu)\n", totout, last );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -1761,10 +1761,10 @@ local struct returned_output decompress_and_build_index(
                     if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
 
                         if ( NULL != index )
-                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %ld, index_last_written_point = %ld\n",
+                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %llu, index_last_written_point = %llu\n",
                                 index->have, index_last_written_point );
                         else
-                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %ld\n",
+                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %llu\n",
                                 index_last_written_point );
                         index = addpoint(index, strm.data_type & 7, totin,
                                          totout, strm.avail_out, window, window_size, totlines, 1);
@@ -2005,7 +2005,7 @@ struct access *deserialize_index_from_file(
     fread_endian(&(index_have), sizeof(index_have), input_file);
     fread_endian(&(index_size), sizeof(index_size), input_file);
 
-    printToStderr( VERBOSITY_MANIAC, "Number of index points declared: %ld - %ld\n", index_have, index_size );
+    printToStderr( VERBOSITY_MANIAC, "Number of index points declared: %llu - %llu\n", index_have, index_size );
 
     number_of_index_points = index_have;
 
@@ -2018,7 +2018,7 @@ struct access *deserialize_index_from_file(
     }
 
     if ( verbosity_level == VERBOSITY_EXCESSIVE )
-        printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %ld\n", number_of_index_points );
+        printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %llu\n", number_of_index_points );
 
     position_at_file = GZIP_INDEX_HEADER_SIZE +
         ( (1 == index->index_version)? sizeof(index->line_number_format): 0 ) +
@@ -2032,14 +2032,14 @@ struct access *deserialize_index_from_file(
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
-        printToStderr( VERBOSITY_MANIAC, "#%ld: READ window_size=%d",
+        printToStderr( VERBOSITY_MANIAC, "#%llu: READ window_size=%d",
             ((NULL==index)? 1: index->have +1), here.window_size );
 
         if ( here.bits > 8 ||
              here.window_size < 0 )
         {
-            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %ld, %ld, %d, %ld)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
-            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%ld.\nIgnoring data subsequent to point %ld.\n",
+            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %llu, %llu, %d, %llu)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
+            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%llu.\nIgnoring data subsequent to point %llu.\n",
                     file_name, position_at_file, index_size - number_of_index_points + 1 );
             break; // exit do loop
         }
@@ -2099,7 +2099,7 @@ struct access *deserialize_index_from_file(
             here.line_number = 0;
         }
 
-        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %ld, %ld, %d, %ld, %ld)\n",
+        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %llu, %llu, %d, %llu, %llu)\n",
             index, here.bits, here.in, here.out, here.window_size, here.window_beginning, here.line_number );
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
@@ -2110,7 +2110,7 @@ struct access *deserialize_index_from_file(
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
 
-        printToStderr( VERBOSITY_NUTS, "{%ld>=%ld && %ld>0}", ( file_size - position_at_file ),
+        printToStderr( VERBOSITY_NUTS, "{%llu>=%llu && %llu>0}", ( file_size - position_at_file ),
             ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
               sizeof(here.window_size) ), number_of_index_points -1 );
 
@@ -2479,10 +2479,10 @@ local struct returned_output compress_and_build_index(
             // write index point
             if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
                 if ( NULL != index )
-                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %ld, index_last_written_point = %ld\n",
+                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %llu, index_last_written_point = %llu\n",
                         index->have, index_last_written_point );
                 else
-                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %ld\n",
+                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %llu\n",
                         index_last_written_point );
                 index = addpoint(index, 0,
                                  ( ( 0==totout )? GZIP_HEADER_SIZE_BY_ZLIB: totout ), // compressed byte after header <=> uncompressed byte 0
@@ -2562,7 +2562,7 @@ local struct returned_output compress_and_build_index(
 
             printToStderr( VERBOSITY_NUTS, "flush=%d,have=%d,avail_out=%d,",
                 flush, have, strm.avail_out );
-            printToStderr( VERBOSITY_CRAZY, "totin=%ld,totout=%ld,ftello=%ld,avail_in=%d,",
+            printToStderr( VERBOSITY_CRAZY, "totin=%llu,totout=%llu,ftello=%llu,avail_in=%d,",
                 totin, totout, ftello(file_in), strm.avail_in );
 
             if (fwrite(output, 1, have, file_out) != have || ferror(file_out)) {
@@ -2988,10 +2988,10 @@ action_create_index_wait_for_file_creation:
     if ( NULL != index && NULL != *index &&
          number_of_index_points != (*index)->have && write_index_to_disk == 1 )
         if ( number_of_index_points > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "Updated index with %ld new access points.\n", ret.value - number_of_index_points);
-            printToStderr( VERBOSITY_NORMAL, "Now index has %ld access points.\n", ret.value);
+            printToStderr( VERBOSITY_NORMAL, "Updated index with %llu new access points.\n", ret.value - number_of_index_points);
+            printToStderr( VERBOSITY_NORMAL, "Now index has %llu access points.\n", ret.value);
         } else
-            printToStderr( VERBOSITY_NORMAL, "Built index with %ld access points.\n", ret.value);
+            printToStderr( VERBOSITY_NORMAL, "Built index with %llu access points.\n", ret.value);
 
     return EXIT_OK;
 
@@ -3053,7 +3053,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
          strlen( file_name ) > 0 ) {
         stat( file_name, &st );
         if ( verbosity_level > VERBOSITY_NONE )
-            fprintf( stdout, "\tSize of index file (v%d):   %ld Bytes", index->index_version, st.st_size );
+            fprintf( stdout, "\tSize of index file (v%d):   %lld Bytes", index->index_version, (long long int)st.st_size );
 
         if ( st.st_size > 0 &&
              list_verbosity > VERBOSITY_NONE ) {
@@ -3102,7 +3102,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                         fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
                         if ( index->file_size > 0 )
                             fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
-                        fprintf( stdout, " ( %ld Bytes )", st_gzip.st_size );
+                        fprintf( stdout, " ( %lld Bytes )", (long long int)st_gzip.st_size );
                     }
                 } else {
                     if ( verbosity_level > VERBOSITY_NONE )
@@ -3126,15 +3126,15 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
     } else {
 
         if ( verbosity_level > VERBOSITY_NONE )
-            fprintf( stdout, "\tNumber of index points:    %ld\n", index->have );
+            fprintf( stdout, "\tNumber of index points:    %llu\n", (long long unsigned)index->have );
         if ( index->file_size != 0 ) {
             if ( verbosity_level > VERBOSITY_NONE )
-                fprintf( stdout, "\tSize of uncompressed file: %ld Bytes\n", index->file_size );
+                fprintf( stdout, "\tSize of uncompressed file: %lld Bytes\n", (long long int)index->file_size );
         }
         if ( 1 == index->index_version &&
              1 == index->index_complete ) {
             if ( verbosity_level > VERBOSITY_NONE )
-                fprintf( stdout, "\tNumber of lines:           %ld\n", index->number_of_lines );
+                fprintf( stdout, "\tNumber of lines:           %llu\n", (long long unsigned)index->number_of_lines );
         }
         if ( list_verbosity > VERBOSITY_NORMAL ) {
             if ( verbosity_level > VERBOSITY_NONE ) {
@@ -3155,13 +3155,14 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
             for ( j=0; j<index->have; j++ ) {
                 if ( list_verbosity == VERBOSITY_EXCESSIVE &&
                      verbosity_level > VERBOSITY_NONE ) {
-                    fprintf( stdout, "#%ld: @ %ld / %ld ", j +1, index->list[j].in, index->list[j].out );
+                    fprintf( stdout, "#%llu: @ %llu / %llu ",
+                        (long long unsigned)(j +1), (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
                     if ( 1 == index->index_version ) // print line number information
-                        fprintf( stdout, "L%ld ", index->list[j].line_number );
-                    fprintf( stdout, "( %d @%ld ), ", index->list[j].window_size, index->list[j].window_beginning );
+                        fprintf( stdout, "L%llu ", (long long unsigned)index->list[j].line_number );
+                    fprintf( stdout, "( %d @%llu ), ", index->list[j].window_size, (long long unsigned)index->list[j].window_beginning );
                 }
                 if ( list_verbosity == VERBOSITY_MANIAC ) {
-                    uint64_t local_window_size = index->list[j].window_size;
+                    uint64_t local_window_size = index->list[j].window_size; // uint64_t to pass to decompress_chunk()
                     if ( local_window_size > 0 ) {
                         /* window is compressed on memory, so decompress it */
                         unsigned char *decompressed_window = NULL;
@@ -3176,10 +3177,10 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                     if ( verbosity_level > VERBOSITY_NONE ) {
                         comp_win_counter   += index->list[j].window_size;
                         uncomp_win_counter += local_window_size;
-                        fprintf( stdout, "#%ld: @ %ld / %ld ",
-                            j +1, index->list[j].in, index->list[j].out );
+                        fprintf( stdout, "#%llu: @ %llu / %llu ",
+                            (long long unsigned)(j +1), (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
                         if ( 1 == index->index_version ) // print line number information
-                            fprintf( stdout, "L%ld ", index->list[j].line_number );
+                            fprintf( stdout, "L%llu ", (long long unsigned)index->list[j].line_number );
                         fprintf( stdout, "( %d/%ld %.2f%% ), ", index->list[j].window_size,
                             local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
                     }
