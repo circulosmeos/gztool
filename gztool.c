@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.10.2"
+#define GZTOOL_VERSION "0.10.3"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -1356,7 +1356,7 @@ local struct returned_output decompress_and_build_index(
             if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
+                printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
                 if ( ( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a truncated gzip
@@ -2584,7 +2584,7 @@ local struct returned_output compress_and_build_index(
             if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%lld<%lld?)", st.st_size, totin );
+                printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size, totin );
                 if ( st.st_size < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a file
@@ -3068,7 +3068,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
          strlen( file_name ) > 0 ) {
         stat( file_name, &st );
         if ( verbosity_level > VERBOSITY_NONE )
-            fprintf( stdout, "\tSize of index file (v%d):   %lld Bytes", index->index_version, (long long int)st.st_size );
+            fprintf( stdout, "\tSize of index file (v%d):   %llu Bytes", index->index_version, (long long unsigned)st.st_size );
 
         if ( st.st_size > 0 &&
              list_verbosity > VERBOSITY_NONE ) {
@@ -3117,7 +3117,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                         fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
                         if ( index->file_size > 0 )
                             fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
-                        fprintf( stdout, " ( %lld Bytes )", (long long int)st_gzip.st_size );
+                        fprintf( stdout, " ( %llu Bytes )", (long long unsigned)st_gzip.st_size );
                     }
                 } else {
                     if ( verbosity_level > VERBOSITY_NONE )
@@ -3144,7 +3144,7 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
             fprintf( stdout, "\tNumber of index points:    %llu\n", (long long unsigned)index->have );
         if ( index->file_size != 0 ) {
             if ( verbosity_level > VERBOSITY_NONE )
-                fprintf( stdout, "\tSize of uncompressed file: %lld Bytes\n", (long long int)index->file_size );
+                fprintf( stdout, "\tSize of uncompressed file: %llu Bytes\n", (long long unsigned)index->file_size );
         }
         if ( 1 == index->index_version &&
              1 == index->index_complete ) {

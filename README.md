@@ -17,7 +17,7 @@ Nonetheless, note that `gztool` **creates index interleaved with extraction of d
 
 Also **`gztool` can monitor a growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See the `-S` (*Supervise*) option.
 
-* Index size is about 0.33% of a compressed gzip file size if the index is created **after** the file was compressed, or 10-100 times smaller (just a few Bytes or kiB) if `gztool` itself compress the data (`-c`).
+* Index size is about 0.33% of a compressed gzip file size if the index is created **after** the file was compressed, or 10-100 times smaller (just a few Bytes or kiB) if `gztool` itself compresses the data (`-c`).
 
 Note that the size of the index depends on the span between index points on the uncompressed stream - by default it is 10 MiB: this means that when retrieving randomly situated data only 10/2 = 5 MiB of uncompressed data must be decompressed (on average) no matter the size of the gzip file - which is a fairly low value!    
 The span between index points can be adjusted with `-s` (*span*) option (the minimum is `-s 1` or 1 MiB).    
@@ -74,7 +74,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.10.2)
+      gztool (v0.10.3)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -300,7 +300,7 @@ Other tools which try to provide random access to gzipped files
 Version
 =======
 
-This version is **v0.10.2**.
+This version is **v0.10.3**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
