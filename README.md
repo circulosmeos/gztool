@@ -286,6 +286,7 @@ Other tools which try to provide random access to gzipped files
 
   * Perl module [Gzip::RandomAccess](https://metacpan.org/pod/Gzip::RandomAccess). It seems to create the index only in memory, after decompressing the whole gzip file.
   * Go package [gzran](https://github.com/coreos/gzran). It seems to create the index only in memory, after decompressing the whole gzip file.
+  * [jzran](https://code.google.com/archive/p/jzran/). It's a Java library based on the zran.c sample from zlib.
 
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
@@ -293,9 +294,24 @@ Other tools which try to provide random access to gzipped files
 
 * [indexed_gzip](https://github.com/pauldmccarthy/indexed_gzip) Fast random access of gzip files in Python: it also creates file indexes, but they are not as small and they cannot be reused as easily as with `gztool`.
 
+* [lzopfs](https://github.com/vasi/lzopfs). Random access to compressed files with a FUSE filesystem: allows random access to lzop, gzip, bzip2 and xz files - lzopfs allows to mount gzip, bzip2, lzo, and lzma compressed files for random read-only access. I.e., files can be seeked arbitrarily without a performance penalty. It hasn't been updated for years, but there's a [fork that provides CMake installation](https://github.com/mxmlnkn/lzopfs). See also this [description of its internals](https://stackoverflow.com/questions/4457997/indexing-random-access-to-7zip-7z-archives#23458181).
+
+* [pymzML v2.0](https://pymzml.readthedocs.io/en/latest/index.html). One key feature of pymzML is the ability to write and read indexed gzip files. It has its [own index format](https://pymzml.readthedocs.io/en/latest/index_gzip.html#igzip-file-format-specification). Read also [this](https://watermark.silverchair.com/bty046.pdf).
+
 * [zindex](https://github.com/mattgodbolt/zindex) creates SQLite indexes for text files based on regular expressions.
 
-* interesting article on parallel gzip decompression: [`Parallel decompression of gzip-compressed files and random access to DNA sequences`](https://arxiv.org/pdf/1905.07224.pdf).
+Other interesting links
+=======================
+
+* [decompress-fs](https://github.com/narhen/decompress-fs): A passthrough fuse filesystem that decompresses archieved files on the fly.
+
+* [MiGz](https://engineering.linkedin.com/blog/2019/02/migz-for-compression-and-decompression) for Compression and Decompression, supports multithreaded decompression.
+
+* [parallelgzip](https://github.com/shevek/parallelgzip): pure Java equivalent of the pigz parallel compresssor.
+
+* [pigz](https://zlib.net/pigz/): A parallel implementation of gzip for modern multi-processor, multi-core machines. pigz was written by Mark Adler, and uses the zlib and pthread libraries.
+
+* Article on parallel gzip decompression: [`Parallel decompression of gzip-compressed files and random access to DNA sequences`](https://arxiv.org/pdf/1905.07224.pdf).
 
 Version
 =======
