@@ -3555,8 +3555,8 @@ int main(int argc, char **argv)
                 waiting_time = (int)strtol( optarg, NULL, 10 );
                 if ( waiting_time == 0 &&
                      ( strlen( optarg ) != 1 || '0' != optarg[0] ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "WARNING: Ignoring awaiting value of '%s'\n", optarg );
-                    waiting_time = WAITING_TIME;
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%s'\n", optarg );
+                    return EXIT_INVALID_OPTION;
                 }
                 break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
@@ -3687,10 +3687,12 @@ int main(int argc, char **argv)
                             utility_option = optarg[0];
                             break;
                         default:
-                            printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cCdD]`).\n", optarg );
+                            printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
+                            return EXIT_INVALID_OPTION;
                     }
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-u %s` ignored (`-u [cCdD]`).\n", optarg );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
+                    return EXIT_INVALID_OPTION;
                 }
                 break;
             // `-v` verbosity
@@ -3699,8 +3701,8 @@ int main(int argc, char **argv)
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
                      strlen( optarg ) > 1 ||
                      verbosity_level > VERBOSITY_NUTS ) {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-v %s` ignored (`-v [0..5]`).\n", optarg );
-                    verbosity_level = VERBOSITY_NORMAL;
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-v %s` (`-v [0..5]`).\n", optarg );
+                    return EXIT_INVALID_OPTION;
                 }
                 break;
             // `-w` wait for file creation with `-[STcd]`
