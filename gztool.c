@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.10.4"
+#define GZTOOL_VERSION "0.10.5"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -1894,7 +1894,7 @@ local struct returned_output decompress_and_build_index(
         // use markers to detect index updates and to not write if index isn't updated
         if ( index_points_0 != index->have ||
              index_file_size_0 != index->file_size ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %d points and uncompressed file size of %d bytes.\n",
+            printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
                 index->have, index->file_size );
             if ( ! serialize_index_to_file( index_file, index, index->have ) )
                 goto decompress_and_build_index_error;
@@ -2698,7 +2698,7 @@ local struct returned_output compress_and_build_index(
     if ( NULL != index &&
          index->index_complete == 0 &&
          write_index_to_disk == 1 ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %d points and uncompressed file size of %d bytes.\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
             index->have, index->file_size );
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto compress_and_build_index_error;
@@ -3289,7 +3289,8 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                         unsigned char *decompressed_window = NULL;
                         decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
                         if ( NULL == decompressed_window ) {
-                            printToStderr( VERBOSITY_NORMAL, "\nERROR: Could not decompress window %d from index file '%s'.\n", j, file_name);
+                            printToStderr( VERBOSITY_NORMAL, "\nERROR: Could not decompress window #%llu from index file '%s'.\n",
+                                j +1, file_name);
                             ret_value = EXIT_GENERIC_ERROR;
                         }
                         free( decompressed_window );
@@ -3527,7 +3528,7 @@ int main(int argc, char **argv)
     int extend_index_with_lines = 0;
     int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
     unsigned char utility_option = '\0';
-    int count_errors = 0;
+    uint64_t count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
     enum ACTION action;
@@ -3535,7 +3536,7 @@ int main(int argc, char **argv)
     enum VERBOSITY_LEVEL help_verbosity = VERBOSITY_NONE;
 
     int opt = 0;
-    int i;
+    uint64_t i;
     int actions_set = 0;
 
 
@@ -3636,7 +3637,12 @@ int main(int argc, char **argv)
             // `-s #` span between index points, in MiB
             case 's':
                 // span is converted to from MiB to bytes for internal use
-                span_between_points = strtoll( optarg, NULL, 10 ) * 1024 * 1024;
+                span_between_points = strtoll( optarg, NULL, 10 );
+                if ( span_between_points > UINT64_MAX / 1024 / 1024 ) {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-s %llu` MiB value too high!\n", span_between_points );
+                    return EXIT_INVALID_OPTION;
+                }
+                span_between_points = span_between_points * 1024 * 1024;
                 break;
             // `-S` supervise a still-growing gzip <FILE> and create index for it
             case 'S':
@@ -3792,7 +3798,7 @@ int main(int argc, char **argv)
     }
 
     if ( span_between_points <= 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%d'\n", span_between_points );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%llu'\n", span_between_points );
         return EXIT_INVALID_OPTION;
     }
     if ( span_between_points != SPAN &&
@@ -4433,10 +4439,10 @@ int main(int argc, char **argv)
     }
 
     if ( (i -optind) >= 1 )
-        printToStderr( VERBOSITY_NORMAL, "%d files processed\n", 
+        printToStderr( VERBOSITY_NORMAL, "%llu files processed\n",
             ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) );
     if ( count_errors > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%d files processed with errors!\n", count_errors );
+        printToStderr( VERBOSITY_NORMAL, "%llu files processed with errors!\n", count_errors );
 
     printToStderr( VERBOSITY_NORMAL, "\n" );
 
