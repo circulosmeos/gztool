@@ -28,7 +28,7 @@ Background
 ==========
 
 By default gzip-compressed files cannot be accessed in random mode: any byte required at position N requires the complete gzip file to be decompressed from the beginning to the N byte.   
-Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), provided years ago a cryptic file named [zran.c](https://github.com/madler/zlib/blob/master/examples/zran.c) that creates an "index" of "windows" filled with 64 kiB of uncompressed data at different positions along the un/compressed file, which can be used to initialize the zlib library and make it behave as if compressed data begin there.   
+Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), provided years ago a cryptic file named [zran.c](https://github.com/madler/zlib/blob/master/examples/zran.c) that creates an "index" of "windows" filled with 32 kiB of uncompressed data at different positions along the un/compressed file, which can be used to initialize the zlib library and make it behave as if compressed data begin there.   
 
 `gztool` builds upon zran.c to provide a useful command line tool.    
 Also, some optimizations has been made:
