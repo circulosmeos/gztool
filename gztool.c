@@ -118,6 +118,14 @@
 #define _LARGEFILE64_SOURCE     // off64_t for fseek64
 // .................................................
 
+//#define COMPILING_DEBIAN_PACKAGE
+#ifdef COMPILING_DEBIAN_PACKAGE
+    #include <config.h>
+#else
+    #define PACKAGE_NAME "gztool"
+    #define PACKAGE_VERSION "0.10.6"
+#endif
+
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
 #include <stdio.h>
 #include <stdarg.h> // va_start, va_list, va_end
@@ -142,8 +150,6 @@
 #endif
 
 #define local static
-
-#define GZTOOL_VERSION "0.10.6"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -3416,7 +3422,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
 local void print_brief_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v%s)\n", GZTOOL_VERSION );
+    fprintf( stderr, "  %s (v%s)\n", PACKAGE_NAME, PACKAGE_VERSION );
     fprintf( stderr, "  GZIP files indexer, compressor and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
@@ -3432,7 +3438,7 @@ local void print_brief_help() {
 local void print_help() {
 
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  gztool (v%s)\n", GZTOOL_VERSION );
+    fprintf( stderr, "  %s (v%s)\n", PACKAGE_NAME, PACKAGE_VERSION );
     fprintf( stderr, "  GZIP files indexer, compressor and data retriever.\n" );
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );

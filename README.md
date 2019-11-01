@@ -54,7 +54,7 @@ Installation
 
         sudo add-apt-repository ppa:roberto.s.galende/gztool
         sudo apt-get update
-        sudo apt install gztool
+        sudo apt-get install gztool
 
 * See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform. If none fit your needs, `gztool` is very easy to compile: see next sections.
 
@@ -63,7 +63,7 @@ Compilation
 
 *zlib.a* archive library is needed in order to compile `gztool`: the package providing it is actually `zlib1g-dev` (this may vary on your system):
 
-    $ sudo apt install zlib1g-dev
+    $ sudo apt-get install zlib1g-dev
 
     $ gcc -O3 -o gztool gztool.c -lz -lm
 
@@ -85,7 +85,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.10.5)
+      gztool (v0.10.6)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -327,7 +327,7 @@ Other interesting links
 Version
 =======
 
-This version is **v0.10.5**.
+This version is **v0.10.6**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
