@@ -5,7 +5,7 @@ GZIP files indexer, compressor and data retriever.
 Create small indexes for gzipped files and use them for quick and random data extraction.
 No more waiting when the end of a 10 GiB gzip is needed!
 
-See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform, and [`Compilation` paragraph](https://github.com/circulosmeos/gztool#compilation) in case you want to compile the tool.
+See [`Installation`](https://github.com/circulosmeos/gztool#installation) for Ubuntu, the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform, and [`Compilation`](https://github.com/circulosmeos/gztool#compilation) in case you want to compile the tool.
 
 Considerations
 ==============
@@ -46,6 +46,17 @@ Also, some optimizations has been made:
 * **Compatible with complete `gzip` concatenated files**
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
+
+Installation
+============
+
+* In Ubuntu, [using my repository](https://launchpad.net/~roberto.s.galende/+archive/ubuntu/gztool):
+
+        sudo add-apt-repository ppa:roberto.s.galende/gztool
+        sudo apt-get update
+        sudo apt install gztool
+
+* See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform. If none fit your needs, `gztool` is very easy to compile: see next sections.
 
 Compilation
 ===========
