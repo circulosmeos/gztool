@@ -143,7 +143,7 @@
 
 #define local static
 
-#define GZTOOL_VERSION "0.10.5"
+#define GZTOOL_VERSION "0.10.6"
 
 #define SPAN 10485760L      /* desired distance between access points */
 #define WINSIZE 32768U      /* sliding window size */
@@ -1879,11 +1879,9 @@ local struct returned_output decompress_and_build_index(
         index->list = next;
         index->size = index->have;
         index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
-        if ( 1 == index->index_version &&
-             0 == there_are_more_chars && totlines > 0 ) {
+        if ( 0 == there_are_more_chars && totlines > 0 )
             totlines --;
-            index->number_of_lines = totlines; /* lines in uncompressed file */
-        }
+        index->number_of_lines = totlines; /* lines in uncompressed file */
     }
 
     // once all index values are filled, close index file: a last call must be done
@@ -2688,7 +2686,7 @@ local struct returned_output compress_and_build_index(
         index->list = next;
         index->size = index->have;
         index->file_size = totin; /* size of uncompressed file */
-        if ( 0 == there_are_more_chars )
+        if ( 0 == there_are_more_chars && totlines > 0)
             totlines --;
         index->number_of_lines = totlines; /* lines in uncompressed file */
     }
@@ -3247,11 +3245,10 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                 if ( local_number_of_lines > 0 ) {
                     fprintf( stdout, " %llu", (long long unsigned)local_number_of_lines );
                     if ( local_number_of_lines > 1000 ) {
-                        fprintf( stdout, " (%s)\n", giveMeSIUnits(local_number_of_lines, 0) );
-                    } else {
-                        fprintf( stdout, "\n" );
+                        fprintf( stdout, " (%s)", giveMeSIUnits(local_number_of_lines, 0) );
                     }
                 }
+                fprintf( stdout, "\n" );
             }
         }
         if ( list_verbosity > VERBOSITY_NORMAL ) {
