@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.10.6"
+    #define PACKAGE_VERSION "0.10.7"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -3455,20 +3455,20 @@ local void print_help() {
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
-    fprintf( stderr, " -C: always create a 'Complete' index file, ignoring possible errors\n" );
-    fprintf( stderr, " -c: compress a file like with gzip, creating an index at the same time\n" );
-    fprintf( stderr, " -d: decompress a file like with gzip\n" );
-    fprintf( stderr, " -D: do not delete original file when using `-[cd]`\n" );
-    fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any)\n" );
-    fprintf( stderr, " -E: end processing on first GZIP end of file marker at EOF\n" );
+    fprintf( stderr, " -C: always create a 'Complete' index file, ignoring possible errors.\n" );
+    fprintf( stderr, " -c: compress a file like with gzip, creating an index at the same time.\n" );
+    fprintf( stderr, " -d: decompress a file like with gzip.\n" );
+    fprintf( stderr, " -D: do not delete original file when using `-[cd]`.\n" );
+    fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any).\n" );
+    fprintf( stderr, " -E: end processing on first GZIP end of file marker at EOF.\n" );
     fprintf( stderr, "     Nonetheless with `-c`, `-E` waits for more data even at EOF.\n" );
-    fprintf( stderr, " -f: force file overwriting if destination file already exists\n" );
+    fprintf( stderr, " -f: force file overwriting if destination file already exists.\n" );
     fprintf( stderr, " -F: force index creation/completion first, and then action: if\n" );
     fprintf( stderr, "     `-F` is not used, index is created interleaved with actions.\n" );
     fprintf( stderr, " -h: print brief help; `-hh` prints this help.\n" );
-    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz the default'\n" );
+    fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz' the default\n" );
     fprintf( stderr, "     index file name will be 'file.gzi'). This is the default action.\n" );
-    fprintf( stderr, " -I INDEX: index file name will be 'INDEX'\n" );
+    fprintf( stderr, " -I INDEX: index file name will be 'INDEX'.\n" );
     fprintf( stderr, " -l: check and list info contained in indicated index file.\n" );
     fprintf( stderr, "     `-ll` and `-lll` increase the level of index checking detail.\n" );
     fprintf( stderr, " -L #: extract data from indicated uncompressed line position of\n" );
@@ -3478,19 +3478,19 @@ local void print_help() {
     fprintf( stderr, "     creating the index. By default is `10`.\n" );
     fprintf( stderr, " -S: Supervise indicated file: create a growing index,\n" );
     fprintf( stderr, "     for a still-growing gzip file. (`-i` is implicit).\n" );
-    fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file\n" );
+    fprintf( stderr, " -t: tail (extract last bytes) to STDOUT on indicated gzip file.\n" );
     fprintf( stderr, " -T: tail (extract last bytes) to STDOUT on indicated still-growing\n" );
     fprintf( stderr, "     gzip file, and continue Supervising & extracting to STDOUT.\n" );
     fprintf( stderr, " -u [cCdD]: utility to compress (`-u c`) or decompress (`-u d`)\n" );
     fprintf( stderr, "          zlib-format files to STDOUT. Use `-u C` and `-u D`\n" );
-    fprintf( stderr, "          to produce raw compressed files. No index involved.\n" );
-    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts)\n" );
+    fprintf( stderr, "          to manage raw compressed files. No index involved.\n" );
+    fprintf( stderr, " -v #: output verbosity: from `0` (none) to `5` (nuts).\n" );
     fprintf( stderr, "     Default is `1` (normal).\n" );
-    fprintf( stderr, " -w: wait for creation if file doesn't exist, when using `-[cdST]`\n" );
+    fprintf( stderr, " -w: wait for creation if file doesn't exist, when using `-[cdST]`.\n" );
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
-    fprintf( stderr, " -x: create index with line number information (win/*nix compatible)\n" );
-    fprintf( stderr, " -X: like `-x`, but newline character is '\\r' (old mac)\n" );
+    fprintf( stderr, " -x: create index with line number information (win/*nix compatible).\n" );
+    fprintf( stderr, " -X: like `-x`, but newline character is '\\r' (old mac).\n" );
     fprintf( stderr, "\n" );
     fprintf( stderr, "  Example: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );

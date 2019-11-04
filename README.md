@@ -85,7 +85,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.10.6)
+      gztool (v0.10.7)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -105,20 +105,20 @@ Usage
      -b #: extract data from indicated uncompressed byte position of
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
-     -C: always create a 'Complete' index file, ignoring possible errors
-     -c: compress a file like with gzip, creating an index at the same time
-     -d: decompress a file like with gzip
-     -D: do not delete original file when using `-[cd]`
-     -e: if multiple files are indicated, continue on error (if any)
-     -E: end processing on first GZIP end of file marker at EOF
+     -C: always create a 'Complete' index file, ignoring possible errors.
+     -c: compress a file like with gzip, creating an index at the same time.
+     -d: decompress a file like with gzip.
+     -D: do not delete original file when using `-[cd]`.
+     -e: if multiple files are indicated, continue on error (if any).
+     -E: end processing on first GZIP end of file marker at EOF.
          Nonetheless with `-c`, `-E` waits for more data even at EOF.
-     -f: force file overwriting if destination file already exists
+     -f: force file overwriting if destination file already exists.
      -F: force index creation/completion first, and then action: if
          `-F` is not used, index is created interleaved with actions.
      -h: print brief help; `-hh` prints this help.
-     -i: create index for indicated gzip file (For 'file.gz the default'
+     -i: create index for indicated gzip file (For 'file.gz' the default
          index file name will be 'file.gzi'). This is the default action.
-     -I INDEX: index file name will be 'INDEX'
+     -I INDEX: index file name will be 'INDEX'.
      -l: check and list info contained in indicated index file.
          `-ll` and `-lll` increase the level of index checking detail.
      -L #: extract data from indicated uncompressed line position of
@@ -128,24 +128,25 @@ Usage
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
          for a still-growing gzip file. (`-i` is implicit).
-     -t: tail (extract last bytes) to STDOUT on indicated gzip file
+     -t: tail (extract last bytes) to STDOUT on indicated gzip file.
      -T: tail (extract last bytes) to STDOUT on indicated still-growing
          gzip file, and continue Supervising & extracting to STDOUT.
      -u [cCdD]: utility to compress (`-u c`) or decompress (`-u d`)
               zlib-format files to STDOUT. Use `-u C` and `-u D`
-              to produce raw compressed files. No index involved.
-     -v #: output verbosity: from `0` (none) to `5` (nuts)
+              to manage raw compressed files. No index involved.
+     -v #: output verbosity: from `0` (none) to `5` (nuts).
          Default is `1` (normal).
-     -w: wait for creation if file doesn't exist, when using `-[cdST]`
+     -w: wait for creation if file doesn't exist, when using `-[cdST]`.
      -W: do not Write index to disk. But if one is already available
          read and use it. Useful if the index is still under a `-S` run.
-     -x: create index with line number information (win/*nix compatible)
-     -X: like `-x`, but newline character is '\r' (old mac)
+     -x: create index with line number information (win/*nix compatible).
+     -X: like `-x`, but newline character is '\r' (old mac).
 
       Example: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
       create (or reuse, or complete) an index file named `myfile.gzi`:
       $ gztool -b 1G myfile.gz > myfile.txt
+
 
 Please, **note that STDOUT is used for data extraction** with `-bLtTu` modifiers.
 
@@ -327,7 +328,7 @@ Other interesting links
 Version
 =======
 
-This version is **v0.10.6**.
+This version is **v0.10.7**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
