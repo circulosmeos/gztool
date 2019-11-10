@@ -277,6 +277,12 @@ There's a special header to mark ".gzi" files as index files usable for this app
     |   0x0 64 bits   |    "gzipindx"   |     ~     16 bytes = 128 bits
     +-----------------+-----------------+
 
+This is "version 0" header, that is, it does not contain lines information. The header indicating that the index contains lines information is a "version 1" header, differing only in the capital "X" (each index registry point in this case contains an additional 64-bit counter to take lines into account). Next versions (if any) would use "gzipindx" string with lower and capital letters following a binary counting as if they were binary digits.
+
+    +-----------------+-----------------+
+    |   0x0 64 bits   |    "gzipindX"   |     version 1 header (index was created with `-x` parameter)
+    +-----------------+-----------------+
+
 Note that this header has been built so that this format will be "compatible" with index files generated for *bgzip*-compressed files. **[bgzip](http://www.htslib.org/doc/bgzip.html)** files are totally compatible with gzip: they've just been made so every 64 kiB of uncompressed data the zlib library is restart, so they are composed of independent gzipped blocks one after another. The *bgzip* command can create index files for bgzipped files in less time and with much less space than with this tool as they're already almost random-access-capable. The first 64-bit-long of bgzip files is the count of index pairs that are next, so with this 0x0 header gztool-index-files can be ignored by *bgzip* command and so bgzipped and gzipped files and their indexes could live in the same folder without collision.
 
 All numbers are stored in big-endian byte order (platform independently). Big-endian numbers are easier to interpret than little-endian ones when inspecting them with an hex editor (like `od` for example).
