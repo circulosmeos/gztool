@@ -42,8 +42,8 @@ Also, some optimizations has been made:
 * windows **are compressed** in file
 * windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
 * `gztool` can compress files (`-c`) and at the same time generate an index that is about 10-100 times smaller than if the index is generated after the file has already been compressed with gzip.
-* **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)**
-* **Compatible with complete `gzip` concatenated files**
+* **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)** (short-uncompressed complete-gzip-block sizes)
+* **Compatible with complete `gzip` concatenated files** (aka [gzip members](http://tools.ietf.org/html/rfc1952#page-5))
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
 
@@ -307,6 +307,10 @@ Other tools which try to provide random access to gzipped files
   * [jzran](https://code.google.com/archive/p/jzran/). It's a Java library based on the zran.c sample from zlib.
 
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
+
+* [*dictzip*](http://manpages.ubuntu.com/manpages/bionic/man1/dictzip.1.html) command, is a format compatible with gzip that stores an index in the header of the file. Uncompressed size is limited to 4 GiB - see also `idzip` below. The dictionary header cannot be expanded if more gzip data is added, and it cannot be added to an existent gzip file - both issues are succesfully managed by `gztool`.
+
+* [*idzip*](https://github.com/fidlej/idzip) Python command and function, builds upon *dictzip* to overcome the 4 GiB limit of `dictzip` by using multiple [gzip members](http://tools.ietf.org/html/rfc1952#page-5).
 
 * [*GZinga*](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/): Seekable and Splittable GZip, provides Java language classes to create gzip-compatible compressed files [using the Z_FULL_FLUSH option](https://tech.ebayinc.com/engineering/gzinga-seekable-and-splittable-gzip/), to later access or split them.
 
