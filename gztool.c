@@ -2452,13 +2452,11 @@ local struct returned_output compress_and_build_index(
     struct returned_output ret;
     uint64_t last   = 0;           /* uncompressed byte position of last access point */
     struct access *index = NULL;/* access points being generated */
-    struct point *here = NULL;
-    uint64_t actual_index_point = 0;
-    uint64_t totin  = 0;           // counts uncompressed bytes read from file_in
-    uint64_t totout = 0;           // counts compressed bytes deflated to file_out
-    uint64_t totlines = 1;         // counts total line numbers in file_in
-    int   there_are_more_chars = 0; // totlines may need to be decremented at the end depending on last stream char
-    int flush;
+    uint64_t totin  = 0;          // counts uncompressed bytes read from file_in
+    uint64_t totout = 0;          // counts compressed bytes deflated to file_out
+    uint64_t totlines = 1;        // counts total line numbers in file_in
+    int there_are_more_chars = 0; // totlines may need to be decremented at the end depending on last stream char
+    int flush = Z_NO_FLUSH;
     unsigned have;
     z_stream strm;
     FILE *index_file = NULL;
@@ -3077,12 +3075,14 @@ action_create_index_wait_for_file_creation:
     }
 
     if ( NULL != index && NULL != *index &&
-         number_of_index_points != (*index)->have && write_index_to_disk == 1 )
+         number_of_index_points != (*index)->have && write_index_to_disk == 1 ) {
         if ( number_of_index_points > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "Updated index with %llu new access points.\n", ret.value - number_of_index_points);
             printToStderr( VERBOSITY_NORMAL, "Now index has %llu access points.\n", ret.value);
-        } else
+        } else {
             printToStderr( VERBOSITY_NORMAL, "Built index with %llu access points.\n", ret.value);
+        }
+    }
 
     return EXIT_OK;
 
@@ -3506,12 +3506,10 @@ local void print_help() {
 int main(int argc, char **argv)
 {
     // variables for used for the different actions:
-    struct returned_output ret;
     unsigned char *file_name = NULL;
     FILE *in = NULL;
     FILE *index_file = NULL;
     struct access *index = NULL;
-    int bytes, position_in_buf;
 
     // variables for grabbing the options:
     uint64_t extract_from_byte = 0;
@@ -3539,7 +3537,7 @@ int main(int argc, char **argv)
     enum VERBOSITY_LEVEL help_verbosity = VERBOSITY_NONE;
 
     int opt = 0;
-    uint64_t i;
+    uint64_t i = 0;
     int actions_set = 0;
 
 
@@ -3854,7 +3852,7 @@ int main(int argc, char **argv)
 
 
     {   // inform action on stderr:
-        unsigned char *action_string;
+        unsigned char *action_string = NULL;
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
                 action_string = "Extract from byte = ";
@@ -3964,10 +3962,11 @@ int main(int argc, char **argv)
                     return EXIT_GENERIC_ERROR;
                 } else {
                     printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                    if ( write_index_to_disk == 0 )
+                    if ( write_index_to_disk == 0 ) {
                         printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
-                    else
+                    } else {
                         ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                    }
                 }
             } else {
                 if ( write_index_to_disk == 1 ) {
@@ -4148,6 +4147,10 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines );
                 break;
 
+            default:
+                printToStderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
+                ret_value = EXIT_GENERIC_ERROR;
+
         }
 
     } else {
@@ -4219,10 +4222,11 @@ int main(int argc, char **argv)
 
                 if ( force_action == 0 ) {
                     printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
-                    if ( write_index_to_disk == 0 )
+                    if ( write_index_to_disk == 0 ) {
                         printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
-                    else
+                    } else {
                         ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                    }
                 } else {
                     // force_action == 1
                     if ( write_index_to_disk == 1 ) {
@@ -4414,7 +4418,9 @@ int main(int argc, char **argv)
                     }
                     break;
 
-
+                default:
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
+                    ret_value = EXIT_GENERIC_ERROR;
 
             }
 
