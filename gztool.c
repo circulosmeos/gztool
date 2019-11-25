@@ -884,7 +884,7 @@ int check_index_file( struct access *index, char *file_name, char *index_filenam
             stat( file_name, &st );
             printToStderr( VERBOSITY_EXCESSIVE, "(%llu >= %llu)\n", st.st_size, ( index->list[index->have - 1].in ) );
             if ( index->have > 1 &&
-                st.st_size < ( index->list[index->have - 1].in )
+                (uint64_t) st.st_size < ( index->list[index->have - 1].in )
                 ) {
                 printToStderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' corresponds to a file bigger than '%s'\n",
                     index_filename, file_name );
@@ -1401,7 +1401,7 @@ local struct returned_output decompress_and_build_index(
                 struct stat st;
                 stat(file_name, &st);
                 printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
-                if ( ( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
+                if ( (uint64_t)( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a truncated gzip
                     // file with its corresponding (not-truncated) complete index file, because in this case
@@ -2097,8 +2097,7 @@ struct access *deserialize_index_from_file(
         printToStderr( VERBOSITY_MANIAC, "#%llu: READ window_size=%d",
             ((NULL==index)? 1: index->have +1), here.window_size );
 
-        if ( here.bits > 8 ||
-             here.window_size < 0 )
+        if ( here.bits > 8 )
         {
             printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %llu, %llu, %d, %llu)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
             printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%llu.\nIgnoring data subsequent to point %llu.\n",
@@ -2645,7 +2644,7 @@ local struct returned_output compress_and_build_index(
                 struct stat st;
                 stat(file_name, &st);
                 printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size, totin );
-                if ( st.st_size < totin ) {
+                if ( (uint64_t) st.st_size < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a file
                     // with size 0 (which is possible and allowed) because (0 < 0) is false )
@@ -3358,9 +3357,9 @@ action_list_info_error:
 // 64 bit long integer number
 uint64_t giveMeAnInteger( const char *original_input ) {
 
-    int i = 0;
+    unsigned i = 0;
     char *PowerSuffixes = "kmgtpeKMGTPE";
-    int PowerSuffixesLength = strlen(PowerSuffixes)/2;
+    unsigned PowerSuffixesLength = strlen(PowerSuffixes)/2;
     char *input = NULL;
     uint64_t result = 1;
 
@@ -3789,7 +3788,7 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
-    if ( waiting_time >= UINT32_MAX || waiting_time < 0 ) {
+    if ( (unsigned int) waiting_time >= UINT32_MAX || waiting_time < 0 ) {
         printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%d'\n", waiting_time );
         return EXIT_INVALID_OPTION;
     }
@@ -4163,7 +4162,7 @@ int main(int argc, char **argv)
             return EXIT_GENERIC_ERROR;
         }
 
-        for (i = optind; i < argc; i++) {
+        for ( i = optind; i < (uint64_t)argc; i++ ) {
 
             file_name = argv[i];
 
