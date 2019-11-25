@@ -185,7 +185,7 @@ struct access {
     uint64_t size;      /* number of list entries allocated */
     uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
-    unsigned char *file_name; /* path to index file */
+    char *file_name; /* path to index file */
     int index_complete;     /* 1: index is complete; 0: index is (still) incomplete */
     // index v1:
     int index_version;      /* 0: default; 1: index with line numbers */
@@ -222,7 +222,7 @@ enum VERBOSITY_LEVEL verbosity_level = VERBOSITY_NORMAL;
 // shared string for printing unit conversions without dealing with pointers:
 // Always %.2f : "1234.67 Bytes\0" = 14 chars maximum
 #define MAX_giveMeSIUnits_RETURNED_LENGTH 14
-unsigned char number_output[MAX_giveMeSIUnits_RETURNED_LENGTH];
+char number_output[MAX_giveMeSIUnits_RETURNED_LENGTH];
 
 // `fprintf` substitute for printing with VERBOSITY_LEVEL
 void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) {
@@ -245,15 +245,15 @@ void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) 
 // OUTPUT:
 // pointer to buffer where string will be written:
 // It is ALWAYS the "number_output" global variable.
-unsigned char *giveMeSIUnits ( uint64_t input_number, int binary ) {
+char *giveMeSIUnits ( uint64_t input_number, int binary ) {
 
     int i;
     double number = (double)input_number;
     double BASE = ( (binary==1)? 1024.0: 1000.0 );
 
-    unsigned char *SI_UNITS[7] =
+    char *SI_UNITS[7] =
         { "", "k", "M", "G", "T", "P", "E" };
-    unsigned char *SI_BINARY_UNITS[7] =
+    char *SI_BINARY_UNITS[7] =
         { "Bytes", "kiB", "MiB", "GiB", "TiB", "PiB", "EiB" };
 
     // totally empty string so that
@@ -869,11 +869,11 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 */
 // INPUT:
 // struct access *index         : pointer to index. Can be NULL => no check.
-// unsigned char *file_name     : gzip file name. Can be NULL or "" => no check.
-// unsigned char *index_filename: index file name. Must be != NULL, but can be "". Only used to print warning.
+// char *file_name     : gzip file name. Can be NULL or "" => no check.
+// char *index_filename: index file name. Must be != NULL, but can be "". Only used to print warning.
 // OUTPUT:
 // 0 on error, 1 on success
-int check_index_file( struct access *index, unsigned char *file_name, unsigned char *index_filename ) {
+int check_index_file( struct access *index, char *file_name, char *index_filename ) {
 
     if ( NULL != file_name &&
          strlen( file_name ) > 0 ) {
@@ -915,7 +915,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 // INPUT:
 // FILE *file_in            : input stream
 // FILE *file_out           : output stream
-// unsigned char *file_name : name of the input file associated with FILE *in.
+// char *file_name : name of the input file associated with FILE *in.
 //                            Can be "" (no file name: stdin used), but not NULL.
 //                            Used only if there's no usable index && input (FILE *in)
 //                            is associated with a file (not stdin) &&
@@ -941,7 +941,7 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 // uint64_t line_number_offset : if indx_n_extraction_opts == EXTRACT_FROM_LINE, this is the offset line
 //                               in the uncompressed stream from which to extract to stdout.
 //                               0 otherwise.
-// unsigned char *index_filename   : index will be read/written on-the-fly
+// char *index_filename   : index will be read/written on-the-fly
 //                                    to this index file name.
 // int write_index_to_disk  : 1: will write/update the index as usual;
 //                            0: will just read, but do not write nor update (overwrite) the index on disk,
@@ -967,9 +967,9 @@ int check_index_file( struct access *index, unsigned char *file_name, unsigned c
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->have)
 local struct returned_output decompress_and_build_index(
-    FILE *file_in, FILE *file_out, unsigned char *file_name, uint64_t span, struct access **built,
+    FILE *file_in, FILE *file_out, char *file_name, uint64_t span, struct access **built,
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, uint64_t offset, uint64_t line_number_offset,
-    unsigned char *index_filename, int write_index_to_disk,
+    char *index_filename, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
     int waiting_time, int extend_index_with_lines )
 {
@@ -1990,7 +1990,7 @@ local struct returned_output decompress_and_build_index(
 // INPUT:
 // FILE *input_file         : input stream
 // int load_windows         : 0 do not yet load windows on memory; 1 to load them
-// unsigned char *file_name : file path to index file, needed in case
+// char *file_name : file path to index file, needed in case
 //                            load_windows==0, so a later extract() can access the
 //                            index file again to read the window data.
 //                            Can be "" if using stdin, but not NULL.
@@ -2000,7 +2000,7 @@ local struct returned_output decompress_and_build_index(
 // OUTPUT:
 // struct access *index : pointer to index, or NULL on error
 struct access *deserialize_index_from_file(
-    FILE *input_file, int load_windows, unsigned char *file_name,
+    FILE *input_file, int load_windows, char *file_name,
     int extend_index_with_lines
 ) {
     struct point here;
@@ -2413,7 +2413,7 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 // FILE *file_in : source stream
 // FILE *file_out   : destination stream
 // int level    : level of compression
-// unsigned char *file_name : name of the input file associated with FILE *in.
+// char *file_name : name of the input file associated with FILE *in.
 //                            Can be "" (no file name: stdin used), but not NULL.
 //                            Used only if input (FILE *in)
 //                            is associated with a file (not stdin) to detect a
@@ -2422,7 +2422,7 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 // struct access **built: address of index pointer, equivalent to passed by reference.
 //                        Note that *built == NULL on call ALWAYS, because index is
 //                        constructed from scratch here.
-// unsigned char *index_filename  : index will be read/written on-the-fly
+// char *index_filename  : index will be read/written on-the-fly
 //                                  to this index file name.
 // int write_index_to_disk  : 1: will write/update the index as usual;
 //                            0: do not write the index on disk,
@@ -2444,8 +2444,8 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 //      .error: Z_* error code or Z_OK if everything was ok
 //      .value: size of built index (index->have)
 local struct returned_output compress_and_build_index(
-    FILE *file_in, FILE *file_out, int level, unsigned char *file_name, uint64_t span,
-    struct access **built, unsigned char *index_filename, int write_index_to_disk,
+    FILE *file_in, FILE *file_out, int level, char *file_name, uint64_t span,
+    struct access **built, char *index_filename, int write_index_to_disk,
     int end_on_first_eof, int always_create_a_complete_index,
     int waiting_time, int extend_index_with_lines )
 {
@@ -2802,11 +2802,11 @@ local struct returned_output compress_and_build_index(
 // If index file already exists, it is completed if it weren't complete,
 // or directly used if it is complete.
 // INPUT:
-// unsigned char *file_name     : file name of gzip file for which index will be calculated,
+// char *file_name     : file name of gzip file for which index will be calculated,
 //                                or that will be decompressed, depending on indx_n_extraction_opts.
 //                                If strlen(file_name) == 0 stdin is used as gzip file.
 // struct access **index        : memory address of index pointer (passed by reference)
-// unsigned char *index_filename: file name where index will be written
+// char *index_filename: file name where index will be written
 //                                If strlen(index_filename) == 0 stdout is used as output for index.
 // enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts:
 //                                  value passed to decompress_and_build_index();
@@ -2833,8 +2833,8 @@ local struct returned_output compress_and_build_index(
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
-    unsigned char *file_name, struct access **index,
-    unsigned char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
+    char *file_name, struct access **index,
+    char *index_filename, enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts,
     uint64_t offset, uint64_t line_number_offset, uint64_t span_between_points, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
     int waiting_time, int force_action, int wait_for_file_creation,
@@ -2896,7 +2896,7 @@ action_create_index_wait_for_file_creation:
         // an output filename is necessary:
         // this block directly provides de FILE *file_out pointer
         if ( strlen(file_name) > 0 ) {
-            unsigned char *out_filename;
+            char *out_filename;
             out_filename = malloc( strlen(file_name) + 3 + 1 );
             sprintf( out_filename, "%s.gz", file_name );
             // check that destination file doesn't exist
@@ -2993,12 +2993,12 @@ action_create_index_wait_for_file_creation:
 
         if ( indx_n_extraction_opts == DECOMPRESS ) {
             // file must have ".gz" extension so it can be decompressed
-            if ( (unsigned char *)strstr(file_name, ".gz") ==
-                 (unsigned char *)(file_name + strlen(file_name) - 3) &&
+            if ( (char *)strstr(file_name, ".gz") ==
+                 (char *)(file_name + strlen(file_name) - 3) &&
                  strlen( file_name ) > 3
                 ) {
                 // if gzip-file name is 'FILE.gz', output file name will be 'FILE'
-                unsigned char *output_filename = malloc( strlen(file_name) );
+                char *output_filename = malloc( strlen(file_name) );
                 sprintf(output_filename, "%s", file_name);
                 output_filename[strlen(file_name) - 3] = '\0';
                 printToStderr( VERBOSITY_NORMAL, "Decompressing to '%s'\n", output_filename );
@@ -3093,20 +3093,20 @@ action_create_index_wait_for_file_creation:
 // May be called with global verbosity_level == VERBOSITY_NONE in which case
 // no info is printed to stdout but a value is returned.
 // INPUT:
-// unsigned char *file_name           : index file name
-// unsigned char *input_gzip_filename : gzip file associated with the index. May be NULL, but not "".
+// char *file_name           : index file name
+// char *input_gzip_filename : gzip file associated with the index. May be NULL, but not "".
 // enum VERBOSITY_LEVEL list_verbosity: level of detail of index checking:
 //                                      minimum is 1 == VERBOSITY_NORMAL
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
-local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_filename, enum VERBOSITY_LEVEL list_verbosity ) {
+local int action_list_info( char *file_name, char *input_gzip_filename, enum VERBOSITY_LEVEL list_verbosity ) {
 
     FILE *in = NULL;
     struct access *index = NULL;
     uint64_t j;
     int ret_value = EXIT_OK;
     struct stat st;
-    unsigned char *gzip_filename = NULL;
+    char *gzip_filename = NULL;
     struct stat st_gzip;
     st_gzip.st_size = 0;
     uint64_t comp_win_counter = 0;   // just to count bytes and calculate a file estimated "hardness"
@@ -3156,8 +3156,8 @@ local int action_list_info( unsigned char *file_name, unsigned char *input_gzip_
                 gzip_filename = malloc( strlen(file_name) + 1 );
                 if ( NULL != gzip_filename ) {
                     sprintf( gzip_filename, "%s", file_name );
-                    if ( (unsigned char *)strstr(gzip_filename, ".gzi") ==
-                            (unsigned char *)(gzip_filename + strlen(file_name) - 4) ) {
+                    if ( (char *)strstr(gzip_filename, ".gzi") ==
+                            (char *)(gzip_filename + strlen(file_name) - 4) ) {
                         // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
                         gzip_filename[strlen(gzip_filename)-1]='\0';
                         // let's see if we're certain:
@@ -3353,15 +3353,15 @@ action_list_info_error:
 // Examples:
 // "83m" == 83*10^6, "9G" == 9*2^30, "0xa" == 10, "010k" = 8000, "23.5k" = 23500
 // INPUT:
-// unsigned char *original_input: string containing the data (only read)
+// char *original_input: string containing the data (only read)
 // OUTPUT:
 // 64 bit long integer number
-uint64_t giveMeAnInteger( const unsigned char *original_input ) {
+uint64_t giveMeAnInteger( const char *original_input ) {
 
     int i = 0;
-    unsigned char *PowerSuffixes = "kmgtpeKMGTPE";
+    char *PowerSuffixes = "kmgtpeKMGTPE";
     int PowerSuffixesLength = strlen(PowerSuffixes)/2;
-    unsigned char *input = NULL;
+    char *input = NULL;
     uint64_t result = 1;
 
     if ( NULL == original_input )
@@ -3374,7 +3374,7 @@ uint64_t giveMeAnInteger( const unsigned char *original_input ) {
         // look for suffixes of size
 
         for ( i=0; i<strlen(PowerSuffixes); i++ ) {
-            if ( (unsigned char *)strchr(input, PowerSuffixes[i]) == (unsigned char *)(input + strlen(input) -1) ) {
+            if ( (char *)strchr(input, PowerSuffixes[i]) == (char *)(input + strlen(input) -1) ) {
                 if ( i >= PowerSuffixesLength ) {
                     result = pow( 2.0, 10.0 + 10.0*(double)(i - PowerSuffixesLength) );
                 } else {
@@ -3506,7 +3506,7 @@ local void print_help() {
 int main(int argc, char **argv)
 {
     // variables for used for the different actions:
-    unsigned char *file_name = NULL;
+    char *file_name = NULL;
     FILE *in = NULL;
     FILE *index_file = NULL;
     struct access *index = NULL;
@@ -3515,7 +3515,7 @@ int main(int argc, char **argv)
     uint64_t extract_from_byte = 0;
     uint64_t extract_from_line = 0;
     uint64_t span_between_points = SPAN;
-    unsigned char *index_filename = NULL;
+    char *index_filename = NULL;
     int continue_on_error = 0;
     int index_filename_indicated = 0;
     int force_action = 0;
@@ -3528,7 +3528,7 @@ int main(int argc, char **argv)
     int do_not_delete_original_file = 0;
     int extend_index_with_lines = 0;
     int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
-    unsigned char utility_option = '\0';
+    char utility_option = '\0';
     uint64_t count_errors = 0;
 
     enum EXIT_APP_VALUES ret_value;
@@ -3852,7 +3852,7 @@ int main(int argc, char **argv)
 
 
     {   // inform action on stderr:
-        unsigned char *action_string = NULL;
+        char *action_string = NULL;
         switch ( action ) {
             case ACT_EXTRACT_FROM_BYTE:
                 action_string = "Extract from byte = ";
@@ -4182,8 +4182,8 @@ int main(int argc, char **argv)
                 if ( action == ACT_COMPRESS_AND_CREATE_INDEX ) {
                     sprintf(index_filename, "%s.gzi", argv[i]);
                 } else {
-                    if ( (unsigned char *)strstr(index_filename, ".gz") ==
-                         (unsigned char *)(index_filename + strlen(argv[i]) - 3)
+                    if ( (char *)strstr(index_filename, ".gz") ==
+                         (char *)(index_filename + strlen(argv[i]) - 3)
                         )
                         // if gzip-file name is 'FILE.gz', index file name will be 'FILE.gzi'
                         sprintf(index_filename, "%si", argv[i]);
@@ -4392,12 +4392,12 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines );
                     if ( ret_value == EXIT_OK ) {
                         // delete original file, as with gzip
-                        if ( (unsigned char *)strstr(file_name, ".gz") ==
-                             (unsigned char *)(file_name + strlen(file_name) - 3) &&
+                        if ( (char *)strstr(file_name, ".gz") ==
+                             (char *)(file_name + strlen(file_name) - 3) &&
                              strlen( file_name ) > 3
                             ) {
                             // if gzip-file name is 'FILE.gz', output file has been 'FILE'
-                            unsigned char *output_filename = malloc( strlen(file_name) );
+                            char *output_filename = malloc( strlen(file_name) );
                             sprintf(output_filename, "%s", file_name);
                             output_filename[strlen(file_name) - 3] = '\0';
                             if ( do_not_delete_original_file == 0 ) {
