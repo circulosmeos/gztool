@@ -3892,6 +3892,9 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_LINE:
                 action_string = "Extract from line = ";
                 break;
+            default:
+                printToStderr( VERBOSITY_NORMAL, "ERROR: Unexpected error! No action specified.\n" );
+                return EXIT_GENERIC_ERROR;
         }
         switch( action ) {
             case ACT_EXTRACT_FROM_BYTE:
