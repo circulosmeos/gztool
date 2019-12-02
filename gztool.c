@@ -577,7 +577,7 @@ local void free_index(struct access *index)
             free(index->list[i].window);
         }
         free(index->list);
-        // free(index->file_name); // this MUST NOT be done because it points to a string on caller
+        free(index->file_name);
         free(index);
     }
 }
@@ -2931,9 +2931,20 @@ action_create_index_wait_for_file_creation:
                 always_create_a_complete_index, waiting_time,
                 extend_index_with_lines );
 
-        if ( NULL != index && NULL != *index )
-            (*index)->file_name = index_filename; // it is important to set this value, if the index is to be reused,
-                                                  // because the window data must be read from disk to be used.
+        if ( NULL != index && NULL != *index ) {
+            // it is important to set (*index)->file_name, if the index is to be reused,
+            // because the window data must be read from disk to be used.
+            if ( NULL == (*index)->file_name ) {
+                (*index)->file_name = malloc( strlen(index_filename) + 1 );
+                if ( NULL == (*index)->file_name ||
+                     NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    if ( NULL != (*index)->file_name )
+                        free( (*index)->file_name );
+                    return EXIT_GENERIC_ERROR;
+                }
+            }
+        }
 
     } else {
         // decompression!
@@ -2969,8 +2980,19 @@ action_create_index_wait_for_file_creation:
                 (*index)->index_complete = 0; // every index can be updated with new points in case gzip data grows!
             }
             // there's an index now, continue:
-            (*index)->file_name = index_filename; // it is important to set this value, if the index is to be reused,
-                                                  // because the window data must be read from disk to be used.
+            // it is important to set (*index)->file_name, if the index is to be reused,
+            // because the window data must be read from disk to be used.
+            if ( NULL == (*index)->file_name ) {
+                (*index)->file_name = malloc( strlen(index_filename) + 1 );
+                if ( NULL == (*index)->file_name ||
+                     NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    if ( NULL != (*index)->file_name )
+                        free( (*index)->file_name );
+                    return EXIT_GENERIC_ERROR;
+                }
+            }
+
         }
 
         // checks on index read from file:
@@ -3037,9 +3059,20 @@ action_create_index_wait_for_file_creation:
                     waiting_time, extend_index_with_lines );
         }
 
-        if ( NULL != index && NULL != *index )
-            (*index)->file_name = index_filename; // it is important to set this value, if the index is to be reused,
-                                                  // because the window data must be read from disk to be used.
+        if ( NULL != index && NULL != *index ) {
+            // it is important to set (*index)->file_name, if the index is to be reused,
+            // because the window data must be read from disk to be used.
+            if ( NULL == (*index)->file_name ) {
+                (*index)->file_name = malloc( strlen(index_filename) + 1 );
+                if ( NULL == (*index)->file_name ||
+                     NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
+                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    if ( NULL != (*index)->file_name )
+                        free( (*index)->file_name );
+                    return EXIT_GENERIC_ERROR;
+                }
+            }
+        }
 
     }
 
