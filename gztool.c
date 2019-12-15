@@ -4484,9 +4484,9 @@ int main(int argc, char **argv)
 
     }
 
-    if ( (i -optind) >= 1 )
+    if ( i > optind )
         printToStderr( VERBOSITY_NORMAL, "%llu files processed\n",
-            ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) );
+            ( i -optind + ( (count_errors>0 && continue_on_error == 0)?1:0 ) ) );
     if ( count_errors > 0 )
         printToStderr( VERBOSITY_NORMAL, "%llu files processed with errors!\n", count_errors );
 
@@ -4506,7 +4506,7 @@ int main(int argc, char **argv)
         fclose( index_file );
     }
 
-    if ( ( i -optind + ( (count_errors>0 && continue_on_error == 0 )?1:0 ) ) > 1 ) {
+    if ( i > ( 1 + optind - ( (count_errors>0 && continue_on_error == 0)?1:0 ) ) ) {
         // if processing multiple files, return EXIT_GENERIC_ERROR if any one failed:
         if ( count_errors > 0 )
             return EXIT_GENERIC_ERROR;
