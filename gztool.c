@@ -3125,7 +3125,7 @@ action_create_index_wait_for_file_creation:
 // May be called with global verbosity_level == VERBOSITY_NONE in which case
 // no info is printed to stdout but a value is returned.
 // INPUT:
-// char *file_name           : index file name
+// char *file_name           : index file name. Maybe "" for STDIN.
 // char *input_gzip_filename : gzip file associated with the index. May be NULL, but not "".
 // enum VERBOSITY_LEVEL list_verbosity: level of detail of index checking:
 //                                      minimum is 1 == VERBOSITY_NORMAL
@@ -3243,7 +3243,11 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
 
     if ( ! index ) {
 
-        printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'.\n", file_name);
+        if ( strlen( file_name ) > 0 ) {
+            printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'.\n", file_name );
+        } else {
+            printToStderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
+        }
         ret_value = EXIT_GENERIC_ERROR;
         goto action_list_info_error;
 
