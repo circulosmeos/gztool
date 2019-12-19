@@ -977,7 +977,7 @@ local struct returned_output decompress_and_build_index(
     uint64_t totin  = 0;           /* our own total counters to avoid 4GB limit */
     uint64_t totout = 0;           /* our own total counters to avoid 4GB limit */
     uint64_t totlines = 1;         /* counts total line numbers in uncompressed data from file_in */
-    int   there_are_more_chars = 0; /* totlines may need to be decremented at the end depending on last stream char */
+    int there_are_more_chars = 0;  /* totlines may need to be decremented at the end depending on last stream char */
     uint64_t last   = 0;           /* totout value of last access point */
     uint64_t offset_in = 0;        /* offset in compressed data to reach (opposed to "offset" in uncompressed data) */
     uint64_t have_lines = 0;       /* number of lines in last chunk of uncompressed data */
@@ -3526,9 +3526,10 @@ local void print_help() {
     fprintf( stderr, " -W: do not Write index to disk. But if one is already available\n" );
     fprintf( stderr, "     read and use it. Useful if the index is still under a `-S` run.\n" );
     fprintf( stderr, " -x: create index with line number information (win/*nix compatible).\n" );
+    fprintf( stderr, "     (Index counts last line even w/o newline char (`wc` does not!)).\n" );
     fprintf( stderr, " -X: like `-x`, but newline character is '\\r' (old mac).\n" );
     fprintf( stderr, "\n" );
-    fprintf( stderr, "  Example: Extract data from 1 GiB byte (byte 2^30) on,\n" );
+    fprintf( stderr, "  EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
     fprintf( stderr, "  create (or reuse, or complete) an index file named `myfile.gzi`:\n" );
     fprintf( stderr, "  $ gztool -b 1G myfile.gz > myfile.txt\n" );
