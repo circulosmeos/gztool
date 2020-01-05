@@ -31,7 +31,7 @@ By default gzip-compressed files cannot be accessed in random mode: any byte req
 Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), provided years ago a cryptic file named [zran.c](https://github.com/madler/zlib/blob/master/examples/zran.c) that creates an "index" of "windows" filled with 32 kiB of uncompressed data at different positions along the un/compressed file, which can be used to initialize the zlib library and make it behave as if compressed data begin there.   
 
 `gztool` builds upon zran.c to provide a useful command line tool.    
-Also, some optimizations has been made:
+Also, some optimizations and brand new behaviours have been added:
 
 * `gztool` can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
 * **`gztool` can *Supervise* an still-growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
@@ -46,6 +46,7 @@ Also, some optimizations has been made:
 * **Compatible with complete `gzip` concatenated files** (aka [gzip members](http://tools.ietf.org/html/rfc1952#page-5))
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
+* `gztool` can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See [this stackexchange thread](https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/#541903). Just the index must be also remotely available.
 
 Installation
 ============
