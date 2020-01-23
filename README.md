@@ -163,11 +163,11 @@ Examples of use
 
         $ gztool -I test.index test.gz
 
-* Retrieve data from uncompressed byte position 1000000 inside test.gz. Index file will be created **at the same time** (named `test.gzi`):
+* Retrieve data from uncompressed byte position 1000000 inside test.gz. An index file will be created **at the same time** (named `test.gzi`):
 
         $ gztool -b 1m test.gz
 
-* **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until interrupted (it can also stop at first end-of-gzip data with `-E`).
+* **Supervise an still-growing gzip file and generate the index for it on-the-fly**. The index file name will be `openldap.log.gzi` in this case. `gztool` will execute until interrupted or until the supervised gzip file is overwritten from the beginning (this happens usually with compressed log files when they are rotated). It can also stop at first end-of-gzip data with `-E`.
 
         $ gztool -S openldap.log.gz
 
@@ -202,7 +202,7 @@ Examples of use
 
         $ gztool -b 99m project.gz > uncompressed.data
 
-* Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so the other process is not disturb! (Note that since version 0.3, `gztool` always tries to update the index used if it thinks it's necessary):
+* Extract data from a gzipped file which index is still growing with a `gztool -S` process that is monitoring the (still-growing) gzip file: in this case the use of `-W` will not try to update the index on disk so that the other process is not disturb! (this is so because `gztool` always tries to update the index used if it thinks it's necessary):
 
         $ gztool -Wb 100k still-growing-gzip-file.gz > mytext
 
@@ -238,7 +238,7 @@ Examples of use
 
         $ cat mycompressedfile | gztool -d > my_uncompressed_file
 
-* Show internals of all index files in this directory. `-e` is used not to stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity:
+* Show internals of all index files in this directory. `-e` is used to not stop the process on the first error, if a `*.gzi` file is not a valid gzip index file. The `-ll` list option repetition will show data about each index point. `-lll` also decompress each point's window to ensure index integrity:
 
         $ gztool -ell *.gzi
 
@@ -282,7 +282,7 @@ There's a special header to mark ".gzi" files as index files usable for this app
 This is "version 0" header, that is, it does not contain lines information. The header indicating that the index contains lines information is a "version 1" header, differing only in the capital "X" (each index registry point in this case contains an additional 64-bit counter to take lines into account). Next versions (if any) would use "gzipindx" string with lower and capital letters following a binary counting as if they were binary digits.
 
     +-----------------+-----------------+
-    |   0x0 64 bits   |    "gzipindX"   |     version 1 header (index was created with `-x` parameter)
+    |   0x0 64 bits   |    "gzipindX"   |     version 1 header (index was created with `-[xX]` parameter)
     +-----------------+-----------------+
 
 Note that this header has been built so that this format will be "compatible" with index files generated for *bgzip*-compressed files. **[bgzip](http://www.htslib.org/doc/bgzip.html)** files are totally compatible with gzip: they've just been made so every 64 kiB of uncompressed data the zlib library is restart, so they are composed of independent gzipped blocks one after another. The *bgzip* command can create index files for bgzipped files in less time and with much less space than with this tool as they're already almost random-access-capable. The first 64-bit-long of bgzip files is the count of index pairs that are next, so with this 0x0 header gztool-index-files can be ignored by *bgzip* command and so bgzipped and gzipped files and their indexes could live in the same folder without collision.
@@ -299,7 +299,7 @@ Please note that not all stored numbers are 64-bit long. This is because some co
 
 With 64 bit long numbers, the index could potentially manage files up to 2^64 = 16 EiB (16 777 216 TiB).
 
-Regarding line number counting (`-x`), note that gztool's index counts last line in uncompressed data even if the last char isn't a newline char - whilst `wc` command will not count it in this case!. Nonetheless, line counting when extracting data with `-[bLtT]` does follow `wc` convention - this is in order to not obtain different (+/-1) results reading `gztool` output info and `wc` counts.
+Regarding line number counting (`-[xX]`), note that gztool's index counts last line in uncompressed data even if the last char isn't a newline char - whilst `wc` command will not count it in this case!. Nonetheless, line counting when extracting data with `-[bLtT]` does follow `wc` convention - this is in order to not obtain different (+/-1) results reading `gztool` output info and `wc` counts.
 
 Other tools which try to provide random access to gzipped files
 ===============================================================
