@@ -159,9 +159,13 @@ Examples of use
 
         $ gztool -i test.gz
 
-* Make an index for `test.gz` with name `test.index`:
+* Make an index for `test.gz` with name `test.index`, using `-I`:
 
         $ gztool -I test.index test.gz
+
+* Also `-I` can be used to indicate the complete path to an index in another directory. This way the directory where the gzip file resides could be read-only and the index be created in another read-write path:
+
+        $ gztool -I /tmp/test.gzi test.gz
 
 * Retrieve data from uncompressed byte position 1000000 inside test.gz. An index file will be created **at the same time** (named `test.gzi`):
 
@@ -234,7 +238,7 @@ Examples of use
 
         $ gztool -Dd myfile.gz
 
-* Decompress a file that do not have ".gz" file extension, like with gzip (`-d`):
+* Decompress a file that does not have ".gz" file extension, like with gzip (`-d`):
 
         $ cat mycompressedfile | gztool -d > my_uncompressed_file
 
