@@ -86,14 +86,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.10.9)
+      gztool (v0.11)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -125,6 +125,8 @@ Usage
      -L #: extract data from indicated uncompressed line position of
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
+     -n #: indicates that the first byte on compressed input is #, not 1,
+         and so truncated compressed inputs can be used if an index exists.
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
@@ -144,7 +146,7 @@ Usage
          (Index counts last line even w/o newline char (`wc` does not!)).
      -X: like `-x`, but newline character is '\r' (old mac).
 
-      Example: Extract data from 1 GiB byte (byte 2^30) on,
+      EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
       create (or reuse, or complete) an index file named `myfile.gzi`:
       $ gztool -b 1G myfile.gz > myfile.txt
@@ -266,6 +268,12 @@ Also, if the gzip is complete, the size of the uncompressed data is shown. This 
 
 In this latter case only a pair of index+gzip filenames can be indicated with each use.
 
+* Use a truncated gzip file (100000 first bytes are removed: (not zeroed, removed; if they're zeroed cautions are the same, but `-n` is not needed)), to extract from byte 20 MiB, **using a previously generated index**: as far as the `-b` parameter refers to a byte *after* an index point (See `-ll`) and `-n` be less than that needed first index point, this is always possible. In this case *-I gzip_filename.gzi* is implicit:
+
+        $ gztool -n 100001 -b 20M gzip_filename.gz
+
+Please, note that index point positions at index file **may require also the previous byte**, as gzip stream is not byte rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7/8 times it will be needed.
+
 Index file format
 =================
 
@@ -346,7 +354,7 @@ Other interesting links
 Version
 =======
 
-This version is **v0.10.9**.
+This version is **v0.11**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
