@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v0.10* by Roberto S. Galende, 2019
+// v0.1 to v0.11* by Roberto S. Galende, 2019, 2020
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.10.9"
+    #define PACKAGE_VERSION "0.11"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -962,6 +962,9 @@ int check_index_file( struct access *index, char *file_name, char *index_filenam
 //                                index->index_version == 0 it cannot be extended to v1, and
 //                                if it is index->index_version == 1, it cannot be made v0,
 //                                so extend_index_with_lines IS RESPECTED ONLY IF INDEX DOES NOT EXIST YET.
+// uint64_t expected_first_byte  : indicates that the first byte on compressed input is this, not 1,
+//                                and so truncated compressed inputs can be used. Only can be used (>1) if
+//                                indx_n_extraction_opts is EXTRACT_FROM_BYTE or EXTRACT_FROM_LINE.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -971,7 +974,7 @@ local struct returned_output decompress_and_build_index(
     enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts, uint64_t offset, uint64_t line_number_offset,
     char *index_filename, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
-    int waiting_time, int extend_index_with_lines )
+    int waiting_time, int extend_index_with_lines, uint64_t expected_first_byte )
 {
     struct returned_output ret;
     uint64_t totin  = 0;           /* our own total counters to avoid 4GB limit */
@@ -1018,7 +1021,10 @@ local struct returned_output decompress_and_build_index(
         printToStderr( VERBOSITY_NORMAL, "Using index '%s'...\n", index_filename );
     } else {
         if ( write_index_to_disk == 1 ) {
-            printToStderr( VERBOSITY_NORMAL, "Processing index to '%s'...\n", index_filename );
+            if ( strlen(index_filename) > 0 )
+                printToStderr( VERBOSITY_NORMAL, "Processing index to '%s'...\n", index_filename );
+            else
+                printToStderr( VERBOSITY_NORMAL, "Processing index to STDOUT...\n" );
         } else {
             if ( indx_n_extraction_opts != DECOMPRESS )
                 printToStderr( VERBOSITY_NORMAL, "Reading index '%s'...\n", index_filename );
@@ -1171,31 +1177,49 @@ local struct returned_output decompress_and_build_index(
 
         // fseek in data for correct position
         // using here index data:
-        if ( stdin == file_in ) {
-            // read input until here->in - (here->bits ? 1 : 0)
-            uint64_t pos = 0;
+        {
             uint64_t position = here->in - (here->bits ? 1 : 0);
-            ret.error = 0;
-            while ( pos < position ) {
-                if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), file_in) ) {
-                    ret.error = -1;
-                    break;
-                }
-                pos += CHUNK;
-            }
-        } else {
-            ret.error = fseeko(file_in, here->in - (here->bits ? 1 : 0), SEEK_SET);
-        }
-        if (ret.error == -1)
-            goto decompress_and_build_index_error;
-        if (here->bits) {
-            int i;
-            i = getc(file_in);
-            if (i == -1) {
-                ret.error = ferror(file_in) ? Z_ERRNO : Z_DATA_ERROR;
+
+            // checking expected_first_byte value:
+            // (although this has already been done for `-b`, `-L` could not be checked until now)
+            if ( ( expected_first_byte -1 ) > position ) {
+                printToStderr( VERBOSITY_NORMAL, "ERROR: `-n %llu` is beyond required index point @%llu byte.\n",
+                    expected_first_byte, position );
+                ret.error = Z_ERRNO;
+                // strm and index are already filled, so a simple return isn't possible:
                 goto decompress_and_build_index_error;
+            } else {
+                position -= ( expected_first_byte -1 );
             }
-            (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
+
+            if ( stdin == file_in ) {
+                // read input until here->in - (here->bits ? 1 : 0)
+                uint64_t pos = 0;
+                ret.error = 0;
+                while ( pos < position ) {
+                    if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), file_in) ) {
+                        ret.error = -1;
+                        break;
+                    }
+                    pos += CHUNK;
+                }
+            } else {
+                ret.error = fseeko(file_in, position, SEEK_SET);
+            }
+
+            if (ret.error == -1)
+                goto decompress_and_build_index_error;
+
+            if (here->bits) {
+                int i;
+                i = getc(file_in);
+                if (i == -1) {
+                    ret.error = ferror(file_in) ? Z_ERRNO : Z_DATA_ERROR;
+                    goto decompress_and_build_index_error;
+                }
+                (void)inflatePrime(&strm, here->bits, i >> (8 - here->bits));
+            }
+
         }
 
         // obtain window and initialize with it zlib's Dictionary
@@ -2829,6 +2853,10 @@ local struct returned_output compress_and_build_index(
 //                                1: wait for file creation if it doesn't yet exist, when using `-[STcd]`
 // int extend_index_with_lines  : create index with (1,2) or without (0) line numbers (v0 or v1 index):
 //                                decision is make at de/compress_and_build_index(), not here.
+// uint64_t expected_first_byte  : indicates that the first byte on compressed input is this, not 1,
+//                                and so truncated compressed inputs can be used. Only can be used (>1) if
+//                                indx_n_extraction_opts is EXTRACT_FROM_BYTE or EXTRACT_FROM_LINE.
+//                                Directly passed here to decompress_and_build_index(), w/o further processing.
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
@@ -2837,7 +2865,7 @@ local int action_create_index(
     uint64_t offset, uint64_t line_number_offset, uint64_t span_between_points, int write_index_to_disk,
     int end_on_first_proper_gzip_eof, int always_create_a_complete_index,
     int waiting_time, int force_action, int wait_for_file_creation,
-    int extend_index_with_lines )
+    int extend_index_with_lines, uint64_t expected_first_byte )
 {
 
     FILE *file_in  = NULL;
@@ -3000,7 +3028,7 @@ action_create_index_wait_for_file_creation:
              strlen( file_name ) > 0 ) {
             // (here, index_filename exists and index exists)
             check_index_file( (*index), file_name, index_filename );
-            // return value is not used - only warn user and continue
+            // returned value is not used - only warn user and continue
         }
 
         // stdout to binary mode if needed
@@ -3048,7 +3076,7 @@ action_create_index_wait_for_file_creation:
             ret = decompress_and_build_index( file_in, file_out, file_name, span_between_points, index,
                     DECOMPRESS, offset, line_number_offset, index_filename, 0, // write_index_to_disk = 0
                     1 , always_create_a_complete_index, // end_on_first_proper_gzip_eof = 1
-                    waiting_time, extend_index_with_lines );
+                    waiting_time, extend_index_with_lines, 1 ); // expected_first_byte not used, so 1
 
         } else {
             file_out = stdout;
@@ -3056,7 +3084,7 @@ action_create_index_wait_for_file_creation:
             ret = decompress_and_build_index( file_in, file_out, file_name, span_between_points, index,
                     indx_n_extraction_opts, offset, line_number_offset, index_filename, write_index_to_disk,
                     end_on_first_proper_gzip_eof, always_create_a_complete_index,
-                    waiting_time, extend_index_with_lines );
+                    waiting_time, extend_index_with_lines, expected_first_byte );
         }
 
         if ( NULL != index && NULL != *index ) {
@@ -3463,7 +3491,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -3480,7 +3508,7 @@ local void print_help() {
     fprintf( stderr, "  for quick and random positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -3510,6 +3538,8 @@ local void print_help() {
     fprintf( stderr, " -L #: extract data from indicated uncompressed line position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
+    fprintf( stderr, " -n #: indicates that the first byte on compressed input is #, not 1,\n" );
+    fprintf( stderr, "     and so truncated compressed inputs can be used if an index exists.\n" );
     fprintf( stderr, " -s #: span in uncompressed MiB between index points when\n" );
     fprintf( stderr, "     creating the index. By default is `10`.\n" );
     fprintf( stderr, " -S: Supervise indicated file: create a growing index,\n" );
@@ -3551,6 +3581,7 @@ int main(int argc, char **argv)
     // variables for grabbing the options:
     uint64_t extract_from_byte = 0;
     uint64_t extract_from_line = 0;
+    uint64_t expected_first_byte = 1;
     uint64_t span_between_points = SPAN;
     char *index_filename = NULL;
     int continue_on_error = 0;
@@ -3580,7 +3611,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "a:b:cCdDeEfFhiI:lL:s:StTu:v:wWxX")) != -1)
+    while ((opt = getopt(argc, argv, "a:b:cCdDeEfFhiI:lL:n:s:StTu:v:wWxX")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -3600,7 +3631,6 @@ int main(int argc, char **argv)
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
                 extract_from_byte = (uint64_t)giveMeAnInteger( optarg );
-                // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_BYTE;
                 actions_set++;
                 break;
@@ -3664,7 +3694,6 @@ int main(int argc, char **argv)
             // `-L #` extracts data from indicated line in uncompressed stream of <FILE>
             case 'L':
                 extract_from_line = (uint64_t)giveMeAnInteger( optarg );
-                // read from stdin and output to stdout
                 action = ACT_EXTRACT_FROM_LINE;
                 actions_set++;
                 if ( extend_index_with_lines == 0 ) {
@@ -3672,9 +3701,18 @@ int main(int argc, char **argv)
                     extend_index_with_lines = 1;
                 }
                 break;
+            // `-n #` indicates that the first byte on compressed input is #, not 1
+            // and so truncated compressed inputs can be used. This is subject to checks later on.
+            case 'n':
+                expected_first_byte = (uint64_t)giveMeAnInteger( optarg );
+                if ( expected_first_byte == 0 ) {
+                    printToStderr( VERBOSITY_NORMAL, "Option `-n 0` invalid: must be >= 1.\n" );
+                    return EXIT_INVALID_OPTION;
+                }
+                break;
             // `-s #` span between index points, in MiB
             case 's':
-                // span is converted to from MiB to bytes for internal use
+                // span is converted from MiB to bytes for internal use
                 span_between_points = strtoll( optarg, NULL, 10 );
                 if ( span_between_points > UINT64_MAX / 1024 / 1024 ) {
                     printToStderr( VERBOSITY_NORMAL, "Option `-s %llu` MiB value too high!\n", span_between_points );
@@ -3764,7 +3802,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("abcCdDeEfFhiIlLSstTuvwWxX", optopt) ) {
+                    if ( NULL == strchr("abcCdDeEfFhiIlLnSstTuvwWxX", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -3855,6 +3893,12 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    if ( expected_first_byte != 1 &&
+         ( action != ACT_EXTRACT_FROM_BYTE && action != ACT_EXTRACT_FROM_LINE ) ) {
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-n` parameter can only be used with `-[bL]`.\n" );
+        return EXIT_INVALID_OPTION;
+    }
+
     if ( 0 == actions_set ) {
         // `-I <FILE>` is equivalent to `-i -I <FILE>`
         if ( action == ACT_NOT_SET && index_filename_indicated  == 1 ) {
@@ -3936,7 +3980,11 @@ int main(int argc, char **argv)
         }
         switch( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_byte );
+                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu", action_string, extract_from_byte );
+                if ( expected_first_byte > 1 ) {
+                    printToStderr( VERBOSITY_NORMAL, " (input - %llu)", expected_first_byte - 0 );
+                }
+                printToStderr( VERBOSITY_NORMAL, "\n\n" );
                 break;
             case ACT_EXTRACT_FROM_LINE:
                 printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_line );
@@ -3956,12 +4004,14 @@ int main(int argc, char **argv)
             do_not_delete_original_file, continue_on_error );
         printToStderr( VERBOSITY_EXCESSIVE, "  -E: %d, \t-f: %d, \t-F: %d\n",
             end_on_first_proper_gzip_eof, force_action, force_strict_order );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -i: %d, \t-I: %s, \t-l: %d\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "  -i: %d, \t-I: %s\n",
             ( (action==ACT_CREATE_INDEX)? 1: 0 ),
-            ( (index_filename_indicated>0)? index_filename: NULL ),
-            ( (action==ACT_LIST_INFO)? list_verbosity: 0 ) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -L: %llu, \t-s: %llu, \t-S: %d, \t-t: %d\n",
-            extract_from_line, span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
+            ( (index_filename_indicated>0)? index_filename: NULL ));
+        printToStderr( VERBOSITY_EXCESSIVE, "  -l: %d, \t-L: %llu, \t-n: %llu\n",
+            ( (action==ACT_LIST_INFO)? list_verbosity: 0 ),
+            extract_from_line, expected_first_byte );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -s: %llu, \t-S: %d, \t-t: %d\n",
+            span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d, \t-W: %d\n",
             ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), utility_option,
               verbosity_level, wait_for_file_creation, ( (write_index_to_disk==0)? 1: 0 ) );
@@ -4046,7 +4096,8 @@ int main(int argc, char **argv)
                         EXTRACT_FROM_BYTE, extract_from_byte, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -4062,7 +4113,8 @@ int main(int argc, char **argv)
                         EXTRACT_FROM_LINE, 0, extract_from_line, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -4104,13 +4156,15 @@ int main(int argc, char **argv)
                         JUST_CREATE_INDEX, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         JUST_CREATE_INDEX, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -4133,13 +4187,15 @@ int main(int argc, char **argv)
                         SUPERVISE_DO, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -4151,7 +4207,8 @@ int main(int argc, char **argv)
                         EXTRACT_TAIL, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -4166,13 +4223,15 @@ int main(int argc, char **argv)
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -4184,7 +4243,8 @@ int main(int argc, char **argv)
                         COMPRESS_AND_CREATE_INDEX, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                 break;
 
             default:
@@ -4301,7 +4361,8 @@ int main(int argc, char **argv)
                             JUST_CREATE_INDEX, 0, 0, span_between_points,
                             write_index_to_disk, end_on_first_proper_gzip_eof,
                             always_create_a_complete_index, waiting_time, force_action,
-                            wait_for_file_creation, extend_index_with_lines );
+                            wait_for_file_creation, extend_index_with_lines,
+                            expected_first_byte );
                 if ( ret_value != EXIT_OK ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Could not create index '%s'.\nAborted.\n", index_filename );
                     break; // breaks for() loop
@@ -4317,7 +4378,8 @@ int main(int argc, char **argv)
                         EXTRACT_FROM_BYTE, extract_from_byte, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     break;
 
                 case ACT_EXTRACT_FROM_LINE:
@@ -4325,7 +4387,8 @@ int main(int argc, char **argv)
                         EXTRACT_FROM_LINE, 0, extract_from_line, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -4365,7 +4428,8 @@ int main(int argc, char **argv)
                             JUST_CREATE_INDEX, 0, 0, span_between_points,
                             write_index_to_disk, end_on_first_proper_gzip_eof,
                             always_create_a_complete_index, waiting_time, force_action,
-                            wait_for_file_creation, extend_index_with_lines );
+                            wait_for_file_creation, extend_index_with_lines,
+                            expected_first_byte );
                     break;
 
                 case ACT_LIST_INFO:
@@ -4383,7 +4447,8 @@ int main(int argc, char **argv)
                         SUPERVISE_DO, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
@@ -4392,7 +4457,8 @@ int main(int argc, char **argv)
                         EXTRACT_TAIL, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
@@ -4400,7 +4466,8 @@ int main(int argc, char **argv)
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
@@ -4410,7 +4477,8 @@ int main(int argc, char **argv)
                         COMPRESS_AND_CREATE_INDEX, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     if ( ret_value == EXIT_OK &&
                          do_not_delete_original_file == 0 ) {
                         printToStderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
@@ -4429,7 +4497,8 @@ int main(int argc, char **argv)
                         DECOMPRESS, 0, 0, span_between_points,
                         write_index_to_disk, end_on_first_proper_gzip_eof,
                         always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines );
+                        wait_for_file_creation, extend_index_with_lines,
+                        expected_first_byte );
                     if ( ret_value == EXIT_OK ) {
                         // delete original file, as with gzip
                         if ( (char *)strstr(file_name, ".gz") ==
