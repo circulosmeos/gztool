@@ -4007,7 +4007,7 @@ int main(int argc, char **argv)
             case ACT_EXTRACT_FROM_BYTE:
                 printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu", action_string, extract_from_byte );
                 if ( expected_first_byte > 1 ) {
-                    printToStderr( VERBOSITY_NORMAL, " (input - %llu)", expected_first_byte - 0 );
+                    printToStderr( VERBOSITY_NORMAL, " (input - %llu bytes)", expected_first_byte - 1 );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n\n" );
                 break;
