@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.11"
+    #define PACKAGE_VERSION "0.11.1"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -1705,8 +1705,33 @@ local struct returned_output decompress_and_build_index(
                             // print have - offset bytes
                             // If offset==0 (from offset byte on) this prints always all bytes:
                             output_data_counter += have - offset;
-                            // also count lines, if possible
+                            //
+                            // also count lines, if necessary:
+                            //
+                            if ( offset != 0 &&   // Count lines ONLY in offset block, not in all window.
+                                 NULL != index && // If lines must be counted, index passed must be !=NULL
+                                                  // to mark index->index_version == 1
+                                                  // and use index->line_number_format
+                                 index->index_version == 1 ) {
+                                // output data is in window + an offset
+                                unsigned char *output_data = window + offset + (WINSIZE - avail_out_0);
+                                unsigned char *pos;
+                                int count = have - offset;
+                                have_lines = 0;
+                                do {
+                                    pos = memchr( output_data, ( (0 == index->line_number_format)? '\n': '\r' ), count );
+                                    if ( NULL != pos ) {
+                                        count -= ( pos - output_data ) + 1;
+                                        output_data = pos + 1;
+                                        have_lines ++;
+                                    }
+                                } while ( pos != NULL && pos < (output_data + count) );
+                            }
+                            // if index->index_version == 0 then output_lines_counter is simply not used
                             output_lines_counter += have_lines;
+                            //
+                            // end of "also count lines, if necessary"
+                            //
                             printToStderr( VERBOSITY_CRAZY, "[>1>%d]", have - offset );
                             if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, file_out) != (have - offset) ||
                                 ferror(file_out)) {
