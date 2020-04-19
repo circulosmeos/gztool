@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.11.1"
+    #define PACKAGE_VERSION "0.11.2"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -3731,7 +3731,7 @@ int main(int argc, char **argv)
             case 'n':
                 expected_first_byte = (uint64_t)giveMeAnInteger( optarg );
                 if ( expected_first_byte == 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-n 0` invalid: must be >= 1.\n" );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-n 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -3740,7 +3740,7 @@ int main(int argc, char **argv)
                 // span is converted from MiB to bytes for internal use
                 span_between_points = strtoll( optarg, NULL, 10 );
                 if ( span_between_points > UINT64_MAX / 1024 / 1024 ) {
-                    printToStderr( VERBOSITY_NORMAL, "Option `-s %llu` MiB value too high!\n", span_between_points );
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-s %llu` MiB value too high!\n", span_between_points );
                     return EXIT_INVALID_OPTION;
                 }
                 span_between_points = span_between_points * 1024 * 1024;
@@ -3828,11 +3828,11 @@ int main(int argc, char **argv)
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
                     if ( NULL == strchr("abcCdDeEfFhiIlLnSstTuvwWxX", optopt) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Unknown option `-%c'.\n", optopt);
+                        printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
                 } else
-                    printToStderr( VERBOSITY_NORMAL, "Unknown option character `\\x%x'.\n", optopt);
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option character `\\x%x'.\n", optopt);
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 return EXIT_INVALID_OPTION;
             default:
@@ -3930,7 +3930,7 @@ int main(int argc, char **argv)
             action = ACT_CREATE_INDEX;
             if ( (optind + 1) < argc ) {
                 // too much files indicated to use `-I`
-                printToStderr( VERBOSITY_NORMAL, "`-I` is incompatible with multiple input files.\nAborted.\n\n" );
+                printToStderr( VERBOSITY_NORMAL, "ERROR: `-I` is incompatible with multiple input files.\nAborted.\n\n" );
                 return EXIT_INVALID_OPTION;
             }
         } else {
