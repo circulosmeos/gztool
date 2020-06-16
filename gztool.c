@@ -3803,6 +3803,7 @@ int main(int argc, char **argv)
                 if ( ( optarg[0] != '0' && verbosity_level == 0 ) ||
                      strlen( optarg ) > 1 ||
                      verbosity_level > VERBOSITY_NUTS ) {
+                    verbosity_level = VERBOSITY_NORMAL; // without this an erroneous `-v` may not be shown
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-v %s` (`-v [0..5]`).\n", optarg );
                     return EXIT_INVALID_OPTION;
                 }
