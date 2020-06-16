@@ -3395,8 +3395,8 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                             (long long unsigned)(j +1), (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
                         if ( 1 == index->index_version ) // print line number information
                             fprintf( stdout, "L%llu ", (long long unsigned)index->list[j].line_number );
-                        fprintf( stdout, "( %d/%ld %.2f%% ), ", index->list[j].window_size,
-                            local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
+                        fprintf( stdout, "( %d/%llu %.2f%% ), ", index->list[j].window_size,
+                            (long long unsigned)local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
                         if ( (j + 1) % 5 == 0 ) {
                             fprintf( stdout, "\n" );
                         }
