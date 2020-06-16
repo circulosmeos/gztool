@@ -3067,9 +3067,9 @@ action_create_index_wait_for_file_creation:
 
         if ( indx_n_extraction_opts == DECOMPRESS ) {
             // file must have ".gz" extension so it can be decompressed
-            if ( (char *)strstr(file_name, ".gz") ==
-                 (char *)(file_name + strlen(file_name) - 3) &&
-                 strlen( file_name ) > 3
+            if ( strlen( file_name ) > 3 && // avoid out-of-bounds
+                 (char *)strstr(file_name, ".gz") ==
+                 (char *)(file_name + strlen(file_name) - 3)
                 ) {
                 // if gzip-file name is 'FILE.gz', output file name will be 'FILE'
                 char *output_filename = malloc( strlen(file_name) );
@@ -3241,7 +3241,8 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 gzip_filename = malloc( strlen(file_name) + 1 );
                 if ( NULL != gzip_filename ) {
                     sprintf( gzip_filename, "%s", file_name );
-                    if ( (char *)strstr(gzip_filename, ".gzi") ==
+                    if ( strlen( file_name ) > 4 && // avoid out-of-bounds
+                         (char *)strstr(gzip_filename, ".gzi") ==
                             (char *)(gzip_filename + strlen(file_name) - 4) ) {
                         // if index file name is 'FILE.gzi', gzip-file name should be 'FILE.gz'
                         gzip_filename[strlen(gzip_filename)-1]='\0';
@@ -4307,7 +4308,8 @@ int main(int argc, char **argv)
                 if ( action == ACT_COMPRESS_AND_CREATE_INDEX ) {
                     sprintf(index_filename, "%s.gzi", argv[i]);
                 } else {
-                    if ( (char *)strstr(index_filename, ".gz") ==
+                    if ( strlen( argv[i] ) > 3 && // avoid out-of-bounds
+                         (char *)strstr(index_filename, ".gz") ==
                          (char *)(index_filename + strlen(argv[i]) - 3)
                         )
                         // if gzip-file name is 'FILE.gz', index file name will be 'FILE.gzi'
@@ -4526,9 +4528,9 @@ int main(int argc, char **argv)
                         expected_first_byte );
                     if ( ret_value == EXIT_OK ) {
                         // delete original file, as with gzip
-                        if ( (char *)strstr(file_name, ".gz") ==
-                             (char *)(file_name + strlen(file_name) - 3) &&
-                             strlen( file_name ) > 3
+                        if ( strlen( file_name ) > 3 && // avoid out-of-bounds
+                             (char *)strstr(file_name, ".gz") ==
+                             (char *)(file_name + strlen(file_name) - 3)
                             ) {
                             // if gzip-file name is 'FILE.gz', output file has been 'FILE'
                             char *output_filename = malloc( strlen(file_name) );
