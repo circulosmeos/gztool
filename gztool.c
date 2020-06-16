@@ -3278,9 +3278,12 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                          verbosity_level > VERBOSITY_NONE) {
                         fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
                         fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
-                        if ( index->file_size > 0 )
-                            fprintf( stdout, " (%.2f%%)", 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
-                        fprintf( stdout, " %s (%llu Bytes)", giveMeSIUnits(st_gzip.st_size, 1), (long long unsigned)st_gzip.st_size );
+                        if ( index->file_size > 0 ) {
+                            fprintf( stdout, " (%.2f%%)",
+                                100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
+                        }
+                        fprintf( stdout, " %s (%llu Bytes)",
+                            giveMeSIUnits(st_gzip.st_size, 1), (long long unsigned)st_gzip.st_size );
                     }
                 } else {
                     if ( verbosity_level > VERBOSITY_NONE )
@@ -3315,7 +3318,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 fprintf( stdout, "\n" );
             }
         }
+
         if ( verbosity_level > VERBOSITY_NONE ) {
+
             // print uncompressed file size
             if ( index->file_size != 0 ) {
                 fprintf( stdout, "\tSize of uncompressed file: %s (%llu Bytes)\n",
@@ -3323,9 +3328,11 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
             } else {
                 if ( index->have > 1 ) {
                     fprintf( stdout, "\tSize of uncompressed file > %s (%llu Bytes)\n",
-                        giveMeSIUnits(index->list[index->have -1].out, 1), (long long unsigned)index->list[index->have -1].out );
+                        giveMeSIUnits(index->list[index->have -1].out, 1),
+                        (long long unsigned)index->list[index->have -1].out );
                 }
             }
+
             // print number of lines in uncompressed data
             if ( 1 == index->index_version ) {
                 uint64_t local_number_of_lines = 0;
@@ -3346,22 +3353,56 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 }
                 fprintf( stdout, "\n" );
             }
+
+            // print compression factor, estimated from available data if index isn't complete
+            fprintf( stdout, "\tCompression factor       : " );
+            if ( 1 == index->index_complete &&
+                 NULL != gzip_filename  // gzip file may be unkown: compression cannot be calculated here
+                ) {
+                // index is complete
+                if ( st_gzip.st_size > 0 &&
+                     index->file_size > 0 ) {
+                    fprintf( stdout, "%.2f%%\n",
+                        100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
+                }
+            } else {
+                // index is incomplete (or gzip file is not available):
+                // use last available index point as data for percentage
+                if ( index->have > 1 && // index has at least one useful index point
+                     index->list[index->have -1].in  > 0 &&
+                     index->list[index->have -1].out > 0 ) {
+                    fprintf( stdout, "%.2f%%\n",
+                        100.0 - (double)index->list[index->have -1].in/(double)index->list[index->have -1].out*100.0 );
+                } else {
+                    fprintf( stdout, "Not available\n");
+                }
+            }
+
         }
+
+        // print and check index points stored in index
         if ( list_verbosity > VERBOSITY_NORMAL ) {
             if ( verbosity_level > VERBOSITY_NONE ) {
                 if ( list_verbosity < VERBOSITY_MANIAC ) {
-                    if ( 0 == index->index_version )
-                        fprintf( stdout, "\tList of points:\n\t#: @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file), ...\n" );
-                    else
-                        fprintf( stdout, "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (window data size in Bytes @window's beginning at index file), ...\n" );
+                    if ( 0 == index->index_version ) {
+                        fprintf( stdout,
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file), ...\n" );
+                    } else {
+                        fprintf( stdout,
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (window data size in Bytes @window's beginning at index file), ...\n" );
+                    }
                 } else {
-                    if ( 0 == index->index_version )
-                        fprintf( stdout, "\tList of points:\n\t#: @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...\n" );
-                    else
-                        fprintf( stdout, "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (compressed window size / uncompressed window size), ...\n" );
+                    if ( 0 == index->index_version ) {
+                        fprintf( stdout,
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte (compressed window size / uncompressed window size), ...\n" );
+                    } else {
+                        fprintf( stdout,
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (compressed window size / uncompressed window size), ...\n" );
+                    }
                 }
-                if ( list_verbosity == VERBOSITY_MANIAC )
+                if ( list_verbosity == VERBOSITY_MANIAC ) {
                     fprintf( stdout, "\tChecking compressed windows...\n" );
+                }
             }
             for ( j=0; j<index->have; j++ ) {
                 if ( list_verbosity == VERBOSITY_EXCESSIVE &&
@@ -3382,7 +3423,8 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                         unsigned char *decompressed_window = NULL;
                         decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
                         if ( NULL == decompressed_window ) {
-                            printToStderr( VERBOSITY_NORMAL, "\nERROR: Could not decompress window #%llu from index file '%s'.\n",
+                            printToStderr( VERBOSITY_NORMAL,
+                                "\nERROR: Could not decompress window #%llu from index file '%s'.\n",
                                 j +1, file_name);
                             ret_value = EXIT_GENERIC_ERROR;
                         }
@@ -3393,11 +3435,14 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                         comp_win_counter   += index->list[j].window_size;
                         uncomp_win_counter += local_window_size;
                         fprintf( stdout, "#%llu: @ %llu / %llu ",
-                            (long long unsigned)(j +1), (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
-                        if ( 1 == index->index_version ) // print line number information
+                            (long long unsigned)(j +1),
+                            (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
+                        if ( 1 == index->index_version ) { // print line number information
                             fprintf( stdout, "L%llu ", (long long unsigned)index->list[j].line_number );
+                        }
                         fprintf( stdout, "( %d/%llu %.2f%% ), ", index->list[j].window_size,
-                            (long long unsigned)local_window_size, ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
+                            (long long unsigned)local_window_size,
+                            ((local_window_size>0)?(100.0 - (double)(index->list[j].window_size) / (double)local_window_size * 100.0):0.0) );
                         if ( (j + 1) % 5 == 0 ) {
                             fprintf( stdout, "\n" );
                         }
@@ -3411,11 +3456,13 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
         if ( verbosity_level > VERBOSITY_NONE &&
              list_verbosity == VERBOSITY_MANIAC &&
              uncomp_win_counter > 0 ) {
-            fprintf( stdout, "\n\tEstimated gzip data compression factor: %.2f%%", 100.0 - (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
+            fprintf( stdout, "\n\tEstimated gzip data compression factor: %.2f%%",
+                100.0 - (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
             if ( NULL != gzip_filename &&
                  st_gzip.st_size > 0 &&
                  index->file_size > 0 ) {
-                fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%", 100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
+                fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%",
+                    100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
             }
         }
 
