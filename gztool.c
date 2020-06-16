@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.11.2"
+    #define PACKAGE_VERSION "0.11.3"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -4466,7 +4466,38 @@ int main(int argc, char **argv)
                         // then the actual parameter is the gzip filename
                         ret_value = action_list_info( index_filename, file_name, list_verbosity );
                     } else {
-                        ret_value = action_list_info( file_name, NULL, list_verbosity );
+                        // if indicated file_name is not an index, but an index exists corresponding
+                        // to it, use it for ease of use,
+                        // BUT only if passed file exists, to avoid adding a spurious extension to
+                        // imaginary FILE, obtaining FILE.gzi, the index for existent FILE.gz (!).
+                        if ( access( file_name, F_OK ) != -1 &&
+                            ( ( strlen( file_name ) > 4 && // avoid out-of-bounds
+                                (char *)strstr(file_name, ".gzi") !=
+                                (char *)(file_name + strlen(argv[i]) - 4) )
+                             ||
+                            strlen( file_name ) <= 4 )
+                        ) {
+                            printToStderr( VERBOSITY_EXCESSIVE,
+                                "Provided file '%s' has not '.gzi' extension ...\n", file_name );
+                            // file_name is not named "*.gzi"
+                            // so let's see if there's a filename with the corresponding index name:
+                            // fortunately, this index name has already been calculated: index_filename
+                            if ( access( index_filename, F_OK ) != -1 ) {
+                                // index_filename exists, so let's use it:
+                                printToStderr( VERBOSITY_EXCESSIVE,
+                                    "Detected '%s': using it as index file ...\n", index_filename );
+                                ret_value = action_list_info( index_filename, file_name, list_verbosity );
+                            } else {
+                                // provided file_name must be used, as there's no '.gzi' companion
+                                printToStderr( VERBOSITY_EXCESSIVE,
+                                    "Not detected '%s' file ...\n", file_name );
+                                ret_value = action_list_info( file_name, NULL, list_verbosity );
+                            }
+                        } else {
+                            // this is the default case: the passed parameter file_name
+                            // is the supossed index filename
+                            ret_value = action_list_info( file_name, NULL, list_verbosity );
+                        }
                     }
                     break;
 
