@@ -88,7 +88,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.11.2)
+      gztool (v0.11.3)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -255,6 +255,7 @@ Examples of use
             Guessed gzip file name:    'accounting.gz' (66.05%) ( 50172261 Bytes )
             Number of index points:    15
             Size of uncompressed file: 147773440 Bytes
+            Compression factor       : 66.05%
             List of points:
             @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
             #1: @ 10 / 0 ( 0 @56 ), #2: @ 3059779 / 10495261 ( 13127 @80 ), #3: @ 6418423 / 21210594 ( 6818 @13231 ), #4: @ 9534259 / 31720206 ( 7238 @20073 )...
@@ -358,7 +359,7 @@ Other interesting links
 Version
 =======
 
-This version is **v0.11.2**.
+This version is **v0.11.3**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
