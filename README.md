@@ -53,13 +53,15 @@ Also, some optimizations and brand new behaviours have been added:
 Installation
 ============
 
+* `gztool` is available using directly `apt-get install gztool` in [Debian unstable (actually)](https://packages.debian.org/source/unstable/gztool) and in [Ubuntu *Groovy Gorilla* (20.10) and above](https://launchpad.net/ubuntu/+source/gztool).
+
 * In Ubuntu, [using my repository](https://launchpad.net/~roberto.s.galende/+archive/ubuntu/gztool):
 
         sudo add-apt-repository ppa:roberto.s.galende/gztool
         sudo apt-get update
         sudo apt-get install gztool
 
-* See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform. If none fit your needs, `gztool` is very easy to compile: see next sections.
+* See the [Release page](https://github.com/circulosmeos/gztool/releases) for executables for your platform, including **Windows**. If none fit your needs, `gztool` is very easy to compile: see next sections.
 
 Compilation
 ===========
