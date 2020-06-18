@@ -90,7 +90,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.11.3)
+      gztool (v0.11.4)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random positioned data extraction.
@@ -316,7 +316,14 @@ Please note that not all stored numbers are 64-bit long. This is because some co
 
 With 64 bit long numbers, the index could potentially manage files up to 2^64 = 16 EiB (16 777 216 TiB).
 
-Regarding line number counting (`-[xX]`), note that gztool's index counts last line in uncompressed data even if the last char isn't a newline char - whilst `wc` command will not count it in this case!. Nonetheless, line counting when extracting data with `-[bLtT]` does follow `wc` convention - this is in order to not obtain different (+/-1) results reading `gztool` output info and `wc` counts.
+###Line number counting
+
+Regarding line number counting (`-[xX]`), note that gztool's index counts last line in uncompressed data even if the last char isn't a newline char - whilst `wc` command will not count it in this case!. Nonetheless, line counting when extracting data with `-[bLtT]` does follow `wc` convention - this is in order to not obtain different (+/-1) results reading `gztool` output info and `wc` counts.    
+
+Also note that line counting when a gzip file / index file aren't still complete, always starts in **1**. This is coherent with the previous statement, and it's also reasonable because if number counting is activated (`-[xX]`) there'll presumably be lines beautifully ending with a *new line* char (or chars in case of Windows: `CR+LF`) somewhere in the string.    
+
+magic file
+==========
 
 A *`magic`* file to correctly identify `gztool`'s index files with linux `file` command is provided: you can append it (or overwrite your empty) `/etc/magic` file or append/copy it to your home directory as `~/.magic` (note the point prepending the name).
 
@@ -361,7 +368,7 @@ Other interesting links
 Version
 =======
 
-This version is **v0.11.3**.
+This version is **v0.11.4**.
 
 Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

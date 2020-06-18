@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.11.3"
+    #define PACKAGE_VERSION "0.11.4"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -1934,8 +1934,9 @@ local struct returned_output decompress_and_build_index(
         index->list = next;
         index->size = index->have;
         index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
-        if ( 0 == there_are_more_chars && totlines > 0 )
+        if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
+        }
         index->number_of_lines = totlines; /* lines in uncompressed file */
     }
 
@@ -2013,8 +2014,9 @@ local struct returned_output decompress_and_build_index(
     if ( always_create_a_complete_index == 1 &&
          NULL != index ) {
         index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
-        if ( 0 == there_are_more_chars && totlines > 0 )
+        if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
+        }
         index->number_of_lines = totlines; /* lines in uncompressed file */
         // return index pointer and write index to index file, ignoring the decompression error
         *built = index;
@@ -2738,8 +2740,9 @@ local struct returned_output compress_and_build_index(
         index->list = next;
         index->size = index->have;
         index->file_size = totin; /* size of uncompressed file */
-        if ( 0 == there_are_more_chars && totlines > 0)
+        if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
+        }
         index->number_of_lines = totlines; /* lines in uncompressed file */
     }
 
@@ -2821,8 +2824,9 @@ local struct returned_output compress_and_build_index(
     if ( always_create_a_complete_index == 1 ) {
         if ( NULL != index ) {
             index->file_size = totin; /* size of uncompressed file */
-            if ( 0 == there_are_more_chars && totlines > 0 )
+            if ( 0 == there_are_more_chars && totlines > 1 ) {
                 totlines --;
+            }
             index->number_of_lines = totlines; /* lines in uncompressed file */
             // return index pointer and write index to index file, ignoring the compression error
             *built = index;
@@ -3229,7 +3233,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
          strlen( file_name ) > 0 ) {
         stat( file_name, &st );
         if ( verbosity_level > VERBOSITY_NONE )
-            fprintf( stdout, "\tSize of index file (v%d):   %s (%llu Bytes)",
+            fprintf( stdout, "\tSize of index file (v%d)  : %s (%llu Bytes)",
                 index->index_version, giveMeSIUnits(st.st_size, 1), (long long unsigned)st.st_size );
 
         if ( st.st_size > 0 &&
@@ -3277,7 +3281,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                     if ( st_gzip.st_size > 0 &&
                          verbosity_level > VERBOSITY_NONE) {
                         fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
-                        fprintf( stdout, "\tGuessed gzip file name:    '%s'", gzip_filename );
+                        fprintf( stdout, "\tGuessed gzip file name   : '%s'", gzip_filename );
                         if ( index->file_size > 0 ) {
                             fprintf( stdout, " (%.2f%%)",
                                 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
@@ -3311,7 +3315,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
     } else {
 
         if ( verbosity_level > VERBOSITY_NONE ) {
-            fprintf( stdout, "\tNumber of index points:    %llu", (long long unsigned)index->have );
+            fprintf( stdout, "\tNumber of index points   : %llu", (long long unsigned)index->have );
             if ( index->have > 1000 ) {
                 fprintf( stdout, " (%s)\n", giveMeSIUnits(index->have, 0) );
             } else {
@@ -3345,11 +3349,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                         fprintf( stdout, "\tNumber of lines           >" );
                     }
                 }
-                if ( local_number_of_lines > 0 ) {
-                    fprintf( stdout, " %llu", (long long unsigned)local_number_of_lines );
-                    if ( local_number_of_lines > 1000 ) {
-                        fprintf( stdout, " (%s)", giveMeSIUnits(local_number_of_lines, 0) );
-                    }
+                fprintf( stdout, " %llu", (long long unsigned)local_number_of_lines );
+                if ( local_number_of_lines > 1000 ) {
+                    fprintf( stdout, " (%s)", giveMeSIUnits(local_number_of_lines, 0) );
                 }
                 fprintf( stdout, "\n" );
             }
