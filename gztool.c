@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "0.11.4"
+    #define PACKAGE_VERSION "0.11.5"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -3340,14 +3340,15 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
             // print number of lines in uncompressed data
             if ( 1 == index->index_version ) {
                 uint64_t local_number_of_lines = 0;
+                fprintf( stdout, "\tNumber of lines          " );
                 if ( 1 == index->index_complete ) {
                     local_number_of_lines = index->number_of_lines;
-                    fprintf( stdout, "\tNumber of lines          :" );
+                    fprintf( stdout, ":" );
                 } else {
                     if ( index->have > 1 ) {
                         local_number_of_lines = index->list[index->have -1].line_number;
-                        fprintf( stdout, "\tNumber of lines           >" );
                     }
+                    fprintf( stdout, ">" );
                 }
                 fprintf( stdout, " %llu", (long long unsigned)local_number_of_lines );
                 if ( local_number_of_lines > 1000 ) {
