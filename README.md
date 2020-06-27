@@ -72,6 +72,13 @@ Compilation
 
     $ gcc -O3 -o gztool gztool.c -lz -lm
 
+If you wish you can use autoconf to check the dependencies, build and
+test `gztool`:
+
+    $ autoreconf && ./configure && make check
+
+This will produce a binary in `gztool`.
+
 Compilation in Windows
 ======================
 
