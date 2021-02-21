@@ -1,10 +1,10 @@
 .\"                                      Hey, EMACS: -*- nroff -*-
-.\" (C) Copyright 2020 Roberto S. Galende <roberto.s.galende@gmail.com>,
+.\" (C) Copyright 2021 Roberto S. Galende <roberto.s.galende@gmail.com>,
 .\"
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Jun 22 2020" "gztool v0.11.5"
+.TH gztool 1 "Feb 20 2021" "gztool v1.1"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -18,10 +18,10 @@
 .\" .sp <n>    insert n+1 empty lines
 .\" for manpage-specific macros, see man(7)
 .SH NAME
-gztool \- extract random-positioned data from gzip files
+gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-cCdDeEfFhilStTwWxX|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-cCdDeEfFhilpPStTwWxX|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -44,11 +44,14 @@ so there's no waste of time. Any action can be interrupted at
 any moment, and the remaining index will be reused on next runs.
 
 Extraction is possible from any byte (or line) position
-in the uncompressed data using `-b`.
+in the uncompressed data using `-b` (or `-L` for lines).
 
 If the uncompressed file is a text file, then using
 the `-x` modifier the index will take care of lines, so later \fBgztool\fP can be
 requested to extract data from a particular line with `-L`.
+
+See the full listing of capabilities on \fBINTERNALS\fp.
+.BR
 .SH OPTIONS
 .TP
 .BR \fBfiles\fP
@@ -110,6 +113,16 @@ Accepts '0', '0x', and suffixes 'kmgtpe' (^10) or 'KMGTPE' (^2).
 .BR \-n\ #
 indicates that the first byte on compressed input is #, not 1,
 and so truncated compressed inputs can be used if an index exists.
+.TP
+.BR \-p
+indicates that the gzip input stream may be composed of various
+uncorrectly terminated GZIP streams, and so then a careful
+\fIPatching\fP of the input may be needed to extract correct data.
+.TP
+.BR \-P
+like `-p`, but when used with `-[ST]` implies that checking
+for errors in stream is made as quick as possible as the gzip file
+grows. Warning: this may lead to some errors not being patched.
 .TP
 .BR \-s\ #
 span in uncompressed MiB between index points when
@@ -231,6 +244,34 @@ Creating and index for all "*gz" files in a directory:
 .br
 
 
+* Extract all data from a \fBrsyslog's veryRobustZip\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using \fBrsyslog's veryRobustZip omfile option\fP and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream **in the same file**. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
+
+.BR \ \ \ \ $\ gztool\ -p\ -b0\ compressed_text_file.gz
+.br
+
+This creates, as usual, the index file `compressed_text_file.gzi`. In order to not create it, `-W` (*do not Write index*) can be used:
+
+.BR \ \ \ \ $\ gztool\ -pWb0\ compressed_text_file.gz
+.br
+
+Note that `-p` can require up to twice the time for decompression, because it performs two decompression processes: the usual one, and another one that is performed **in advance** of the usual and which is the one that detects errors, marks them, and finds new entry points to end/begin the decompression circumventing the problems.
+.br
+Note also that these *corrupted-gzip-files* should be always decompressed with `-p` parameter, even if a `gztool` index file exists for them, because the index file stores entry points, but does not store where do errors occur in the `gzip` file.
+That said, if the `-[bL]` point of extraction is beyond the point(s) of error in the `gzip` file and an index file exists, then the decompression can proceed fine without `-p`, as the index points stored in the index file are always clean.
+.br
+
+
+* When tailing an still-growing gzip file (`-T`) that could contain errors at some point, one may still want to obtain output from the gzip stream as soon as possible - this is what the patching option `-P` is for (like `-p` but capitalized): with `-p` `gztool` decompress the stream about 48 kiB ahead of the output that is actually shown/written in order to catch possible gzip-stream errors ahead of output, and so maintain always a clean output without error-introduced artifacts. This has the side effect that output must always wait for that 48 kiB of data to be available in advance, which if the file grows slowly can take a very long time. With `-P` the buffer-ahead restriction is relaxed to just as few bytes as available before reaching end-of-file and waiting for new data, so responsiveness is as quick as without `-p`. The side effect of `-P` is that depending on the gzip file some errors may lead to incorrect output being shown/written - though in this case a "\fBPATCHING WARNING\fP" would be shown (to stderr).
+
+.BR \ \ \ \ $\ gztool\ -PT\ application_log.gz
+.br
+
+The same applies to `-S` though in this case there's no output, as only the index is being constructed:
+
+.BR \ \ \ \ $\ gztool\ -PS\ application_log.gz
+.br
+
+
 * To tail to stdout, \fIlike a\fP `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
 
 .BR \ \ \ \ $\ gztool\ -T\ still-growing-gzip-file.gz
@@ -291,8 +332,9 @@ In this latter case only a pair of index+gzip filenames can be indicated with ea
 .BR \ \ \ \ $\ gztool\ -n\ 100001\ -b\ 20M\ gzip_filename.gz
 .br
 
-
-Please, note that index point positions at index file \fBmay require also the previous byte\fP, as gzip stream is not byte rounded but a stream of pure bits. Thus \fBif you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip\fP - as said, it may not be needed, but in 7/8 times it will be needed.
+Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered **100001**, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the *1* byte).
+.br
+Please, note that index point positions at index file \fBmay require also the previous byte\fP to be available in the truncated gzip file, as gzip stream is not byte-rounded but a stream of pure bits. Thus \fIif you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip\fP - as said, it may not be needed, but in 7 of 8 cases it is needed.
 .br
 
 .SH INTERNALS
@@ -302,6 +344,8 @@ Nonetheless Mark Adler, the author of zlib (//github.com/madler/zlib), provided 
 \fBgztool\fP builds upon zran.c to provide a useful command line tool. 
 Also, some optimizations has been made:
 
+.br
+* \fBgztool\fP can correctly read \fIincomplete gzip-concatenated-files\fP (using `-p`), that is, a gzip composed of a concatenation of `gzip` files, some of which are not correctly terminated. This can happen, for example, when using \fIrsyslog's veryRobustZip omfile option\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted.
 .br
 
 * \fBgztool\fP can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
@@ -343,14 +387,15 @@ Also, some optimizations has been made:
 * data can be provided from/to stdin/stdout
 .br
 
-* \fBgztool\fP can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See //unix.stackexchange.com/questions/429197/#541903 . Just the index must be also remotely available.
+* \fBgztool\fP can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See //unix.stackexchange.com/questions/429197/#541903 . Just note that the \fBgztool\fP \fIindex file\fP must be also available.
 .br
 
 .SH PROJECT HOME PAGE
 //github.com/circulosmeos/gztool
 .SH SEE ALSO
 .BR gzip (1),
-.BR gunzip (1)
+.BR gunzip (1),
+.BR zlib (3)
 .SH AUTHOR
 This program was written by Roberto S. Galende <roberto.s.galende@gmail.com>
 on work by Mark Adler's zlib (examples/zran.c) and is copyrighted under zlib licence terms.
