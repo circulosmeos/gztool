@@ -35,6 +35,7 @@ Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), pr
 `gztool` builds upon zran.c to provide a useful command line tool.    
 Also, some optimizations and brand new behaviours have been added:
 
+* `gztool` can correctly read incomplete `gzip`-concatenated-files (using `-p`), that is, a gzip composed of a concatenation of `gzip` files, some of which are not correctly terminated. This can happen, for example, when using [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted.
 * `gztool` can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
 * **`gztool` can *Supervise* an still-growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
 * extraction of data and index creation are interleaved, so there's no waste of time for the index creation.
@@ -45,10 +46,10 @@ Also, some optimizations and brand new behaviours have been added:
 * windows are not loaded in memory unless they're needed, so the application memory footprint is fairly low (< 1 MiB)
 * `gztool` can compress files (`-c`) and at the same time generate an index that is about 10-100 times smaller than if the index is generated after the file has already been compressed with gzip.
 * **Compatible with [`bgzip` files](http://www.htslib.org/doc/bgzip.html)** (short-uncompressed complete-gzip-block sizes)
-* **Compatible with complete `gzip` concatenated files** (aka [gzip members](http://tools.ietf.org/html/rfc1952#page-5))
+* **Compatible with complete `gzip`-concatenated-files** (aka [gzip members](http://tools.ietf.org/html/rfc1952#page-5))
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
-* `gztool` can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See [this stackexchange thread](https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/#541903). Just the index must be also remotely available.
+* `gztool` can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See [this stackexchange thread](https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/#541903). Just note that the `gztool` **index file** must be also available.
 
 Installation
 ============
@@ -97,14 +98,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v0.11.5)
+      gztool (v1.1)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
-      for quick and random positioned data extraction.
+      for quick and random-positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLnsv] #] [-cCdDeEfFhilStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-cCdDeEfFhilpPStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -138,6 +139,12 @@ Usage
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -n #: indicates that the first byte on compressed input is #, not 1,
          and so truncated compressed inputs can be used if an index exists.
+     -p: indicates that the gzip input stream may be composed of various
+         uncorrectly terminated GZIP streams, and so then a careful
+         Patching of the input may be needed to extract correct data.
+     -P: like `-p`, but when used with `-[ST]` implies that checking
+         for errors in stream is made as quick as possible as the gzip file
+         grows. Warning: this may lead to some errors not being patched.
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
      -S: Supervise indicated file: create a growing index,
@@ -152,7 +159,7 @@ Usage
          Default is `1` (normal).
      -w: wait for creation if file doesn't exist, when using `-[cdST]`.
      -W: do not Write index to disk. But if one is already available
-         read and use it. Useful if the index is still under a `-S` run.
+         read and use it. Useful if the index is still under an `-S` run.
      -x: create index with line number information (win/*nix compatible).
          (Index counts last line even w/o newline char (`wc` does not!)).
      -X: like `-x`, but newline character is '\r' (old mac).
@@ -231,6 +238,42 @@ Examples of use
 
         $ gztool -L 10m -WI None compressed_text_file.gz
 
+* Extract all data from a [rsyslog's veryRobustZip](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream **in the same file**. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
+
+        $ gztool -p -b0 compressed_text_file.gz
+
+This creates, as usual, the index file `compressed_text_file.gzi`. In order to not create it, `-W` (*do not Write index*) can be used:
+
+        $ gztool -pWb0 compressed_text_file.gz
+
+Note that `-p` can require up to twice the time for decompression, because it performs two decompression processes: the usual one, and another one that is performed **in advance** of the usual and which is the one that detects errors, marks them, and finds new entry points to end/begin the decompression circumventing the problems.
+
+Note also that these *corrupted-gzip-files* should be always decompressed with `-p` parameter, even if a `gztool` index file exists for them, because the index file stores entry points, but does not store where do errors occur in the `gzip` file.
+That said, if the `-[bL]` point of extraction is beyond the point(s) of error in the `gzip` file and an index file exists, then the decompression can proceed fine without `-p`, as the index points stored in the index file are always clean.
+
+* When tailing an still-growing gzip file (`-T`) that could contain errors at some point, one may still want to obtain output from the gzip stream as soon as possible - this is what the patching option `-P` is for (like `-p` but capitalized): with `-p` `gztool` decompress the stream about 48 kiB ahead of the output that is actually shown/written in order to catch possible gzip-stream errors ahead of output, and so maintain always a clean output without error-introduced artifacts. This has the side effect that output must always wait for that 48 kiB of data to be available in advance, which if the file grows slowly can take a very long time. With `-P` the buffer-ahead restriction is relaxed to just as few bytes as available before reaching end-of-file and waiting for new data, so responsiveness is as quick as without `-p`. The side effect of `-P` is that depending on the gzip file some errors may lead to incorrect output being shown/written - though in this case a "PATCHING WARNING" would be shown (to stderr).
+
+        $ gztool -PT application_log.gz
+        ...
+        PATCHING: Gzip stream error found @ 15745693 Byte.
+        PATCHING WARNING:
+            Part of data extracted after (compressed 15728640 / uncompressed 92783074) Byte
+            collides with previously extracted data, after a badly-ended gzip stream
+            was found @15745693 and a new starting point began @15700759.
+        PATCHING: New valid gzip full flush found @ 15700759 Byte.
+        ...
+
+The same applies to `-S` though in this case there's no output, as only the index is being constructed:
+
+        $ gztool -PS application_log.gz
+        ...
+        PATCHING: Gzip stream error found @ 15745693 Byte.
+        PATCHING WARNING:
+            Data extracted around the patching point may overlap.
+        PATCHING: New valid gzip full flush found @ 15700759 Byte.
+        ...
+
+
 * To tail to stdout, *like a* `tail -f`, an still-growing gzip file (an index file will be created with name `still-growing-gzip-file.gzi` in this case):
 
         $ gztool -T still-growing-gzip-file.gz
@@ -284,7 +327,9 @@ In this latter case only a pair of index+gzip filenames can be indicated with ea
 
         $ gztool -n 100001 -b 20M gzip_filename.gz
 
-Please, note that index point positions at index file **may require also the previous byte**, as gzip stream is not byte rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7/8 times it will be needed.
+Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered **100001**, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the *1* byte).
+
+Please, note that index point positions at index file **may require also the previous byte** to be available in the truncated gzip file, as a gzip stream is not byte-rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7 of 8 cases it is needed.
 
 Index file format
 =================
@@ -375,9 +420,9 @@ Other interesting links
 Version
 =======
 
-This version is **v0.11.5**.
+This version is **v1.1**.
 
-Please, read the *Disclaimer*. This is still a beta release. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
+Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
 License
 =======
