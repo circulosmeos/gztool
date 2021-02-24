@@ -2357,12 +2357,12 @@ local struct returned_output decompress_and_build_index(
 
         if (ferror(file_in)) {
             ret.error = Z_ERRNO;
-            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: Z_ERRNO at %llu Byte\n", totin );
+            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: while reading file at %llu Byte\n", totin );
             goto decompress_and_build_index_error;
         }
         if (strm.avail_in == 0) {
             ret.error = Z_DATA_ERROR;
-            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: Z_DATA_ERROR at %llu Byte\n", totin );
+            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: abrupt EOF at %llu Byte\n", totin );
             goto decompress_and_build_index_error;
         }
         strm.next_in = input;
