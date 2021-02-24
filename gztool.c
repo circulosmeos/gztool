@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.1"
+    #define PACKAGE_VERSION "1.1.1"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
