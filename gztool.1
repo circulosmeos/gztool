@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Feb 20 2021" "gztool v1.1"
+.TH gztool 1 "Jul 04 2021" "gztool v1.2"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-cCdDeEfFhilpPStTwWxX|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-cCdDeEfFhilpPrRStTwWxX|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -123,6 +123,14 @@ uncorrectly terminated GZIP streams, and so then a careful
 like `-p`, but when used with `-[ST]` implies that checking
 for errors in stream is made as quick as possible as the gzip file
 grows. Warning: this may lead to some errors not being patched.
+.TP
+.BR \-r\ #
+number of bytes to extract when using `-[bL]`.
+Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
+.TP
+.BR \-R\ #
+number of lines to extract when using `-[bL]`.
+Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
 .TP
 .BR \-s\ #
 span in uncompressed MiB between index points when
