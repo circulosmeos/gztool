@@ -2818,10 +2818,16 @@ local struct returned_output decompress_and_build_index(
                                 } while ( NULL != pos && line_number_offset > 0 );
                                 assert ( NULL != pos && line_number_offset == 0 );
                                 offset = pos - ( window + (WINSIZE - avail_out_0) ) + 1;
-                                have_lines = giveMeNumberOfLinesInChars(
-                                                window + offset + (WINSIZE - avail_out_0),
-                                                have - offset, 0,
-                                                index->line_number_format, NULL );
+                                if ( // giveMeNumberOfLinesInChars() only if range_number_of_* > 0
+                                     // just to spare some CPU cycles (as limitBufferOutput() doesn't
+                                     // change anything if ! range_number_of_* > 0)
+                                     range_number_of_bytes > 0 ||
+                                     range_number_of_lines > 0 ) {
+                                    have_lines = giveMeNumberOfLinesInChars(
+                                                    window + offset + (WINSIZE - avail_out_0),
+                                                    have - offset, 0,
+                                                    index->line_number_format, NULL );
+                                }
                             } else {
                                 offset = 0;
                             }
