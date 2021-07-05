@@ -1726,7 +1726,7 @@ int giveMeNumberOfLinesInChars(
         if ( have_lines == number_of_lines ) {
             break;
         }
-    } while ( pos != NULL && pos < (buffer + size_of_buffer) );
+    } while ( NULL != pos && pos < (buffer + size_of_buffer) );
 
     if ( NULL != passed_there_are_more_chars ) {
         *passed_there_are_more_chars = there_are_more_chars;
@@ -2751,19 +2751,12 @@ local struct returned_output decompress_and_build_index(
                                                   // to mark index->index_version == 1
                                                   // and use index->line_number_format
                                  index->index_version == 1 ) {
-                                // output data is in window + an offset
-                                unsigned char *output_data = window + offset + (WINSIZE - avail_out_0);
-                                unsigned char *pos;
-                                int count = have - offset;
-                                have_lines = 0;
-                                do {
-                                    pos = memchr( output_data, ( (0 == index->line_number_format)? '\n': '\r' ), count );
-                                    if ( NULL != pos ) {
-                                        count -= ( pos - output_data ) + 1;
-                                        output_data = pos + 1;
-                                        have_lines ++;
-                                    }
-                                } while ( pos != NULL && pos < (output_data + count) );
+                                have_lines = giveMeNumberOfLinesInChars(
+                                    // output data is in window + an offset
+                                    window + offset + (WINSIZE - avail_out_0), have - offset,
+                                    0, index->line_number_format,
+                                    NULL
+                                );
                             }
                             // if index->index_version == 0 then output_lines_counter is simply not used
                             output_lines_counter += have_lines;
@@ -2805,19 +2798,11 @@ local struct returned_output decompress_and_build_index(
                             // If line_number_offset==0 (from line_number_offset byte on) this prints always all bytes:
                             if ( line_number_offset != 0 ) {
                                 // calculate at which byte to start fwrite output:
-                                unsigned char *output_data = window + (WINSIZE - avail_out_0);
-                                unsigned char *pos;
-                                int count = avail_out_0 - strm.avail_out;
-                                do {
-                                    pos = memchr( output_data, ( (0 == index->line_number_format)? '\n': '\r' ), count );
-                                    if ( NULL != pos ) {
-                                        count -= ( pos - output_data ) + 1;
-                                        output_data = pos + 1;
-                                        line_number_offset --;
-                                    }
-                                } while ( NULL != pos && line_number_offset > 0 );
-                                assert ( NULL != pos && line_number_offset == 0 );
-                                offset = pos - ( window + (WINSIZE - avail_out_0) ) + 1;
+                                offset = giveMeNumberOfLinesInChars(
+                                    window + (WINSIZE - avail_out_0), avail_out_0 - strm.avail_out,
+                                    line_number_offset, index->line_number_format,
+                                    NULL
+                                );
                                 if ( // giveMeNumberOfLinesInChars() only if range_number_of_* > 0
                                      // just to spare some CPU cycles (as limitBufferOutput() doesn't
                                      // change anything if ! range_number_of_* > 0)
