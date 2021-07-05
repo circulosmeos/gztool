@@ -3786,22 +3786,11 @@ local struct returned_output compress_and_build_index(
         totin += strm.avail_in;
         // count lines in this source chunk
         if ( extend_index_with_lines > 0 ) {
-            // output data is in window + an offset
-            unsigned char *output_data = input;
-            unsigned char *pos;
-            int count = strm.avail_in;
-            do {
-                pos = memchr( output_data, ( (extend_index_with_lines == 1)? '\n': '\r' ), count );
-                if ( NULL != pos ) {
-                    totlines ++;
-                    count -= ( pos - output_data ) + 1;
-                    if ( count > 0 )
-                        there_are_more_chars = 1;
-                    else
-                        there_are_more_chars = 0;
-                    output_data = pos + 1;
-                }
-            } while ( pos != NULL && pos < (output_data + count) );
+            totlines += giveMeNumberOfLinesInChars(
+                input, strm.avail_in,
+                0, extend_index_with_lines - 1,
+                &there_are_more_chars
+            );
         }
 
         if ( ferror(file_in) ) {
