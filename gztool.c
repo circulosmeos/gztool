@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v1.2* by Roberto S. Galende, 2019, 2020, 2021
+// v0.1 to v1.3* by Roberto S. Galende, 2019, 2020, 2021
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.2"
+    #define PACKAGE_VERSION "1.3"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -1697,10 +1697,10 @@ local struct returned_output decompress_in_advance(
 // int *there_are_more_chars: totlines may need to be decremented at the end depending on last stream char;
 //                            "passed by reference", may be NULL, in which case it is not treated.
 // OUTPUT:
-// int giveMeNumberOfLinesInChars: index position in 'buffer' at which
-//                                 ends line number number_of_lines.
-//                                 This coincides with number of bytes in buffer
-//                                 before next line 'number_of_lines + 1'.
+// int giveMeNumberOfLinesInChars: index position in 'buffer' at which ends line number number_of_lines. This
+//                                 coincides with number of bytes in buffer before next line 'number_of_lines + 1'.
+//                                 OR if number_of_lines == 0, number of lines seen in
+//                                 passed 'buffer' of size 'size_of_buffer'
 int giveMeNumberOfLinesInChars(
     const unsigned char *buffer,
     int size_of_buffer,
@@ -1809,7 +1809,7 @@ bool limitBufferOutput(
 
 
 // Creates index for a gzip stream (file or STDIN);
-// action_create_index() always call this function with an incomplete index file
+// action_create_index() always calls this function with an incomplete index file
 // if it already exists.
 // If an incomplete index is passed, it will be completed from the last
 // available index point so the whole gzip stream is not processed again.
@@ -4135,7 +4135,7 @@ action_create_index_wait_for_file_creation:
             // If using STDIN, the output will be STDOUT
             SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
             file_out = stdout;
-            printToStderr( VERBOSITY_NORMAL, "Compressing to STDOUT\n" );
+            printToStderr( VERBOSITY_NORMAL, "Compressing to STDOUT ...\n" );
         }
 
         ret = compress_and_build_index( file_in, file_out, compression_factor,
@@ -4736,7 +4736,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -4753,7 +4753,7 @@ local void print_help() {
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -4793,9 +4793,9 @@ local void print_help() {
     fprintf( stderr, " -P: like `-p`, but when used with `-[ST]` implies that checking\n" );
     fprintf( stderr, "     for errors in stream is made as quick as possible as the gzip file\n" );
     fprintf( stderr, "     grows. Warning: this may lead to some errors not being patched.\n" );
-    fprintf( stderr, " -r #: number of bytes to extract when using `-[bL]`.\n" );
+    fprintf( stderr, " -r #: (range): Number of bytes to extract when using `-[bL]`.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
-    fprintf( stderr, " -R #: number of lines to extract when using `-[bL]`.\n" );
+    fprintf( stderr, " -R #: (Range): Number of lines to extract when using `-[bL]`.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
     fprintf( stderr, " -s #: span in uncompressed MiB between index points when\n" );
     fprintf( stderr, "     creating the index. By default is `10`.\n" );
@@ -4814,7 +4814,9 @@ local void print_help() {
     fprintf( stderr, "     read and use it. Useful if the index is still under an `-S` run.\n" );
     fprintf( stderr, " -x: create index with line number information (win/*nix compatible).\n" );
     fprintf( stderr, "     (Index counts last line even w/o newline char (`wc` does not!)).\n" );
+    fprintf( stderr, "     This is implicit unless `-X` or `-z` are indicated.\n" );
     fprintf( stderr, " -X: like `-x`, but newline character is '\\r' (old mac).\n" );
+    fprintf( stderr, " -z: create index without line number information.\n" );
     fprintf( stderr, "\n" );
     fprintf( stderr, "  EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
@@ -4854,6 +4856,7 @@ int main(int argc, char **argv)
     int waiting_time = WAITING_TIME;
     int do_not_delete_original_file = 0;
     int extend_index_with_lines = 0;
+    bool force_index_without_lines = false;
     int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
     int gzip_stream_may_be_damaged = 0;
     int compression_factor = 0;
@@ -4873,7 +4876,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "123456789a:b:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxX")) != -1)
+    while ((opt = getopt(argc, argv, "123456789a:b:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxXz")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -5109,10 +5112,14 @@ int main(int argc, char **argv)
             case 'X':
                 extend_index_with_lines = 2;
                 break;
+            // `-z` create index without line number information
+            case 'z':
+                force_index_without_lines = true;
+                break;
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("123456789abcCdDeEfFhiIlLnpPrRSstTuvwWxX", optopt) ) {
+                    if ( NULL == strchr("123456789abcCdDeEfFhiIlLnpPrRSstTuvwWxXz", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -5133,6 +5140,7 @@ int main(int argc, char **argv)
             print_help();
         return EXIT_OK;
     }
+
 
     /*
      * Checking parameter merging and absence:
@@ -5229,6 +5237,18 @@ int main(int argc, char **argv)
             // default action is `-i`
             action = ACT_CREATE_INDEX;
             actions_set = 1;
+        }
+    }
+
+    if ( action == ACT_CREATE_INDEX ||
+         action == ACT_COMPRESS_AND_CREATE_INDEX ) {
+        // if `-z`, honor it, if not, use as if `-x` was indicated, unless `-X` was used:
+        if ( true == force_index_without_lines ) {
+            extend_index_with_lines = 0;
+        } else {
+            if ( extend_index_with_lines == 0 ) {
+                extend_index_with_lines = 1; // by default use '\n' as newline char
+            }
         }
     }
 
