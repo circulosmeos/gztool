@@ -4037,6 +4037,9 @@ local struct returned_output compress_and_build_index(
 //                                grows, not respecting then at EOF the CHUNKS_TO_DECOMPRESS_IN_ADVANCE value.
 // uint64_t range_number_of_bytes: indicates how many bytes to extract when using `-[bL]` (offset, line_number_offset)
 // uint64_t range_number_of_lines: indicates how many lines to extract when using `-[bL]` (offset, line_number_offset)
+// int compression_factor        : a value from 1 to 9 (Z_BEST_SPEED to Z_BEST_COMPRESSION),
+//                                 defaulting to Z_DEFAULT_COMPRESSION which though it's -1, means 6 internally for zlib.
+//                                 Used here only when calling compress_and_build_index().
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
@@ -4047,7 +4050,8 @@ local int action_create_index(
     int waiting_time, int force_action, int wait_for_file_creation,
     int extend_index_with_lines, uint64_t expected_first_byte, int gzip_stream_may_be_damaged,
     bool lazy_gzip_stream_patching_at_eof,
-    uint64_t range_number_of_bytes, uint64_t range_number_of_lines )
+    uint64_t range_number_of_bytes, uint64_t range_number_of_lines,
+    int compression_factor )
 {
 
     FILE *file_in  = NULL;
@@ -4134,7 +4138,7 @@ action_create_index_wait_for_file_creation:
             printToStderr( VERBOSITY_NORMAL, "Compressing to STDOUT\n" );
         }
 
-        ret = compress_and_build_index( file_in, file_out, Z_DEFAULT_COMPRESSION,
+        ret = compress_and_build_index( file_in, file_out, compression_factor,
                 file_name, span_between_points, index, index_filename,
                 write_index_to_disk,
                 ((end_on_first_proper_gzip_eof==0)?1:0), // `-E` behaviour is inverted with `-c` for ease of use
@@ -4732,7 +4736,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -4749,13 +4753,15 @@ local void print_help() {
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
+    fprintf( stderr, " -[1..9]: Factor of compression to use with `-[c|u[cC]]`, from\n" );
+    fprintf( stderr, "     best speed (`-1`) to best compression (`-9`). Default is `-6`.\n" );
     fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
@@ -4773,7 +4779,7 @@ local void print_help() {
     fprintf( stderr, " -h: print brief help; `-hh` prints this help.\n" );
     fprintf( stderr, " -i: create index for indicated gzip file (For 'file.gz' the default\n" );
     fprintf( stderr, "     index file name will be 'file.gzi'). This is the default action.\n" );
-    fprintf( stderr, " -I INDEX: index file name will be 'INDEX'.\n" );
+    fprintf( stderr, " -I string: index file name will be the indicated string.\n" );
     fprintf( stderr, " -l: check and list info contained in indicated index file.\n" );
     fprintf( stderr, "     `-ll` and `-lll` increase the level of index checking detail.\n" );
     fprintf( stderr, " -L #: extract data from indicated uncompressed line position of\n" );
@@ -4850,6 +4856,7 @@ int main(int argc, char **argv)
     int extend_index_with_lines = 0;
     int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
     int gzip_stream_may_be_damaged = 0;
+    int compression_factor = 0;
     bool lazy_gzip_stream_patching_at_eof = false;
     char utility_option = ' ';
     uint64_t count_errors = 0;
@@ -4866,13 +4873,25 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "a:b:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxX")) != -1)
+    while ((opt = getopt(argc, argv, "123456789a:b:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxX")) != -1)
         switch (opt) {
             // help
             case 'h':
                 help_verbosity++;
                 if ( help_verbosity > VERBOSITY_EXCESSIVE )
                     help_verbosity = VERBOSITY_EXCESSIVE;
+                break;
+            // compression factor options: [1-9]
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                compression_factor = (char)opt - '0';
                 break;
             // `-a #` default waiting time in seconds when supervising a growing gzip file (`-[ST]`)
             case 'a':
@@ -5093,7 +5112,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("abcCdDeEfFhiIlLnpPrRSstTuvwWxX", optopt) ) {
+                    if ( NULL == strchr("123456789abcCdDeEfFhiIlLnpPrRSstTuvwWxX", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -5115,7 +5134,20 @@ int main(int argc, char **argv)
         return EXIT_OK;
     }
 
-    // Checking parameter merging and absence
+    /*
+     * Checking parameter merging and absence:
+     */
+
+    if ( compression_factor > 0 ) {
+        if ( action != ACT_COMPRESS_AND_CREATE_INDEX &&
+             action != ACT_COMPRESS_CHUNK ) {
+        printToStderr( VERBOSITY_NORMAL, "ERROR: compression factor (`-[1..9]`) must be used with `-[c|u[cC]]`.\n" );
+        return EXIT_INVALID_OPTION;
+        }
+    } else {
+        compression_factor = Z_DEFAULT_COMPRESSION; // (btw, it's -1, which means 6 for zlib)
+    }
+
     if ( actions_set > 1 ) {
         printToStderr( VERBOSITY_NORMAL, "ERROR: do not merge parameters `-[bcdilLStTu]`.\n" );
         return EXIT_INVALID_OPTION;
@@ -5248,6 +5280,11 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
+    /*
+     * end of "Checking parameter merging and absence"
+     */
+
+
     {   // inform action on stderr:
         char *action_string = NULL;
         switch ( action ) {
@@ -5338,6 +5375,8 @@ int main(int argc, char **argv)
         printToStderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %d, \t-X: %d\n\n",
             ( (write_index_to_disk==0)? 1: 0 ),
             ( (1 == extend_index_with_lines)? 1: 0), ( (2 == extend_index_with_lines)? 1: 0) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -[0-9]: %d\n\n",
+            compression_factor );
     }
 
 
@@ -5426,7 +5465,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -5445,7 +5485,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -5459,7 +5500,7 @@ int main(int argc, char **argv)
                 // If we're here it's because stdin will be used
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
-                if ( Z_OK != compress_file( stdin, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
+                if ( Z_OK != compress_file( stdin, stdout, compression_factor, raw_method ) ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR while compressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
@@ -5490,7 +5531,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         JUST_CREATE_INDEX, 0, 0, span_between_points,
@@ -5499,7 +5541,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5525,7 +5568,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO, 0, 0, span_between_points,
@@ -5534,7 +5578,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5549,7 +5594,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -5567,7 +5613,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
@@ -5576,7 +5623,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5591,7 +5639,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                 break;
 
             default:
@@ -5712,7 +5761,8 @@ int main(int argc, char **argv)
                     wait_for_file_creation, extend_index_with_lines,
                     expected_first_byte, gzip_stream_may_be_damaged,
                     lazy_gzip_stream_patching_at_eof,
-                    range_number_of_bytes, range_number_of_lines );
+                    range_number_of_bytes, range_number_of_lines,
+                    compression_factor );
                 if ( ret_value != EXIT_OK ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Could not create index '%s'.\nAborted.\n", index_filename );
                     break; // breaks for() loop
@@ -5731,7 +5781,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     break;
 
                 case ACT_EXTRACT_FROM_LINE:
@@ -5742,7 +5793,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -5754,7 +5806,7 @@ int main(int argc, char **argv)
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
-                    if ( Z_OK != compress_file( in, stdout, Z_DEFAULT_COMPRESSION, raw_method ) ) {
+                    if ( Z_OK != compress_file( in, stdout, compression_factor, raw_method ) ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
@@ -5785,7 +5837,8 @@ int main(int argc, char **argv)
                             wait_for_file_creation, extend_index_with_lines,
                             expected_first_byte, gzip_stream_may_be_damaged,
                             lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                            range_number_of_bytes, range_number_of_lines,
+                            compression_factor );
                     break;
 
                 case ACT_LIST_INFO:
@@ -5837,7 +5890,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
@@ -5849,7 +5903,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
@@ -5860,7 +5915,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
@@ -5873,7 +5929,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     if ( ret_value == EXIT_OK &&
                          do_not_delete_original_file == 0 ) {
                         printToStderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
@@ -5895,7 +5952,8 @@ int main(int argc, char **argv)
                         wait_for_file_creation, extend_index_with_lines,
                         expected_first_byte, gzip_stream_may_be_damaged,
                         lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines );
+                        range_number_of_bytes, range_number_of_lines,
+                        compression_factor );
                     if ( ret_value == EXIT_OK ) {
                         // delete original file, as with gzip
                         if ( strlen( file_name ) > 3 && // avoid out-of-bounds
