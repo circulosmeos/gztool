@@ -36,7 +36,7 @@ Nonetheless Mark Adler, the author of [zlib](https://github.com/madler/zlib), pr
 Also, some optimizations and brand new behaviours have been added:
 
 * `gztool` can correctly read incomplete `gzip`-concatenated-files (using `-p`), that is, a gzip composed of a concatenation of `gzip` files, some of which are not correctly terminated. This can happen, for example, when using [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted.
-* `gztool` can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
+* `gztool` can store line numbering information in the index (use only if source data is text!), and retrieve data from a specific line number using `-L`. (Using `-[xXz]` when creating the index selects Unix new line format (default), old Mac new line format, or no line information respectively.)
 * **`gztool` can *Supervise* an still-growing gzip file** (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
 * extraction of data and index creation are interleaved, so there's no waste of time for the index creation.
 * **index files are reusable**, so they can be stopped at any time and reused and/or completed later.
@@ -98,14 +98,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.2)
+      gztool (v1.3)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLnsv] #] [-cCdDeEfFhilpPrRStTwWxX|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -114,6 +114,8 @@ Usage
       index file will be reused (and completed if necessary) on the
       next gztool run over the same data.
 
+     -[1..9]: Factor of compression to use with `-[c|u[cC]]`, from
+         best speed (`-1`) to best compression (`-9`). Default is `-6`.
      -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.
      -b #: extract data from indicated uncompressed byte position of
          gzip file (creating or reusing an index file) to STDOUT.
@@ -131,7 +133,7 @@ Usage
      -h: print brief help; `-hh` prints this help.
      -i: create index for indicated gzip file (For 'file.gz' the default
          index file name will be 'file.gzi'). This is the default action.
-     -I INDEX: index file name will be 'INDEX'.
+     -I string: index file name will be the indicated string.
      -l: check and list info contained in indicated index file.
          `-ll` and `-lll` increase the level of index checking detail.
      -L #: extract data from indicated uncompressed line position of
@@ -145,9 +147,9 @@ Usage
      -P: like `-p`, but when used with `-[ST]` implies that checking
          for errors in stream is made as quick as possible as the gzip file
          grows. Warning: this may lead to some errors not being patched.
-     -r #: number of bytes to extract when using `-[bL]`.
+     -r #: (range): Number of bytes to extract when using `-[bL]`.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
-     -R #: number of lines to extract when using `-[bL]`.
+     -R #: (Range): Number of lines to extract when using `-[bL]`.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -s #: span in uncompressed MiB between index points when
          creating the index. By default is `10`.
@@ -166,7 +168,9 @@ Usage
          read and use it. Useful if the index is still under an `-S` run.
      -x: create index with line number information (win/*nix compatible).
          (Index counts last line even w/o newline char (`wc` does not!)).
+         This is implicit unless `-X` or `-z` are indicated.
      -X: like `-x`, but newline character is '\r' (old mac).
+     -z: create index without line number information.
 
       EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
@@ -424,7 +428,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.2**.
+This version is **v1.3**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

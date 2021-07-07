@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Jul 04 2021" "gztool v1.2"
+.TH gztool 1 "Jul 07 2021" "gztool v1.3"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-cCdDeEfFhilpPrRStTwWxX|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -56,6 +56,9 @@ See the full listing of capabilities on \fBINTERNALS\fp.
 .TP
 .BR \fBfiles\fP
 One or more files. If no file is indicated, standard input is used.
+.TP
+.BR \-[1..9]
+compression factor to use with `-[c|u[cC]]`, from best speed (`-1`) to best compression (`-9`). Default is `-6`.
 .TP
 .BR \-a\ #
 Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.
@@ -98,8 +101,8 @@ print brief help; `-hh` prints this help.
 create index for indicated gzip file (For 'file.gz' the default 
 index file name will be 'file.gzi'). This is the default action.
 .TP
-.BR \-I\ INDEX
-index file name will be 'INDEX'.
+.BR \-I\ string
+index file name will be the indicated string.
 .TP
 .BR \-l
 check and list info contained in indicated index file.
@@ -125,11 +128,11 @@ for errors in stream is made as quick as possible as the gzip file
 grows. Warning: this may lead to some errors not being patched.
 .TP
 .BR \-r\ #
-number of bytes to extract when using `-[bL]`.
+ (range): Number of bytes to extract when using `-[bL]`.
 Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
 .TP
 .BR \-R\ #
-number of lines to extract when using `-[bL]`.
+ (Range): Number of lines to extract when using `-[bL]`.
 Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
 .TP
 .BR \-s\ #
@@ -168,9 +171,14 @@ read and use it. Useful if the index is still under a `-S` run.
 create index with line number information (win/*nix compatible).
 .br
 Please, note that gztool's index counts last line even if the last char isn't a newline char - whilst `wc` command will not count it in this case!.
+.br
+This is implicit unless `-X` or `-z` are indicated.
 .TP
 .BR \-X
 like `-x`, but newline character is '\\r' (old mac).
+.TP
+.BR \-z
+create index without line number information.
 .br
 .SH QUICK EXAMPLE
 Extract data from 1 GiB byte (byte 2^30) on,
@@ -356,7 +364,7 @@ Also, some optimizations has been made:
 * \fBgztool\fP can correctly read \fIincomplete gzip-concatenated-files\fP (using `-p`), that is, a gzip composed of a concatenation of `gzip` files, some of which are not correctly terminated. This can happen, for example, when using \fIrsyslog's veryRobustZip omfile option\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted.
 .br
 
-* \fBgztool\fP can store line numbering information in the index using `-[xX]` (use only if source data is text!), and retrieve data from a specific line number using `-L`.
+* \fBgztool\fP can store line numbering information in the index (use only if source data is text!), and retrieve data from a specific line number using `-L`. (Using `-[xXz]` when creating the index selects Unix new line format (default), old Mac new line format, or no line information respectively.)
 .br
 
 * \fBgztool\fP can \fBSupervise an still-growing gzip file\fP (for example, a log created by rsyslog directly in gzip format) and generate the index on-the-fly, thus reducing in the practice to zero the time of index creation. See `-S`.
