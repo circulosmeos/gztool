@@ -4760,7 +4760,7 @@ local void print_help() {
     fprintf( stderr, "  Also you can interrupt actions at any moment and the remaining\n" );
     fprintf( stderr, "  index file will be reused (and completed if necessary) on the\n" );
     fprintf( stderr, "  next gztool run over the same data.\n\n" );
-    fprintf( stderr, " -[1..9]: Factor of compression to use with `-[c|u[cC]]`, from\n" );
+    fprintf( stderr, " -[1..9]: compression factor to use with `-[c|u[cC]]`, from\n" );
     fprintf( stderr, "     best speed (`-1`) to best compression (`-9`). Default is `-6`.\n" );
     fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
@@ -5217,10 +5217,10 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
-    if ( extend_index_with_lines > 0 &&
+    if ( ( extend_index_with_lines > 0 || true == force_index_without_lines ) &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[xX]` parameters do not apply to `-[lu]`.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[xXz]` parameters do not apply to `-[lu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
