@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v1.3* by Roberto S. Galende, 2019, 2020, 2021
+// v0.1 to v1.4* by Roberto S. Galende, 2019, 2020, 2021
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.3"
+    #define PACKAGE_VERSION "1.4"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -4736,7 +4736,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -4753,7 +4753,7 @@ local void print_help() {
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -4763,6 +4763,8 @@ local void print_help() {
     fprintf( stderr, " -[1..9]: compression factor to use with `-[c|u[cC]]`, from\n" );
     fprintf( stderr, "     best speed (`-1`) to best compression (`-9`). Default is `-6`.\n" );
     fprintf( stderr, " -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.\n" );
+    fprintf( stderr, " -A: Modifier for `-[rR]` to indicate the range of bytes/lines in\n" );
+    fprintf( stderr, "     absolute values, instead of the default incremental values.\n" );
     fprintf( stderr, " -b #: extract data from indicated uncompressed byte position of\n" );
     fprintf( stderr, "     gzip file (creating or reusing an index file) to STDOUT.\n" );
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
@@ -4838,12 +4840,12 @@ int main(int argc, char **argv)
     struct access *index = NULL;
 
     // variables for grabbing the options:
-    uint64_t extract_from_byte = 0;
-    uint64_t extract_from_line = 0;
-    uint64_t expected_first_byte = 1;
+    uint64_t extract_from_byte = 0LLU;
+    uint64_t extract_from_line = 0LLU;
+    uint64_t expected_first_byte = 1LLU;
     uint64_t span_between_points = SPAN;
-    uint64_t range_number_of_bytes = 0;
-    uint64_t range_number_of_lines = 0;
+    uint64_t range_number_of_bytes = 0LLU;
+    uint64_t range_number_of_lines = 0LLU;
     char *index_filename = NULL;
     int continue_on_error = 0;
     int index_filename_indicated = 0;
@@ -4861,6 +4863,7 @@ int main(int argc, char **argv)
     int gzip_stream_may_be_damaged = 0;
     int compression_factor = 0;
     bool lazy_gzip_stream_patching_at_eof = false;
+    bool indicate_range_in_absolute_value = false;
     char utility_option = ' ';
     uint64_t count_errors = 0;
 
@@ -4876,7 +4879,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "123456789a:b:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxXz")) != -1)
+    while ((opt = getopt(argc, argv, "123456789a:Ab:cCdDeEfFhiI:lL:n:pPr:R:s:StTu:v:wWxXz")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -4904,6 +4907,11 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%s'\n", optarg );
                     return EXIT_INVALID_OPTION;
                 }
+                break;
+            // `-A` modifies `-[rR]` to indicate the range of bytes/lines in
+            // absolute values, instead of the default incremental values.
+            case 'A':
+                indicate_range_in_absolute_value = true;
                 break;
             // `-b #` extracts data from indicated position byte in uncompressed stream of <FILE>
             case 'b':
@@ -5004,7 +5012,7 @@ int main(int argc, char **argv)
             // Accepts SI suffixes.
             case 'r':
                 range_number_of_bytes = (uint64_t)giveMeAnInteger( optarg );
-                if ( range_number_of_bytes == 0 ) {
+                if ( range_number_of_bytes == 0LLU ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-r 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
@@ -5013,7 +5021,7 @@ int main(int argc, char **argv)
             // Accepts SI suffixes.
             case 'R':
                 range_number_of_lines = (uint64_t)giveMeAnInteger( optarg );
-                if ( range_number_of_lines == 0 ) {
+                if ( range_number_of_lines == 0LLU ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-R 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
@@ -5119,7 +5127,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("123456789abcCdDeEfFhiIlLnpPrRSstTuvwWxXz", optopt) ) {
+                    if ( NULL == strchr("123456789aAbcCdDeEfFhiIlLnpPrRSstTuvwWxXz", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -5259,11 +5267,50 @@ int main(int argc, char **argv)
         return EXIT_INVALID_OPTION;
     }
 
-    if ( ( range_number_of_bytes > 0LL || range_number_of_lines > 0LL ) &&
+    if ( ( range_number_of_bytes > 0LLU || range_number_of_lines > 0LLU ) &&
          ( action != ACT_EXTRACT_FROM_BYTE && action != ACT_EXTRACT_FROM_LINE )
     ) {
         printToStderr( VERBOSITY_NORMAL, "ERROR: `-[rR]` parameter can only be used with `-[bL]`.\n" );
         return EXIT_INVALID_OPTION;
+    }
+
+    if ( true == indicate_range_in_absolute_value ) {
+        if ( range_number_of_bytes == 0LLU &&
+             range_number_of_lines == 0LLU ) {
+            printToStderr( VERBOSITY_NORMAL, "ERROR: `-A` parameter can only be used with `-[rR]`.\n" );
+            return EXIT_INVALID_OPTION;
+        }
+        // ( yes, `-r` AND `-R` can be simultaneosuly indicated: the 1st reached is the one applied. )
+        if ( range_number_of_bytes > 0LLU ) {
+            if ( action == ACT_EXTRACT_FROM_BYTE &&
+                 extract_from_byte > 0LLU
+            ) {
+                if ( range_number_of_bytes > extract_from_byte ) {
+                    range_number_of_bytes -= extract_from_byte;
+                } else {
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-Ar` implies a value greater than `-b`.\n" );
+                    return EXIT_INVALID_OPTION;
+                }
+            } else {
+                printToStderr( VERBOSITY_NORMAL, "ERROR: `-Ar` (bytes) cannot be used with `-L` (lines).\n" );
+                return EXIT_INVALID_OPTION;
+            }
+        }
+        if ( range_number_of_lines > 0LLU ) {
+            if ( action == ACT_EXTRACT_FROM_LINE &&
+                 extract_from_line > 0LLU
+            ) {
+                if ( range_number_of_lines > extract_from_line ) {
+                    range_number_of_lines -= extract_from_line;
+                } else {
+                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-AR` implies a value greater than `-L`.\n" );
+                    return EXIT_INVALID_OPTION;
+                }
+            } else {
+                printToStderr( VERBOSITY_NORMAL, "ERROR: `-AR` (lines) cannot be used with `-b` (bytes).\n" );
+                return EXIT_INVALID_OPTION;
+            }
+        }
     }
 
     if ( 1 == force_strict_order &&
@@ -5370,8 +5417,9 @@ int main(int argc, char **argv)
 
     // inform parameters with verbosity_level > VERBOSITY_NORMAL
     if ( verbosity_level > VERBOSITY_NORMAL ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-b: %llu, \t-c: %d\n",
-            waiting_time, extract_from_byte, ( (action==ACT_COMPRESS_AND_CREATE_INDEX)? 1: 0 ) );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-A: %d, \t-b: %llu, \t-c: %d\n",
+            waiting_time, indicate_range_in_absolute_value,
+            extract_from_byte, ( (action==ACT_COMPRESS_AND_CREATE_INDEX)? 1: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -C: %d, \t-d: %d, \t-D: %d, \t-e: %d\n",
             always_create_a_complete_index, ( (action==ACT_DECOMPRESS)? 1: 0 ),
             do_not_delete_original_file, continue_on_error );
