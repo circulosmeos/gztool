@@ -98,14 +98,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.3)
+      gztool (v1.4)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLnsv] #] [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -117,6 +117,8 @@ Usage
      -[1..9]: Factor of compression to use with `-[c|u[cC]]`, from
          best speed (`-1`) to best compression (`-9`). Default is `-6`.
      -a #: Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.
+     -A: Modifier for `-[rR]` to indicate the range of bytes/lines in
+         absolute values, instead of the default incremental values.
      -b #: extract data from indicated uncompressed byte position of
          gzip file (creating or reusing an index file) to STDOUT.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
@@ -428,7 +430,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.3**.
+This version is **v1.4**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

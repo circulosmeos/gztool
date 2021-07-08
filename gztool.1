@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Jul 07 2021" "gztool v1.3"
+.TH gztool 1 "Jul 08 2021" "gztool v1.4"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]cCdDeEfFhilpPrRStTwWxXz|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -62,6 +62,9 @@ compression factor to use with `-[c|u[cC]]`, from best speed (`-1`) to best comp
 .TP
 .BR \-a\ #
 Await # seconds between reads when `-[ST]|Ec`. Default is 4 s.
+.TP
+.BR \-A
+modifier for `-[rR]` to indicate the range of bytes/lines in absolute values, instead of the default incremental values.
 .TP
 .BR \-b\ #
 extract data from indicated uncompressed byte position of
