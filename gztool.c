@@ -5392,11 +5392,11 @@ int main(int argc, char **argv)
         printToStderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d\n",
             ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), utility_option,
               verbosity_level, wait_for_file_creation );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %d, \t-X: %d\n\n",
+        printToStderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %d, \t-X: %d\n",
             ( (write_index_to_disk==0)? 1: 0 ),
             ( (1 == extend_index_with_lines)? 1: 0), ( (2 == extend_index_with_lines)? 1: 0) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -[0-9]: %d\n\n",
-            compression_factor );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -z: %d, \t-[0-9]: %d\n\n",
+            force_index_without_lines, compression_factor  );
     }
 
 
