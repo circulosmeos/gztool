@@ -98,7 +98,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.4)
+      gztool (v1.4.1)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
@@ -144,7 +144,7 @@ Usage
      -n #: indicates that the first byte on compressed input is #, not 1,
          and so truncated compressed inputs can be used if an index exists.
      -p: indicates that the gzip input stream may be composed of various
-         uncorrectly terminated GZIP streams, and so then a careful
+         incorrectly terminated GZIP streams, and so then a careful
          Patching of the input may be needed to extract correct data.
      -P: like `-p`, but when used with `-[ST]` implies that checking
          for errors in stream is made as quick as possible as the gzip file
@@ -430,7 +430,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.4**.
+This version is **v1.4.1**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

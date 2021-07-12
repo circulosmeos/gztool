@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.4"
+    #define PACKAGE_VERSION "1.4.1"
 #endif
 
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
@@ -4790,7 +4790,7 @@ local void print_help() {
     fprintf( stderr, " -n #: indicates that the first byte on compressed input is #, not 1,\n" );
     fprintf( stderr, "     and so truncated compressed inputs can be used if an index exists.\n" );
     fprintf( stderr, " -p: indicates that the gzip input stream may be composed of various\n" );
-    fprintf( stderr, "     uncorrectly terminated GZIP streams, and so then a careful\n" );
+    fprintf( stderr, "     incorrectly terminated GZIP streams, and so then a careful\n" );
     fprintf( stderr, "     Patching of the input may be needed to extract correct data.\n" );
     fprintf( stderr, " -P: like `-p`, but when used with `-[ST]` implies that checking\n" );
     fprintf( stderr, "     for errors in stream is made as quick as possible as the gzip file\n" );
