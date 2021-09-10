@@ -2366,7 +2366,9 @@ local struct returned_output decompress_and_build_index(
             // generic check for growing files (not related to bgzip-compatible-streams code):
             // check that file hasn't shrunk, what would mean that the file
             // has been overwritten from the beginning (possible with rsyslog logs, for example)
-            if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
+            if ( strlen( file_name ) > 0 &&  // this check cannot be done on STDIN
+                 expected_first_byte == 1LLU // this check must not be done if using `-n` (because then st.st_size < totin in general)
+            ) {
                 struct stat st;
                 stat(file_name, &st);
                 printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
