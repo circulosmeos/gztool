@@ -98,7 +98,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.4.1)
+      gztool (v1.4.2)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
@@ -430,7 +430,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.4.1**.
+This version is **v1.4.2**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

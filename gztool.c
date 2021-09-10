@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.4.1"
+    #define PACKAGE_VERSION "1.4.2"
 #endif
 
 #define _XOPEN_SOURCE 500 // expose <unistd.h>'s pread()
@@ -954,7 +954,7 @@ ssize_t PREAD(
 // in front of actual decompression stream (decompress_and_build_index()),
 // to assure that no errors will be found, and if an error is found in advance,
 // try to find a reason in these CHUNKS_TO_DECOMPRESS_IN_ADVANCE chunks
-// that explain it as an uncorrectly terminated gzip stream and the
+// that explain it as an incorrectly terminated gzip stream and the
 // beginning of a new one immediatly attached after it:
 // and so either a GZIP header or a full flush point are found there.
 // If an error is found and a feasible restart is found, its gzip stream
@@ -5013,7 +5013,7 @@ int main(int argc, char **argv)
                 }
                 break;
             // `-p` indicates that the gzip input stream may be composed of various
-            // uncorrectly terminated GZIP streams, and so then a careful
+            // incorrectly terminated GZIP streams, and so then a careful
             // Patching of the input may be needed to extract correct data.
             case 'p':
                 gzip_stream_may_be_damaged = CHUNKS_TO_DECOMPRESS_IN_ADVANCE;
