@@ -999,6 +999,10 @@ ssize_t PREAD(
 //                                  for errors in stream is made as quick as possible as the gzip file
 //                                  grows, not respecting then at EOF the CHUNKS_TO_DECOMPRESS_IN_ADVANCE value.
 //                                  Set with initialize_function == DECOMPRESS_IN_ADVANCE_RESET. 0 otherwise.
+// uint64_t expected_first_byte0 : indicates that the first byte on compressed input is this, not 1,
+//                                and so truncated compressed inputs can be used. Used in decompress_in_advance()
+//                                only to not check "Detected gzip file overwriting, so ending process" condition:
+//                                this check must not be done if using `-n` (because then st.st_size < totin in general)
 // DECOMPRESS_IN_ADVANCE_INITIALIZERS initialize_function:
 //                          if DECOMPRESS_IN_ADVANCE_RESET, internal value strm_initialized is set to false
 //                          marking this way the beginning of a new file processing.
@@ -1020,6 +1024,7 @@ local struct returned_output decompress_in_advance(
     const uint64_t totout,
     const int waiting_time0,
     const bool lazy_gzip_stream_patching_at_eof0,
+    const uint64_t expected_first_byte0,
     const enum DECOMPRESS_IN_ADVANCE_INITIALIZERS initialize_function
 ) {
     struct returned_output returned_value; // returned structure
@@ -1053,6 +1058,7 @@ local struct returned_output decompress_in_advance(
     static int end_on_first_proper_gzip_eof = 0;
     static int waiting_time = 0;
     static bool lazy_gzip_stream_patching_at_eof = false;
+    static uint64_t expected_first_byte = 1LLU;
     static unsigned char input[CHUNK];    // TODO: convert to malloc
     static unsigned char window[WINSIZE]; // TODO: convert to malloc
     static uint64_t last_correct_reentry_point_returned = 0LLU; // this function will never go backwards beyond the
@@ -1090,6 +1096,7 @@ local struct returned_output decompress_in_advance(
         chunks_to_look_backwards = chunks_to_look_backwards0;
         decompressing_with_gzip_headers = decompressing_with_gzip_headers0;
         end_on_first_proper_gzip_eof = end_on_first_proper_gzip_eof0;
+        expected_first_byte = expected_first_byte0;
         if ( DECOMPRESS_IN_ADVANCE_RESET == initialize_function ) {
             waiting_time = waiting_time0;
             lazy_gzip_stream_patching_at_eof = lazy_gzip_stream_patching_at_eof0;
@@ -1223,7 +1230,9 @@ local struct returned_output decompress_in_advance(
             // generic check for growing files (not related to bgzip-compatible-streams code):
             // check that file hasn't shrunk, what would mean that the file
             // has been overwritten from the beginning (possible with rsyslog logs, for example)
-            if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
+            if ( strlen( file_name ) > 0 &&  // this check cannot be done on STDIN
+                 expected_first_byte == 1LLU // this check must not be done if using `-n` (because then st.st_size < totin in general)
+            ) {
                 struct stat st;
                 stat(file_name, &st);
                 printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
@@ -2337,6 +2346,7 @@ local struct returned_output decompress_and_build_index(
             0LLU, 0LLU,
             waiting_time,
             lazy_gzip_stream_patching_at_eof,
+            expected_first_byte,
             DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
     }
 
@@ -2510,7 +2520,7 @@ local struct returned_output decompress_and_build_index(
              decompress_until_this_point_byte == 0LLU ) {
             struct returned_output ret;
             ret = decompress_in_advance( (z_streamp)&strm, file_in, file_name, totin, 0, 0, 0, 0, 0,
-                    output_data_counter, totout, 0, false,
+                    output_data_counter, totout, 0, false, 0LLU,
                     DECOMPRESS_IN_ADVANCE_CONTINUE );
             switch ( ret.error ) {
                 case GZIP_MARK_NONE:
@@ -2528,7 +2538,7 @@ local struct returned_output decompress_and_build_index(
                     // (optionally) free strm structure from internal state of decompress_in_advance()
                     // as it won't be called again because an error will rise eventually on caller:
                     decompress_in_advance( NULL, NULL, NULL,
-                        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+                        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
                     break;
                 case GZIP_MARK_FATAL_ERROR:
                     // an internal and compulsory fseeko() failed, so process
@@ -2956,6 +2966,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
                     0LLU, 0LLU,
                     0,
                     false,
+                    0LLU,
                     DECOMPRESS_IN_ADVANCE_SOFT_RESET ); // returned value is always ok when called with this value
                 //
                 // all done!
@@ -3129,7 +3140,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // free strm structure from internal state of decompress_in_advance():
     decompress_in_advance( NULL, NULL, NULL,
-        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
 
     *built = index;
     if ( NULL != index ) {
@@ -3147,7 +3158,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // free strm structure from internal state of decompress_in_advance():
     decompress_in_advance( NULL, NULL, NULL,
-        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
 
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
