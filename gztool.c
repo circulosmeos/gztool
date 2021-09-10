@@ -126,6 +126,9 @@
     #define PACKAGE_VERSION "1.4.1"
 #endif
 
+#define _XOPEN_SOURCE 500 // expose <unistd.h>'s pread()
+                          // and <stdio.h>'s fileno()
+
 #include <stdint.h> // uint32_t, uint64_t, UINT32_MAX
 #include <stdio.h>
 #include <stdarg.h> // va_start, va_list, va_end
@@ -134,6 +137,7 @@
 #include <assert.h>
 #include <zlib.h>
 #include <unistd.h> // getopt(), access(), sleep(), pread()
+#include <getopt.h> // getopt(): optarg, optopt, optind
 #include <ctype.h>  // isprint()
 #include <sys/stat.h> // stat()
 #include <math.h>   // pow()
