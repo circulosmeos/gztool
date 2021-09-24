@@ -2329,10 +2329,14 @@ local struct returned_output decompress_and_build_index(
                 goto decompress_and_build_index_error;
             }
             index->index_version = 1;
+            // here extend_index_with_lines can be 3 (implicit `-x`)
             if ( extend_index_with_lines == 2 )
                 index->line_number_format = 1;
-            else
+            else {
                 index->line_number_format = 0;
+                // end now possible extend_index_with_lines == 3 (implicit `-x`)
+                extend_index_with_lines = 1;
+            }
         }
     }
 
@@ -3215,8 +3219,11 @@ decompress_and_build_index_Set_next_good_decompression_point:
 //                            index file again to read the window data.
 //                            Can be "" if using stdin, but not NULL.
 // int extend_index_with_lines: if >0 (index v1) but index is v0, operation cannot be perfomed
-//                              unless the index is an empty file, in which case the index
-//                              pointer is correctly initialized with corresponding ->index_version
+//                              unless:
+//                              * the index is an **empty file**, in which case the index
+//                                pointer is correctly initialized with corresponding ->index_version
+//                              * extend_index_with_lines == 3, in which case extend_index_with_lines
+//                                is implicit, not compulsory, so process can transparently proceed
 // OUTPUT:
 // struct access *index : pointer to index, or NULL on error
 struct access *deserialize_index_from_file(
@@ -3271,15 +3278,20 @@ struct access *deserialize_index_from_file(
 
     if ( 0 == index_version &&
          extend_index_with_lines > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Existing index has no line number information.\n" );
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s).\n" );
-        goto deserialize_index_from_file_error;
+        if ( 3 != extend_index_with_lines ) {
+            printToStderr( VERBOSITY_NORMAL, "ERROR: Existing index has no line number information.\n" );
+            printToStderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s) or v0 index.\n" );
+            goto deserialize_index_from_file_error;
+        } else {
+            // transparently handle v0 files, as `-x` was implicitly tried (v>1.4.2), but it is not compulsory
+            extend_index_with_lines = 0; // this value is not used - set here only for clarity
+        }
     }
 
     index = create_empty_index();
     index->index_version = index_version;
 
-    // if index v1 there's a previous register with line separator format info:
+    // if index is v1, there's a previous register with line separator format info:
     if ( index_version == 1 ) {
         fread_endian(&(index->line_number_format), sizeof(index->line_number_format), input_file);
     }
@@ -4040,8 +4052,12 @@ local struct returned_output compress_and_build_index(
 // int force_action             : with `-[cd]`, force destination file overwriting if it exists
 // int wait_for_file_creation   : 0: exit with error if source file doesn't exist
 //                                1: wait for file creation if it doesn't yet exist, when using `-[STcd]`
-// int extend_index_with_lines  : create index with (1,2) or without (0) line numbers (v0 or v1 index):
-//                                decision is make at de/compress_and_build_index(), not here.
+// int extend_index_with_lines  : create index with (1,2) or without (0) line numbers (v1 or v0 index):
+//                                decision is make at de/compress_and_build_index(), not here, unless
+//                                index file already exists and extend_index_with_lines == 3, in which
+//                                case if index is v0 => extend_index_with_lines = 0 and if index is
+//                                v1 => extend_index_with_lines = 1, to transparently handle v0 indexes
+//                                with implicit `-x` (v>1.4.2).
 // uint64_t expected_first_byte  : indicates that the first byte on compressed input is this, not 1,
 //                                and so truncated compressed inputs can be used. Only can be used (>1) if
 //                                indx_n_extraction_opts is EXTRACT_FROM_BYTE or EXTRACT_FROM_LINE.
@@ -4155,6 +4171,11 @@ action_create_index_wait_for_file_creation:
             printToStderr( VERBOSITY_NORMAL, "Compressing to STDOUT ...\n" );
         }
 
+        if ( extend_index_with_lines == 3 ) {
+            extend_index_with_lines = 1; // in case of COMPRESS_AND_CREATE_INDEX, direct v1 index
+                                         // as no previous index is possible, so there's no doubt.
+        }
+
         ret = compress_and_build_index( file_in, file_out, compression_factor,
                 file_name, span_between_points, index, index_filename,
                 write_index_to_disk,
@@ -4202,6 +4223,13 @@ action_create_index_wait_for_file_creation:
                     // index ok, continue
                     number_of_index_points = (*index)->have;
                     (*index)->index_complete = 0; // every index can be updated with new points in case gzip data grows!
+                    // set local "extend_index_with_lines" to the curated value returned by deserialize_index_from_file()
+                    // (this way a possible extend_index_with_lines == 3 is reconverted to a usable value {0,1,2})
+                    if ( 0 == (*index)->index_version ) {
+                        extend_index_with_lines = 0;
+                    } else {
+                        extend_index_with_lines = (*index)->line_number_format;
+                    }
                 } else {
                     printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", index_filename );
                     return EXIT_GENERIC_ERROR;
@@ -4884,7 +4912,7 @@ int main(int argc, char **argv)
     int waiting_time = WAITING_TIME;
     int do_not_delete_original_file = 0;
     int extend_index_with_lines = 0;
-    bool force_index_without_lines = false;
+    bool force_index_without_lines = false; // marks `-z` use
     int raw_method = 0; // for use with `-[cd]`: 0: zlib; `-[CD]`: 1: raw
     int gzip_stream_may_be_damaged = 0;
     int compression_factor = 0;
@@ -5296,7 +5324,7 @@ int main(int argc, char **argv)
         } else {
             // make `-x` implicit
             if ( extend_index_with_lines == 0 ) { // only if `-[xX]` was not used
-                extend_index_with_lines = 1; // by default use '\n' as newline char
+                extend_index_with_lines = 3; // by default use '\n' as newline char
             }
         }
     } else {
@@ -5488,7 +5516,7 @@ int main(int argc, char **argv)
               verbosity_level, wait_for_file_creation );
         printToStderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %d, \t-X: %d\n",
             ( (write_index_to_disk==0)? 1: 0 ),
-            ( (1 == extend_index_with_lines)? 1: 0), ( (2 == extend_index_with_lines)? 1: 0) );
+            ( (1 == extend_index_with_lines || 3 == extend_index_with_lines)? 1: 0), ( (2 == extend_index_with_lines)? 1: 0) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -z: %d, \t-[0-9]: %d\n\n",
             force_index_without_lines, compression_factor  );
     }
