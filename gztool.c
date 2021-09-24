@@ -4844,7 +4844,7 @@ local void print_help() {
     fprintf( stderr, "     (Index counts last line even w/o newline char (`wc` does not!)).\n" );
     fprintf( stderr, "     This is implicit unless `-X` or `-z` are indicated.\n" );
     fprintf( stderr, " -X: like `-x`, but newline character is '\\r' (old mac).\n" );
-    fprintf( stderr, " -z: create index without line number information.\n" );
+    fprintf( stderr, " -z: create (or process) index without line number information.\n" );
     fprintf( stderr, "\n" );
     fprintf( stderr, "  EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,\n" );
     fprintf( stderr, "  from `myfile.gz` to the file `myfile.txt`. Also gztool will\n" );
