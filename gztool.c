@@ -4410,9 +4410,18 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
     if ( NULL != index &&
          strlen( file_name ) > 0 ) {
         stat( file_name, &st );
-        if ( verbosity_level > VERBOSITY_NONE )
-            fprintf( stdout, "\tSize of index file (v%d)  : %s (%llu Bytes)",
-                index->index_version, giveMeSIUnits(st.st_size, 1), (long long unsigned)st.st_size );
+        if ( verbosity_level > VERBOSITY_NONE ) {
+            fprintf( stdout, "\tSize of index file (v%d",
+                index->index_version );
+            if ( index->index_version == 1 &&
+                 index->line_number_format == 1 ) {
+                fprintf( stdout, "\\r):" ); // inform a mac-style new line
+            } else {
+                fprintf( stdout, ")  :" );
+            }
+            fprintf( stdout, " %s (%llu Bytes)",
+                giveMeSIUnits(st.st_size, 1), (long long unsigned)st.st_size );
+        }
 
         if ( st.st_size > 0 &&
              list_verbosity > VERBOSITY_NONE ) {
