@@ -5265,15 +5265,35 @@ int main(int argc, char **argv)
         }
     }
 
-    if ( action == ACT_CREATE_INDEX ||
-         action == ACT_COMPRESS_AND_CREATE_INDEX ) {
-        // if `-z`, honor it, if not, use as if `-x` was indicated, unless `-X` was used:
+    if ( // these are the actions that can create an index
+         action == ACT_EXTRACT_FROM_BYTE ||
+         action == ACT_CREATE_INDEX ||
+         action == ACT_SUPERVISE ||
+         action == ACT_EXTRACT_TAIL ||
+         action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
+         action == ACT_COMPRESS_AND_CREATE_INDEX ||
+         action == ACT_EXTRACT_FROM_LINE ||
+         action == ACT_DECOMPRESS
+         // it's stated that "DECOMPRESS does not require index" @ action_create_index() BUT
+         // also that "`gztool -d` is just an alias for `gztool -b0` when using STDIN" @ main()
+    ) {
+        // if `-z`, honor it, if not, make `-x` implicit unless, in both cases, `-[xX]` was used:
         if ( true == force_index_without_lines ) {
+            if ( extend_index_with_lines > 0 ) { // unless `-[xX]` was used
+                printToStderr( VERBOSITY_NORMAL, "ERROR: `-[xX]` and `-z` cannot be mixed.\n" );
+                return EXIT_INVALID_OPTION;
+            }
             extend_index_with_lines = 0;
         } else {
-            if ( extend_index_with_lines == 0 ) {
+            // make `-x` implicit
+            if ( extend_index_with_lines == 0 ) { // only if `-[xX]` was not used
                 extend_index_with_lines = 1; // by default use '\n' as newline char
             }
+        }
+    } else {
+        if ( true == force_index_without_lines ) {
+            printToStderr( VERBOSITY_NORMAL, "ERROR: `-z` is not applicable to these options.\n" );
+            return EXIT_INVALID_OPTION;
         }
     }
 
