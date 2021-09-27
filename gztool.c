@@ -4281,8 +4281,8 @@ action_create_index_wait_for_file_creation:
         if ( indx_n_extraction_opts == DECOMPRESS ) {
             // file must have ".gz" extension so it can be decompressed
             if ( strlen( file_name ) > 3 && // avoid out-of-bounds
-                 (char *)strstr(file_name, ".gz") ==
-                 (char *)(file_name + strlen(file_name) - 3)
+                 0 == strcmp( ".gz",
+                    (char *)(file_name + strlen(file_name) - 3) )
                 ) {
                 // if gzip-file name is 'FILE.gz', output file name will be 'FILE'
                 char *output_filename = malloc( strlen(file_name) );
