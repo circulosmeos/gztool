@@ -3283,7 +3283,7 @@ struct access *deserialize_index_from_file(
          extend_index_with_lines > 0 ) {
         if ( 3 != extend_index_with_lines ) {
             printToStderr( VERBOSITY_NORMAL, "ERROR: Existing index has no line number information.\n" );
-            printToStderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s) or v0 index.\n" );
+            printToStderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s).\n" );
             goto deserialize_index_from_file_error;
         } else {
             // transparently handle v0 files, as `-x` was implicitly tried (v>1.4.2), but it is not compulsory
