@@ -2334,6 +2334,9 @@ local struct returned_output decompress_and_build_index(
                 index->line_number_format = 1;
             else {
                 index->line_number_format = 0;
+                if ( 3 == extend_index_with_lines ) {
+                    printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (decompress_and_build_index).\n" );
+                }
                 // end now possible extend_index_with_lines == 3 (implicit `-x`)
                 extend_index_with_lines = 1;
             }
@@ -3285,6 +3288,7 @@ struct access *deserialize_index_from_file(
         } else {
             // transparently handle v0 files, as `-x` was implicitly tried (v>1.4.2), but it is not compulsory
             extend_index_with_lines = 0; // this value is not used - set here only for clarity
+            printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0 (deserialize_index_from_file).\n" );
         }
     }
 
@@ -4174,6 +4178,7 @@ action_create_index_wait_for_file_creation:
         if ( extend_index_with_lines == 3 ) {
             extend_index_with_lines = 1; // in case of COMPRESS_AND_CREATE_INDEX, direct v1 index
                                          // as no previous index is possible, so there's no doubt.
+            printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (action_create_index).\n" );
         }
 
         ret = compress_and_build_index( file_in, file_out, compression_factor,
@@ -4227,8 +4232,10 @@ action_create_index_wait_for_file_creation:
                     // (this way a possible extend_index_with_lines == 3 is reconverted to a usable value {0,1,2})
                     if ( 0 == (*index)->index_version ) {
                         extend_index_with_lines = 0;
+                        printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0  (action_create_index).\n" );
                     } else {
                         extend_index_with_lines = (*index)->line_number_format;
+                        printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1\\%d (action_create_index).\n", extend_index_with_lines );
                     }
                 } else {
                     printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", index_filename );
