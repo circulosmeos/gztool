@@ -5401,7 +5401,7 @@ int main(int argc, char **argv)
           action == ACT_COMPRESS_CHUNK ||
           action == ACT_DECOMPRESS_CHUNK ||
           action == ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: There is no sense in using `-F` with `-[dlSTu]`.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-F` with `-[dlSTu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5413,7 +5413,7 @@ int main(int argc, char **argv)
     if ( true == lazy_gzip_stream_patching_at_eof &&
         ( action != ACT_SUPERVISE &&
           action != ACT_EXTRACT_TAIL_AND_CONTINUE ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: There is no sense in using `-P` without `-[ST]`.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: without `-[ST]`, use `-p` instead of `-P`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5424,7 +5424,7 @@ int main(int argc, char **argv)
            action == ACT_SUPERVISE ||
            action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
            action == ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: There is no sense in using `-p` without `-[bdiLST]`.\n" );
+        printToStderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-p` without `-[bdiLST]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
