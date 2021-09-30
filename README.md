@@ -98,7 +98,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.4.2)
+      gztool (v1.4.3)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
@@ -378,7 +378,7 @@ Please note that not all stored numbers are 64-bit long. This is because some co
 
 With 64 bit long numbers, the index could potentially manage files up to 2^64 = 16 EiB (16 777 216 TiB).
 
-###Line number counting
+#### Line number counting
 
 Regarding line number counting (`-[xX]`), note that gztool's index counts last line in uncompressed data even if the last char isn't a newline char - whilst `wc` command will not count it in this case!. Nonetheless, line counting when extracting data with `-[bLtT]` does follow `wc` convention - this is in order to not obtain different (+/-1) results reading `gztool` output info and `wc` counts.    
 
@@ -430,7 +430,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.4.2**.
+This version is **v1.4.3**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
