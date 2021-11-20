@@ -54,7 +54,7 @@ Also, some optimizations and brand new behaviours have been added:
 Installation
 ============
 
-* `gztool` is available using directly `apt-get install gztool` in [Debian unstable (actually)](https://packages.debian.org/source/unstable/gztool) and in [Ubuntu *Groovy Gorilla* (20.10) and above](https://launchpad.net/ubuntu/+source/gztool).
+* `gztool` is available using directly `apt-get install gztool` in [Debian 11 and later](https://packages.debian.org/source/bullseye/gztool) and in [Ubuntu *Groovy Gorilla* (20.10) and above](https://launchpad.net/ubuntu/+source/gztool).
 
 * In Ubuntu, [using my repository](https://launchpad.net/~roberto.s.galende/+archive/ubuntu/gztool):
 
