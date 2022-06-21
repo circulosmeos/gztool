@@ -215,7 +215,7 @@ enum EXIT_RETURNED_VALUES {
     EXIT_GENERIC_ERROR = 1,
     EXIT_INVALID_OPTION = 2,
 
-    // used with returned_output, not in app exit values:
+    // used with returned_output.error, not in app exit values:
     // +100 not to crush with Z_* values (zlib): //www.zlib.net/manual.html
     EXIT_FILE_OVERWRITTEN = 100,
     };
