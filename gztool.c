@@ -209,13 +209,16 @@ struct returned_output {
     int error;
 };
 
-enum EXIT_APP_VALUES { EXIT_OK = 0,
-                       EXIT_GENERIC_ERROR = 1,
-                       EXIT_INVALID_OPTION = 2,
-                            // used with returned_output, not in app exit values:
-                            // +100 not to crush with Z_* values (zlib): //www.zlib.net/manual.html
-                            EXIT_FILE_OVERWRITTEN = 100,
-                       };
+enum EXIT_RETURNED_VALUES {
+    // used for app exit values:
+    EXIT_OK = 0,
+    EXIT_GENERIC_ERROR = 1,
+    EXIT_INVALID_OPTION = 2,
+
+    // used with returned_output, not in app exit values:
+    // +100 not to crush with Z_* values (zlib): //www.zlib.net/manual.html
+    EXIT_FILE_OVERWRITTEN = 100,
+    };
 
 enum INDEX_AND_EXTRACTION_OPTIONS {
     JUST_CREATE_INDEX = 1, SUPERVISE_DO,
@@ -4939,7 +4942,7 @@ int main(int argc, char **argv)
     char utility_option = ' ';
     uint64_t count_errors = 0;
 
-    enum EXIT_APP_VALUES ret_value;
+    enum EXIT_RETURNED_VALUES ret_value;
     enum ACTION action;
     enum VERBOSITY_LEVEL list_verbosity = VERBOSITY_NONE;
     enum VERBOSITY_LEVEL help_verbosity = VERBOSITY_NONE;
@@ -6079,7 +6082,7 @@ int main(int argc, char **argv)
                             lazy_gzip_stream_patching_at_eof,
                             range_number_of_bytes, range_number_of_lines,
                             compression_factor );
-                         if ( 0 == write_index_to_disk  &&
+                         if ( 0 == write_index_to_disk &&
                               EXIT_FILE_OVERWRITTEN == ret_value ) {
                               printToStderr( VERBOSITY_EXCESSIVE, "File overwriting detected and restarting decompression...\n" );
                             }
