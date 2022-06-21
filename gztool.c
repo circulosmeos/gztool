@@ -209,7 +209,13 @@ struct returned_output {
     int error;
 };
 
-enum EXIT_APP_VALUES { EXIT_OK = 0, EXIT_GENERIC_ERROR = 1, EXIT_INVALID_OPTION = 2 };
+enum EXIT_APP_VALUES { EXIT_OK = 0,
+                       EXIT_GENERIC_ERROR = 1,
+                       EXIT_INVALID_OPTION = 2,
+                            // used with returned_output, not in app exit values:
+                            // +100 not to crush with Z_* values (zlib): //www.zlib.net/manual.html
+                            EXIT_FILE_OVERWRITTEN = 100,
+                       };
 
 enum INDEX_AND_EXTRACTION_OPTIONS {
     JUST_CREATE_INDEX = 1, SUPERVISE_DO,
@@ -2397,6 +2403,7 @@ local struct returned_output decompress_and_build_index(
                     // this condition won't arise because (10 < 0) is false (index doesn't exist) and
                     // (10 < 10) is false (index contains always the first access point))
                     printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting, so ending process\n", file_name );
+                    ret.error = EXIT_FILE_OVERWRITTEN;
                     break;
                 }
             }
@@ -4386,6 +4393,10 @@ action_create_index_wait_for_file_creation:
         }
     }
 
+    if ( EXIT_FILE_OVERWRITTEN <= ret.error ) {
+        return ret.error;
+    }
+
     return EXIT_OK;
 
 }
@@ -6058,15 +6069,25 @@ int main(int argc, char **argv)
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
-                    ret_value = action_create_index( file_name, &index, index_filename,
-                        SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
-                        write_index_to_disk, end_on_first_proper_gzip_eof,
-                        always_create_a_complete_index, waiting_time, force_action,
-                        wait_for_file_creation, extend_index_with_lines,
-                        expected_first_byte, gzip_stream_may_be_damaged,
-                        lazy_gzip_stream_patching_at_eof,
-                        range_number_of_bytes, range_number_of_lines,
-                        compression_factor );
+                    do {
+                        ret_value = action_create_index( file_name, &index, index_filename,
+                            SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
+                            write_index_to_disk, end_on_first_proper_gzip_eof,
+                            always_create_a_complete_index, waiting_time, force_action,
+                            wait_for_file_creation, extend_index_with_lines,
+                            expected_first_byte, gzip_stream_may_be_damaged,
+                            lazy_gzip_stream_patching_at_eof,
+                            range_number_of_bytes, range_number_of_lines,
+                            compression_factor );
+                         if ( 0 == write_index_to_disk  &&
+                              EXIT_FILE_OVERWRITTEN == ret_value ) {
+                              printToStderr( VERBOSITY_EXCESSIVE, "File overwriting detected and restarting decompression...\n" );
+                            }
+                    } while ( 0 == write_index_to_disk  &&
+                              EXIT_FILE_OVERWRITTEN == ret_value );
+                              // this do-while loop mimics `tail -F`:
+                              // this has the side efect that `-WT` may get stuck here forever
+                              // unless end_on_first_proper_gzip_eof == 1
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
