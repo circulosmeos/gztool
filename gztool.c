@@ -217,6 +217,8 @@ enum EXIT_RETURNED_VALUES {
 
     // used with returned_output.error, not in app exit values:
     // +100 not to crush with Z_* values (zlib): //www.zlib.net/manual.html
+    // (and also not to crush with GZIP_MARK_FOUND_TYPE values... though
+    // they are used only for decompress_in_advance()'s ret.error value)
     EXIT_FILE_OVERWRITTEN = 100,
     };
 
@@ -1252,7 +1254,7 @@ local struct returned_output decompress_in_advance(
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
                     // this condition won't arise because (10 < 0) is false (index doesn't exist) and
                     // (10 < 10) is false (index contains always the first access point))
-                    printToStderr( VERBOSITY_NORMAL, "\nPATCHING: Detected '%s' gzip file overwriting, so ending process\n", file_name );
+                    printToStderr( VERBOSITY_NORMAL, "\nPATCHING: Detected '%s' gzip file overwriting, so ending patching process\n", file_name );
                     break;
                 }
             }
@@ -1407,7 +1409,7 @@ local struct returned_output decompress_in_advance(
                 // Which position exactly has the error been found at:
                 off_t file_position_of_error = totin;
                 printToStderr( VERBOSITY_NORMAL,
-                    "PATCHING: Gzip stream error found @ %llu Byte.\n", file_position_of_error );
+                    "PATCHING: Gzip stream error %d found @ %llu Byte.\n", ret.error, file_position_of_error );
                 if ( file_position_of_error == 0 ) {
                     // there's no room for more backwards searching for gzip initial markers
                     // [A]
@@ -2405,7 +2407,13 @@ local struct returned_output decompress_and_build_index(
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
                     // this condition won't arise because (10 < 0) is false (index doesn't exist) and
                     // (10 < 10) is false (index contains always the first access point))
-                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting, so ending process\n", file_name );
+                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting", file_name );
+                    if ( SUPERVISE_DO_AND_EXTRACT_FROM_TAIL != indx_n_extraction_opts ||
+                         0 != write_index_to_disk
+                       ) {
+                        printToStderr( VERBOSITY_EXCESSIVE, ", so ending process" );
+                    }
+                    printToStderr( VERBOSITY_EXCESSIVE, "\n" );
                     ret.error = EXIT_FILE_OVERWRITTEN;
                     break;
                 }
