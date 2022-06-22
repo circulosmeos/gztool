@@ -6084,6 +6084,7 @@ int main(int argc, char **argv)
                             compression_factor );
                          if ( 0 == write_index_to_disk &&
                               EXIT_FILE_OVERWRITTEN == ret_value ) {
+                              expected_first_byte = 1LLU;
                               printToStderr( VERBOSITY_NORMAL, "File overwriting detected and restarting decompression...\n" );
                             }
                     } while ( 0 == write_index_to_disk  &&
