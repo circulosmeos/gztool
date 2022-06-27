@@ -2460,7 +2460,7 @@ local struct returned_output decompress_and_build_index(
                 start_extraction_on_first_depletion = 0;
 
                 // output uncompressed data
-                unsigned have = WINSIZE - strm.avail_out;
+                unsigned have = avail_out_0 - strm.avail_out;
                 if ( have == 0 ) {
                     if ( window2_size > 0 ) {
                         // if we have previous data to show, show it, because now we're out of fresh data!
