@@ -2666,8 +2666,8 @@ local struct returned_output decompress_and_build_index(
                  ( NULL == index || index->index_complete == 0 ) &&
                  ( indx_n_extraction_opts == EXTRACT_TAIL ||
                    indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
-                if ( WINSIZE - strm.avail_out > 0 ) { // if have == 0, maintain previous (data and) window2_size value
-                    window2_size = WINSIZE - avail_out_0;
+                if ( avail_out_0 - strm.avail_out > 0 ) { // if have == 0, maintain previous (data and) window2_size value
+                    window2_size = WINSIZE - strm.avail_out;
                     printToStderr( VERBOSITY_NUTS, "(w2s=%d)", window2_size );
                     if ( window2_size <= WINSIZE )
                         memcpy( window2, window, window2_size );
