@@ -2267,7 +2267,6 @@ local struct returned_output decompress_and_build_index(
                         printToStderr( VERBOSITY_EXCESSIVE, "offset_in=%llu\n", offset_in );
                     } else {
                         extraction_from_offset_in = 1;
-                        start_extraction_on_first_depletion = 1;
                     }
                 } else {
                     // STDIN: size cannot be calculated in advance
