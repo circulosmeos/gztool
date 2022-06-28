@@ -142,6 +142,7 @@
 #include <sys/stat.h> // stat()
 #include <math.h>   // pow()
 #include <stdbool.h>// bool, false, true
+#include <sys/ioctl.h>// ioctl()
 
 // sets binary mode for stdin in Windows
 #define STDIN 0
@@ -2385,9 +2386,36 @@ local struct returned_output decompress_and_build_index(
         // note that here strm.avail_in > 0 only if ret.error == Z_STREAM_END
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( file_in ) ) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
-            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
+
+            if ( strlen( file_name ) == 0 ) { // read from STDIN:
+                                              // do not wait for the buffer to be complete (<=CHUNK), but read asap
+                int n = 0;
+                strm.avail_in = 0;
+
+                if ( ioctl(0, FIONREAD, &n) >= 0 && n > 0 ) {
+                    if ( ( CHUNK - strm_avail_in0 ) >= n ) {
+                        strm.avail_in = fread(input + strm_avail_in0, 1, n, file_in);
+                    } else {
+                        strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
+                    }
+                } else {
+                    // sometimes ioctl() on STDIN doesn't immediatly return data there on &n ...
+                    if ( EXTRACT_TAIL == indx_n_extraction_opts ) { // (this is the more affected option,
+                                                                    // as it doesn't loop here again)
+                        // so make usual fread() until complete the whole chunk size:
+                        // (a while(ioctl()) loop here, waiting for input is not feasible, as window2 (code is executed)
+                        // later, and an (infinite) waiting loop here would prevent its output for being printed)
+                        strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
+                    }
+                }
+
+            } else {                         // read from file
+                strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
+            }
+
             printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
+
         }
         if ( feof( file_in ) ) {
             // generic check for growing files (not related to bgzip-compatible-streams code):
