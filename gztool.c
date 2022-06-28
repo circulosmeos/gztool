@@ -2468,6 +2468,7 @@ local struct returned_output decompress_and_build_index(
                         if (fwrite(window2, 1, window2_size, file_out) != window2_size || ferror(file_out)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
+                            fflush(file_out);
                             goto decompress_and_build_index_error;
                         }
                     } else {
@@ -2480,6 +2481,7 @@ local struct returned_output decompress_and_build_index(
                     if (fwrite(strm.next_out, 1, have, file_out) != have || ferror(file_out)) {
                         (void)inflateEnd(&strm);
                         ret.error = Z_ERRNO;
+                        fflush(file_out);
                         goto decompress_and_build_index_error;
                     }
                 }
