@@ -2486,6 +2486,11 @@ local struct returned_output decompress_and_build_index(
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
 
+                // if STDIN, continue extracting (with *_TAIL options) after start_extraction_on_first_depletion=0
+                if ( strlen( file_name ) == 0 ) {
+                    extraction_from_offset_in = 1;
+                }
+
                 // output uncompressed data
                 unsigned have = avail_out_0 - strm.avail_out;
                 if ( have == 0 ) {
