@@ -247,6 +247,8 @@ enum GZIP_MARK_FOUND_TYPE {
                     = 8, // All values greater than Z_* zlib's return codes, because
                          // a ret.error is used at decompress_in_advance() for both
                          // zlib's outputs and the function output (GZIP_MARK_FOUND_TYPE).
+    GZIP_MARK_SILENT_ERROR, // a GZIP_MARK_ERROR with ( file_position_of_error<CHUNK &&
+                            // ret.error == Z_DATA_ERROR ), shown with VERBOSITY_EXCESSIVE.
     GZIP_MARK_FATAL_ERROR, // This value aborts process, 'cause a compulsory fseeko() failed.
     GZIP_MARK_NONE,        // Decompress_in_advance() didn't find an error in gzip stream (all ok!).
     GZIP_MARK_BEGINNING,   // An error was found, and a new complete gzip stream was found
@@ -1409,8 +1411,12 @@ local struct returned_output decompress_in_advance(
                 returned_value.error = GZIP_MARK_NONE;
                 // Which position exactly has the error been found at:
                 off_t file_position_of_error = totin;
-                printToStderr( VERBOSITY_NORMAL,
-                    "PATCHING: Gzip stream error %d found @ %llu Byte.\n", ret.error, file_position_of_error );
+                printToStderr( (file_position_of_error<CHUNK &&
+                                ret.error == Z_DATA_ERROR)?
+                                // these errors are common on log.gz rotations, but also innocuous
+                                VERBOSITY_EXCESSIVE
+                                :VERBOSITY_NORMAL,
+                    "PATCHING: Gzip stream error %d found @ byte #%llu.\n", ret.error, file_position_of_error );
                 if ( file_position_of_error == 0 ) {
                     // there's no room for more backwards searching for gzip initial markers
                     // [A]
@@ -1560,6 +1566,11 @@ local struct returned_output decompress_in_advance(
 
                     // there has been no luck looking for a valid gzip restart point:
                     returned_value.error = GZIP_MARK_ERROR;
+                    if ( file_position_of_error<CHUNK &&
+                         ret.error == Z_DATA_ERROR ) {
+                        // these errors are common on log.gz rotations, but also innocuous
+                        returned_value.error = GZIP_MARK_SILENT_ERROR;
+                    }
                     returned_value.value = totin;
                     goto decompress_in_advance_ret;
 
@@ -2588,10 +2599,12 @@ local struct returned_output decompress_and_build_index(
                     // no error was found in advance: proceed as usual
                     break;
                 case GZIP_MARK_ERROR:
+                case GZIP_MARK_SILENT_ERROR:
                     // and unrecoverable gzip error was found or
                     // a processing error raised which makes recovery impossible:
                     // progress as usual, as nothing more can be done.
-                    printToStderr( VERBOSITY_NORMAL,
+                    printToStderr(
+                        (ret.error == GZIP_MARK_ERROR)?VERBOSITY_NORMAL:VERBOSITY_EXCESSIVE,
                         "PATCHING: GZIP errors cannot be fixed.\n" );
                     // set these values to avoid entering this loop again:
                     decompress_until_this_point_byte = ret.value;
