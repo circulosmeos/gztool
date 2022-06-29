@@ -4907,7 +4907,7 @@ local void print_help() {
     fprintf( stderr, " -e: if multiple files are indicated, continue on error (if any).\n" );
     fprintf( stderr, " -E: end processing on first GZIP end of file marker at EOF.\n" );
     fprintf( stderr, "     Nonetheless with `-c`, `-E` waits for more data even at EOF.\n" );
-    fprintf( stderr, " -f: force file overwriting if destination file already exists.\n" );
+    fprintf( stderr, " -f: force file overwriting if index file already exists.\n" );
     fprintf( stderr, " -F: force index creation/completion first, and then action: if\n" );
     fprintf( stderr, "     `-F` is not used, index is created interleaved with actions.\n" );
     fprintf( stderr, " -h: print brief help; `-hh` prints this help.\n" );
