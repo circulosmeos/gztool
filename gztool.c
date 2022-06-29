@@ -142,7 +142,6 @@
 #include <sys/stat.h> // stat()
 #include <math.h>   // pow()
 #include <stdbool.h>// bool, false, true
-#include <sys/ioctl.h>// ioctl()
 
 // sets binary mode for stdin in Windows
 #define STDIN 0
@@ -152,6 +151,7 @@
 # include <fcntl.h>
 # define SET_BINARY_MODE(handle) setmode(handle, O_BINARY)
 #else
+# include <sys/ioctl.h>// ioctl()
 # define SET_BINARY_MODE(handle) ((void)0)
 #endif
 
@@ -2387,6 +2387,7 @@ local struct returned_output decompress_and_build_index(
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( file_in ) ) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
 
+#ifndef _WIN32
             if ( strlen( file_name ) == 0 ) { // read from STDIN:
                                               // do not wait for the buffer to be complete (<=CHUNK), but read asap
                 int n = 0;
@@ -2408,8 +2409,9 @@ local struct returned_output decompress_and_build_index(
                         strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
                     }
                 }
-
-            } else {                         // read from file
+            } else // read from file
+#endif
+            {
                 strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
             }
 
