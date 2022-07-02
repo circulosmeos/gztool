@@ -49,7 +49,7 @@ Also, some optimizations and brand new behaviours have been added:
 * **Compatible with complete `gzip`-concatenated-files** (aka [gzip members](http://tools.ietf.org/html/rfc1952#page-5))
 * **Compatible with [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip)** (variable-short-uncompressed complete-gzip-block sizes)
 * data can be provided from/to stdin/stdout
-* `gztool` can be used to remotely retrieve just a small part of a bigger gzip compressed file and sucessfully decompress it locally. See [this stackexchange thread](https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/#541903). Just note that the `gztool` **index file** must be also available.
+* `gztool` can be used to remotely retrieve just a small part of a bigger gzip compressed file and successfully decompress it locally. See [this stackexchange thread](https://unix.stackexchange.com/questions/429197/reading-partially-downloaded-gzip-with-an-offset/#541903). Just note that the `gztool` **index file** must be also available.
 
 Installation
 ============
@@ -400,7 +400,7 @@ Other tools which try to provide random access to gzipped files
 
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
-* [*dictzip*](http://manpages.ubuntu.com/manpages/bionic/man1/dictzip.1.html) command, is a format compatible with gzip that stores an index in the header of the file. Uncompressed size is limited to 4 GiB - see also `idzip` below. The dictionary header cannot be expanded if more gzip data is added, and it cannot be added to an existent gzip file - both issues are succesfully managed by `gztool`.
+* [*dictzip*](http://manpages.ubuntu.com/manpages/bionic/man1/dictzip.1.html) command, is a format compatible with gzip that stores an index in the header of the file. Uncompressed size is limited to 4 GiB - see also `idzip` below. The dictionary header cannot be expanded if more gzip data is added, and it cannot be added to an existent gzip file - both issues are successfully managed by `gztool`.
 
 * [*idzip*](https://github.com/fidlej/idzip) Python command and function, builds upon *dictzip* to overcome the 4 GiB limit of `dictzip` by using multiple [gzip members](http://tools.ietf.org/html/rfc1952#page-5).
 

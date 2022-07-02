@@ -80,7 +80,7 @@
        An access point can be created at the start of any deflate block, by saving
        the starting file offset and bit of that block, and the 32K bytes of
        uncompressed data that precede that block.  Also the uncompressed offset of
-       that block is saved to provide a referece for locating a desired starting
+       that block is saved to provide a reference for locating a desired starting
        point in the uncompressed stream.  build_index() works by decompressing the
        input zlib or gzip stream a block at a time, and at the end of each block
        deciding if enough uncompressed data has gone by to justify the creation of
@@ -780,7 +780,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
 
     /*if (index->have <= 0)
         return 0;*/
-    /* writing and empy index is allowed: writes the header (of size 4*8 = 32 bytes) */
+    /* writing and empty index is allowed: writes the header (of size 4*8 = 32 bytes) */
 
     if ( index_last_written_point == 0 ) {
 
@@ -955,7 +955,7 @@ ssize_t PREAD(
 // to assure that no errors will be found, and if an error is found in advance,
 // try to find a reason in these CHUNKS_TO_DECOMPRESS_IN_ADVANCE chunks
 // that explain it as an incorrectly terminated gzip stream and the
-// beginning of a new one immediatly attached after it:
+// beginning of a new one immediately attached after it:
 // and so either a GZIP header or a full flush point are found there.
 // If an error is found and a feasible restart is found, its gzip stream
 // byte position is returned for decompress_and_build_index() to decompress
@@ -1302,7 +1302,7 @@ local struct returned_output decompress_in_advance(
                 // to print out current caller input buffer,
                 // which, as we've reached until here, is CORRECT!
                 // because fread() MUST have read it also and so the
-                // inflate() has occured because this code is ONLY
+                // inflate() has occurred because this code is ONLY
                 // REACHED WITH strm.avail_in == 0
                 ret.error = GZIP_MARK_NONE;
                 goto decompress_in_advance_ret;
@@ -2585,7 +2585,7 @@ local struct returned_output decompress_and_build_index(
 
             // input data MUST (also) be checked against decompress_until_this_point_byte
             // BEFORE inflate() in order to assure
-            // that no invalid data is feeded to the process !!!
+            // that no invalid data is fed to the process !!!
             // ( The other point of checking is [C]. )
             if ( gzip_stream_may_be_damaged > 0 &&
                  decompress_until_this_point_byte > 0LLU &&
@@ -3221,7 +3221,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 //                            load_windows==0, so a later extract() can access the
 //                            index file again to read the window data.
 //                            Can be "" if using stdin, but not NULL.
-// int extend_index_with_lines: if >0 (index v1) but index is v0, operation cannot be perfomed
+// int extend_index_with_lines: if >0 (index v1) but index is v0, operation cannot be performed
 //                              unless:
 //                              * the index is an **empty file**, in which case the index
 //                                pointer is correctly initialized with corresponding ->index_version
@@ -3636,7 +3636,7 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 // creating a .gzi index to index_filename file name,
 // and returning it on *built.
 // Note that the index will be of minimum size as this function
-// creates Z_FULL_FLUSH marks on commpression stream every span bytes,
+// creates Z_FULL_FLUSH marks on compression stream every span bytes,
 // so the window size will be always 0 bytes. This produces indexes
 // almost as small as with bgzip compression, with better compression factor.
 // Compression based on def() from zlib/examples/zpipe.c by Mark Adler
@@ -4582,7 +4582,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
             // print compression factor, estimated from available data if index isn't complete
             fprintf( stdout, "\tCompression factor       : " );
             if ( 1 == index->index_complete &&
-                 NULL != gzip_filename  // gzip file may be unkown: compression cannot be calculated here
+                 NULL != gzip_filename  // gzip file may be unknown: compression cannot be calculated here
                 ) {
                 // index is complete
                 if ( st_gzip.st_size > 0 &&
