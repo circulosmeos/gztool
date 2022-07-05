@@ -4968,7 +4968,6 @@ int main(int argc, char **argv)
     // variables for used for the different actions:
     char *file_name = NULL;
     FILE *in = NULL;
-    FILE *index_file = NULL;
     struct access *index = NULL;
 
     // variables for grabbing the options:
@@ -5921,10 +5920,6 @@ int main(int argc, char **argv)
                 free_index( index );
                 index = NULL;
             }
-            if ( NULL != index_file ) {
-                fclose( index_file );
-                index_file = NULL;
-            }
 
             if ( ( action == ACT_CREATE_INDEX || action == ACT_SUPERVISE ||
                    action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
@@ -6285,9 +6280,6 @@ int main(int argc, char **argv)
     }
     if ( NULL != index_filename ) {
         free( index_filename );
-    }
-    if ( NULL != index_file ) {
-        fclose( index_file );
     }
 
     if ( i > (uint64_t)( 1 + optind - ( (count_errors>0 && continue_on_error == 0)?1:0 ) ) ) {
