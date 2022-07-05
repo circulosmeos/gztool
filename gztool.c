@@ -6139,16 +6139,39 @@ int main(int argc, char **argv)
                             lazy_gzip_stream_patching_at_eof,
                             range_number_of_bytes, range_number_of_lines,
                             compression_factor );
-                         if ( 0 == write_index_to_disk &&
-                              EXIT_FILE_OVERWRITTEN == ret_value ) {
-                              expected_first_byte = 1LLU;
-                              printToStderr( VERBOSITY_NORMAL, "File overwriting detected and restarting decompression...\n" );
+                            if ( EXIT_FILE_OVERWRITTEN == ret_value &&
+                                 ( 0 == write_index_to_disk ||
+                                   ( 1 == force_action &&
+                                     1 == write_index_to_disk ) )
+                            ) {
+                                printToStderr( VERBOSITY_NORMAL, "File overwriting detected and restarting decompression...\n" );
+                                // delete index file
+                                if ( NULL != index ) {
+                                    free_index( index );
+                                    index = NULL;
+                                }
+                                if ( 0 == write_index_to_disk ) {
+
+                                    expected_first_byte = 1LLU;
+
+                                } else { // ( 1 == force_action && 1 == write_index_to_disk )
+
+                                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Overwriting '%s' ...\n", index_filename );
+                                    if ( remove( index_filename ) != 0 ) {
+                                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                                        ret_value = EXIT_GENERIC_ERROR;
+                                        break;
+                                    }
+
+                                }
                             }
-                    } while ( 0 == write_index_to_disk  &&
-                              EXIT_FILE_OVERWRITTEN == ret_value );
-                              // this do-while loop mimics `tail -F`:
-                              // this has the side efect that `-WT` may get stuck here forever
-                              // unless end_on_first_proper_gzip_eof == 1
+                    } while ( EXIT_FILE_OVERWRITTEN == ret_value &&
+                              ( 0 == write_index_to_disk ||
+                                ( 1 == force_action && 1 == write_index_to_disk ) )
+                            );
+                            // this do-while loop mimics `tail -F`:
+                            // this has the side efect that `-[fW]T` may get stuck here forever
+                            // unless end_on_first_proper_gzip_eof == 1
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
