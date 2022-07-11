@@ -1100,12 +1100,6 @@ local struct returned_output decompress_in_advance(
         //ret.value = 0LLU; // ret.value is never used:
         ret.error = Z_OK;   // ret.error is used, to maintain this code as an-almost-clone of decompress_and_build_index()
                             // thanks to using the same name.
-        if ( chunks_in_advance0 == 0 ||
-             chunks_to_look_backwards0 == 0 ) {
-            // these two values cannot be zero!
-            returned_value.error = GZIP_MARK_FATAL_ERROR;
-            return returned_value;
-        }
         chunks_in_advance = chunks_in_advance0;
         chunks_to_look_backwards = chunks_to_look_backwards0;
         decompressing_with_gzip_headers = decompressing_with_gzip_headers0;
@@ -1115,6 +1109,11 @@ local struct returned_output decompress_in_advance(
             waiting_time = waiting_time0;
             lazy_gzip_stream_patching_at_eof = lazy_gzip_stream_patching_at_eof0;
             last_correct_reentry_point_returned = 0LLU;
+        }
+        if ( chunks_in_advance0 == 0 ||
+             chunks_to_look_backwards0 == 0 ) {
+            // these two values cannot be zero!
+            returned_value.error = GZIP_MARK_FATAL_ERROR;
         }
         return returned_value;
     } else {
@@ -2612,7 +2611,8 @@ local struct returned_output decompress_and_build_index(
                     // (optionally) free strm structure from internal state of decompress_in_advance()
                     // as it won't be called again because an error will rise eventually on caller:
                     decompress_in_advance( NULL, NULL, NULL,
-                        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+                        0LLU, CHUNKS_TO_DECOMPRESS_IN_ADVANCE, CHUNKS_TO_LOOK_BACKWARDS,
+                        0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
                     break;
                 case GZIP_MARK_FATAL_ERROR:
                     // an internal and compulsory fseeko() failed, so process
