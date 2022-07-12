@@ -1457,9 +1457,6 @@ local struct returned_output decompress_in_advance(
                             backwards_until_this_byte = last_correct_reentry_point_returned + 1;
                         }
 
-                        buffer_position =
-                            LOCAL_CHUNK -1 -( (i==0)? strm.avail_in: 0 ); // at end of buffer's data
-
                         // I use pread() to avoid multiple syscalls with fseeko()+fread()
                         if ( !( bytes_read =
                               PREAD( file_in, buffer,
@@ -1471,8 +1468,12 @@ local struct returned_output decompress_in_advance(
                             goto decompress_in_advance_ret;
                         }
 
-                        if ( bytes_read -1 <= buffer_position ) {
-                            buffer_position = bytes_read - MAX_HEADER_SIZE; // do not read pass the buffer's limits!
+                        buffer_position = bytes_read - MAX_HEADER_SIZE; // do not read pass the buffer's limits!
+
+                        if ( i == 0 &&
+                             ( backwards_until_this_byte + buffer_position ) > totin
+                        ) {
+                            buffer_position = totin - backwards_until_this_byte;
                         }
 
                         if ( buffer_position < 0 ) {
