@@ -1080,6 +1080,8 @@ local struct returned_output decompress_in_advance(
                                                                 // as it implies to discard last extracted bytes); anyway,
                                                                 // what it's clear is that this last point MUST NOT be
                                                                 // used again, or possible infinite loops could appear.
+    static bool first_call = true;  // to know if this is the first call to this function,
+                                    // and so strm already contains previous valid data!
 
     // strm_initialized must be set to false in decompress_in_advance()
     // when the file processing ends, no matter what...
@@ -1105,6 +1107,7 @@ local struct returned_output decompress_in_advance(
         decompressing_with_gzip_headers = decompressing_with_gzip_headers0;
         end_on_first_proper_gzip_eof = end_on_first_proper_gzip_eof0;
         expected_first_byte = expected_first_byte0;
+        first_call = true;
         if ( DECOMPRESS_IN_ADVANCE_RESET == initialize_function ) {
             waiting_time = waiting_time0;
             lazy_gzip_stream_patching_at_eof = lazy_gzip_stream_patching_at_eof0;
@@ -1235,9 +1238,21 @@ local struct returned_output decompress_in_advance(
              ( (uint64_t)ftello( file_in ) == totin || initial_file_EOF == 0 ) // as we're using the same initial buffer with ftello(file_in)>totin
                                                                                // this precaution is compulsory
              ) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
-            strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in); // here I do not use pread() just to maintain the same code base as in decompress_and_build_index()
-            printToStderr( VERBOSITY_MANIAC, "[read in advance %d B]", strm.avail_in );
-            strm.avail_in += strm_avail_in0;
+            if ( !first_call
+                 // !first_call ensure that no there's no DOUBLE fread over the same contents:
+                 // on entering here for the first time (first caller call after DECOMPRESS_IN_ADVANCE_*RESET!)
+                 // input ALREADY contains strm_avail_in0 valid data,
+                 // so we cannot enter here to read the same data (fseeko() before the "do" loop) after it (input + strm_avail_in0),
+                 // which would result in AN INCORRECT input buffer.
+                 // Note than on first (first_call) "do" loop iteration always feof(file_in)==0 even with small inputs,
+                 // because there's an fseeko() before the "do" loop - These small inputs (<CHUNK) are the ones that would result
+                 // in AN INCORRECT input buffer, otherwise if file contents are still bigger than CHUNK passed this point
+                 // in each call there's no problem as strm_avail_in0 == CHUNK and so this fread() reads 0 bytes.
+            ) {
+                strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in); // here I do not use pread() just to maintain the same code base as in decompress_and_build_index()
+                printToStderr( VERBOSITY_MANIAC, "[read in advance %d B]", strm.avail_in );
+                strm.avail_in += strm_avail_in0;
+            }
         }
         if ( feof( file_in ) ) {
             // generic check for growing files (not related to bgzip-compatible-streams code):
@@ -1289,6 +1304,8 @@ local struct returned_output decompress_in_advance(
             ////window_size = 0;
         }
         // end of bgzip-compatible-streams code
+
+        first_call = false; // before any "continue" on this "do" loop
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
               indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
