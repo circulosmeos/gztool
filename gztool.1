@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Sep 30 2021" "gztool v1.4.3"
+.TH gztool 1 "Jul 15 2022" "gztool v1.5.0"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -354,6 +354,19 @@ In this latter case only a pair of index+gzip filenames can be indicated with ea
 Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered **100001**, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the *1* byte).
 .br
 Please, note that index point positions at index file \fBmay require also the previous byte\fP to be available in the truncated gzip file, as gzip stream is not byte-rounded but a stream of pure bits. Thus \fIif you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip\fP - as said, it may not be needed, but in 7 of 8 cases it is needed.
+.br
+
+
+* Since v1.5.0, using `-[fW]` (`-f`: force index overwriting; `-W`: do not write index) with `-[ST]` (`-S`: create index on still-growing gzip file; `-T`: tail and continue decompressing to stdout) indicates `gztool` to continue operations even after the source file is overwritten. If using `-f`, the index file will be overwritten. For example:
+
+
+.BR \ \ \ \ $\ gztool\ -WT\ log_filename.gz
+.br
+.BR \ \ \ \ ...
+.br
+.BR \ \ \ \ File\ overwriting\ detected\ and\ restarting\ decompression...
+.br
+.BR \ \ \ \ Processing\ 'log_filename.gz' ...
 .br
 
 .SH INTERNALS

@@ -98,7 +98,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.4.3)
+      gztool (v1.5.0)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
@@ -129,7 +129,7 @@ Usage
      -e: if multiple files are indicated, continue on error (if any).
      -E: end processing on first GZIP end of file marker at EOF.
          Nonetheless with `-c`, `-E` waits for more data even at EOF.
-     -f: force file overwriting if destination file already exists.
+     -f: force file overwriting if index file already exists.
      -F: force index creation/completion first, and then action: if
          `-F` is not used, index is created interleaved with actions.
      -h: print brief help; `-hh` prints this help.
@@ -341,6 +341,14 @@ Take into account that, as shown, the first byte of the truncated `gzip_filename
 
 Please, note that index point positions at index file **may require also the previous byte** to be available in the truncated gzip file, as a gzip stream is not byte-rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7 of 8 cases it is needed.
 
+* Since v1.5.0, using `-[fW]` (`-f`: force index overwriting; `-W`: do not write index) with `-[ST]` (`-S`: create index on still-growing gzip file; `-T`: tail and continue decompressing to stdout) indicates `gztool` to continue operations even after the source file is overwritten. If using `-f`, the index file will be overwritten. For example:
+
+        $ gztool -WT log_filename.gz
+        ...
+        File overwriting detected and restarting decompression...
+        Processing 'log_filename.gz' ...
+
+
 Index file format
 =================
 
@@ -430,7 +438,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.4.3**.
+This version is **v1.5.0**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
