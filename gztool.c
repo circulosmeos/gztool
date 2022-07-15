@@ -1257,7 +1257,7 @@ local struct returned_output decompress_in_advance(
             // check that file hasn't shrunk, what would mean that the file
             // has been overwritten from the beginning (possible with rsyslog logs, for example)
             if ( strlen( file_name ) > 0 &&  // this check cannot be done on STDIN
-                 expected_first_byte == 1LLU // this check must not be done if using `-n` (because then st.st_size < totin in general)
+                 expected_first_byte <= 1LLU // this check must not be done if using `-n` (because then st.st_size < totin in general)
             ) {
                 struct stat st;
                 stat(file_name, &st);
