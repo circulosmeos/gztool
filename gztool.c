@@ -656,6 +656,7 @@ local struct access *create_empty_index()
         return NULL;
     }
     index->index_version = 0;
+    index->line_number_format = 0;
     index->file_size = 0;
     index->number_of_lines = 0;
     index->list = NULL;
@@ -3311,8 +3312,13 @@ struct access *deserialize_index_from_file(
     } else {
         // for an empty index, return a pointer with zero data
         index = create_empty_index();
-        if ( extend_index_with_lines > 0 )
+        if ( extend_index_with_lines > 0 ) {
             index->index_version = 1;
+            if ( extend_index_with_lines == 2 )
+                index->line_number_format = 1;
+            else
+                index->line_number_format = 0; // extend_index_with_lines = 1 || 3
+        }
         return index;
     }
 
