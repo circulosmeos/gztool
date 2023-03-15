@@ -2348,14 +2348,21 @@ local struct returned_output decompress_and_build_index(
         totlines = 1;
         index = NULL;               /* will be allocated on first addpoint() */
 
+        // previously I trusted that "index" will be allocated on first addpoint(),
+        // but subsequently more added code depended on an allocated index
+        // ( see block "// if required by passed indx_n_extraction_opts option, extract to stdout:",
+        // calls to giveMeNumberOfLinesInChars() and limitBufferOutput() )
+        // so the easiest patch is to create an index right now,
+        // independently of extend_index_with_lines values:
+        index = create_empty_index();
+        if ( index == NULL ) { // Oops!?
+            ret.error = Z_MEM_ERROR;
+            goto decompress_and_build_index_error;
+        }
+
         if ( extend_index_with_lines > 0 ) {
             // mark index as index_version = 1 to store line numbers when serialize();
             // in order to do this, index must be created now (empty)
-            index = create_empty_index();
-            if ( index == NULL ) { // Oops!?
-                ret.error = Z_MEM_ERROR;
-                goto decompress_and_build_index_error;
-            }
             index->index_version = 1;
             // here extend_index_with_lines can be 3 (implicit `-x`)
             if ( extend_index_with_lines == 2 )
