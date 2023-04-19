@@ -1,4 +1,4 @@
-AC_INIT([gztool], [1.5.2], [roberto.s.galende@gmail.com])
+AC_INIT([gztool], [1.6.0], [roberto.s.galende@gmail.com])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_PROG_CC
 AC_PROG_CC_C99

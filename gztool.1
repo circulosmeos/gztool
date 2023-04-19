@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Mar 15 2023" "gztool v1.5.2"
+.TH gztool 1 "Apr 20 2023" "gztool v1.6.0"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPrRStTwWxXzZ|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -182,6 +182,9 @@ like `-x`, but newline character is '\\r' (old mac).
 .TP
 .BR \-z
 create index without line number information.
+.TP
+.BR \-Z
+adjust index points to a byte boundary: no previous byte needed.
 .br
 .SH QUICK EXAMPLE
 Extract data from 1 GiB byte (byte 2^30) on,
@@ -263,19 +266,19 @@ Creating and index for all "*gz" files in a directory:
 .br
 
 
-* Extract all data from a \fBrsyslog's veryRobustZip\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using \fBrsyslog's veryRobustZip omfile option\fP and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream **in the same file**. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
+* Extract all data from a \fBrsyslog's veryRobustZip\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using \fBrsyslog's veryRobustZip omfile option\fP and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream \fBin the same file\fP. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
 
 .BR \ \ \ \ $\ gztool\ -p\ -b0\ compressed_text_file.gz
 .br
 
-This creates, as usual, the index file `compressed_text_file.gzi`. In order to not create it, `-W` (*do not Write index*) can be used:
+This creates, as usual, the index file `compressed_text_file.gzi`. In order to not create it, `-W` (\fIdo not Write index\fP) can be used:
 
 .BR \ \ \ \ $\ gztool\ -pWb0\ compressed_text_file.gz
 .br
 
-Note that `-p` can require up to twice the time for decompression, because it performs two decompression processes: the usual one, and another one that is performed **in advance** of the usual and which is the one that detects errors, marks them, and finds new entry points to end/begin the decompression circumventing the problems.
+Note that `-p` can require up to twice the time for decompression, because it performs two decompression processes: the usual one, and another one that is performed \fBin advance\fP of the usual and which is the one that detects errors, marks them, and finds new entry points to end/begin the decompression circumventing the problems.
 .br
-Note also that these *corrupted-gzip-files* should be always decompressed with `-p` parameter, even if a `gztool` index file exists for them, because the index file stores entry points, but does not store where do errors occur in the `gzip` file.
+Note also that these \fIcorrupted-gzip-files\fP should be always decompressed with `-p` parameter, even if a `gztool` index file exists for them, because the index file stores entry points, but does not store where do errors occur in the `gzip` file.
 That said, if the `-[bL]` point of extraction is beyond the point(s) of error in the `gzip` file and an index file exists, then the decompression can proceed fine without `-p`, as the index points stored in the index file are always clean.
 .br
 
@@ -351,11 +354,16 @@ In this latter case only a pair of index+gzip filenames can be indicated with ea
 .BR \ \ \ \ $\ gztool\ -n\ 100001\ -b\ 20M\ gzip_filename.gz
 .br
 
-Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered **100001**, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the *1* byte).
+Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered \fB100001\fP, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the \fB1\fP byte).
 .br
-Please, note that index point positions at index file \fBmay require also the previous byte\fP to be available in the truncated gzip file, as gzip stream is not byte-rounded but a stream of pure bits. Thus \fIif you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip\fP - as said, it may not be needed, but in 7 of 8 cases it is needed.
+Please, note that index point positions at index file \fBmay require also the previous byte\fP to be available in the truncated gzip file, as gzip stream is not byte-rounded but a stream of pure bits. Thus \fIif you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip\fP - as said, it may not be needed, but in 7 of 8 cases it is needed. \fBAnother option is to use `-Z` when creating the index, as indicated below.\fP
 .br
 
+* Create an index for a gzip file in which every index entry point is adjusted to byte boundary, so no previous byte (bits) is needed. Note that in general the byte at which the index entry point begins does not represent a clear cut point as the gzip window needs up to 7 bits from the previous byte. This is so because \fBgzip\fP is a bit-level stream compressor. With `-Z` the cut point is always clean and no bits from the previous byte are required. This will result in index points spaced by more than `-s` bytes between then, and so, may be, less points in the index. But this is completely safe and sound.
+
+        $ gztool -Z my_gzip_file.gz
+
+`-Z` exists since gztool \fBv1.6.0\fP.
 
 * Since v1.5.0, using `-[fW]` (`-f`: force index overwriting; `-W`: do not write index) with `-[ST]` (`-S`: create index on still-growing gzip file; `-T`: tail and continue decompressing to stdout) indicates `gztool` to continue operations even after the source file is overwritten. If using `-f`, the index file will be overwritten. For example:
 

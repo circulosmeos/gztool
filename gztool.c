@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v1.5* by Roberto S. Galende, 2019, 2020, 2021, 2022, 2023
+// v0.1 to v1.6* by Roberto S. Galende, 2019, 2020, 2021, 2022, 2023
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.5.2"
+    #define PACKAGE_VERSION "1.6.0"
 #endif
 
 #define _XOPEN_SOURCE 500 // expose <unistd.h>'s pread()

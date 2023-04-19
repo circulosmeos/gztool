@@ -98,14 +98,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.5.2)
+      gztool (v1.6.0)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXz|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -173,6 +173,7 @@ Usage
          This is implicit unless `-X` or `-z` are indicated.
      -X: like `-x`, but newline character is '\r' (old mac).
      -z: create index without line number information.
+     -Z: adjust index points to a byte boundary: no previous byte needed.
 
       EXAMPLE: Extract data from 1 GiB byte (byte 2^30) on,
       from `myfile.gz` to the file `myfile.txt`. Also gztool will
@@ -313,14 +314,14 @@ The same applies to `-S` though in this case there's no output, as only the inde
         $ gztool -ell *.gzi
 
             Checking index file 'accounting.gzi' ...
-            Size of index file:        184577 Bytes (0.37%/gzip)
-            Guessed gzip file name:    'accounting.gz' (66.05%) ( 50172261 Bytes )
-            Number of index points:    15
+            Size of index file (v0)  :   184577 Bytes (0.37%/gzip)
+            Guessed gzip file name   : 'accounting.gz' (66.05%) ( 50172261 Bytes )
+            Number of index points   : 15
             Size of uncompressed file: 147773440 Bytes
             Compression factor       : 66.05%
             List of points:
-            @ compressed/uncompressed byte (index data size in Bytes @window's beginning at index file), ...
-            #1: @ 10 / 0 ( 0 @56 ), #2: @ 3059779 / 10495261 ( 13127 @80 ), #3: @ 6418423 / 21210594 ( 6818 @13231 ), #4: @ 9534259 / 31720206 ( 7238 @20073 )...
+            #: @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file) !bits needed from previous byte, ...
+            #1: @ 10 / 0 ( 0 @56 ) !0, #2: @ 3059779 / 10495261 ( 13127 @80 ) !2, #3: @ 6418423 / 21210594 ( 6818 @13231 ) !0, #4: @ 9534259 / 31720206 ( 7238 @20073 ) !7...
         ...
 
 If `gztool` finds the gzip file companion of the index file, some statistics are shown, like the index/gzip size ratio, or the ratio of compression of the gzip file. 
@@ -339,7 +340,13 @@ In this latter case only a pair of index+gzip filenames can be indicated with ea
 
 Take into account that, as shown, the first byte of the truncated `gzip_filename.gz` file is numbered **100001**, that is, the bytes retain the order number in which they appear in the original file (that's the reason why it is not the *1* byte).
 
-Please, note that index point positions at index file **may require also the previous byte** to be available in the truncated gzip file, as a gzip stream is not byte-rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7 of 8 cases it is needed.
+Please, note that index point positions at index file **may require also the previous byte** to be available in the truncated gzip file, as a gzip stream is not byte-rounded but a stream of pure bits. Thus **if you're thinking on truncating a gzip file, please do it always at least by one byte before the indicated index point in the gzip** - as said, it may not be needed, but in 7 of 8 cases it is needed. **Another option is to use `-Z` when creating the index, as indicated below**.
+
+* Create an index for a gzip file in which every index entry point is adjusted to byte boundary, so no previous byte (bits) is needed. Note that in general the byte at which the index entry point begins does not represent a clear cut point as the gzip window needs up to 7 bits from the previous byte. This is so because *gzip* is a bit-level stream compressor. With `-Z` the cut point is always clean and no bits from the previous byte are required. This will result in index points spaced by more than "span_between_points" bytes between then, and so, may be, less points in the index. But this is completely safe and sound.
+
+        $ gztool -Z my_gzip_file.gz
+
+`-Z` exists since gztool **v1.6.0**.
 
 * Since v1.5.0, using `-[fW]` (`-f`: force index overwriting; `-W`: do not write index) with `-[ST]` (`-S`: create index on still-growing gzip file; `-T`: tail and continue decompressing to stdout) indicates `gztool` to continue operations even after the source file is overwritten. If using `-f`, the index file will be overwritten. For example:
 
@@ -438,7 +445,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.5.2**.
+This version is **v1.6.0**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
