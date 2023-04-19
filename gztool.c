@@ -4681,10 +4681,10 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 if ( list_verbosity < VERBOSITY_MANIAC ) {
                     if ( 0 == index->index_version ) {
                         fprintf( stdout,
-                          "\tList of points:\n\t#: @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file), ...\n" );
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte (window data size in Bytes @window's beginning at index file) !bits needed from previous byte, ...\n" );
                     } else {
                         fprintf( stdout,
-                          "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (window data size in Bytes @window's beginning at index file), ...\n" );
+                          "\tList of points:\n\t#: @ compressed/uncompressed byte L#line_number (window data size in Bytes @window's beginning at index file) !bits needed from previous byte, ...\n" );
                     }
                 } else {
                     if ( 0 == index->index_version ) {
@@ -4706,7 +4706,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                         (long long unsigned)(j +1), (long long unsigned)index->list[j].in, (long long unsigned)index->list[j].out );
                     if ( 1 == index->index_version ) // print line number information
                         fprintf( stdout, "L%llu ", (long long unsigned)index->list[j].line_number );
-                    fprintf( stdout, "( %d @%llu ), ", index->list[j].window_size, (long long unsigned)index->list[j].window_beginning );
+                    fprintf( stdout, "( %d @%llu ) !%d, ", index->list[j].window_size, (long long unsigned)index->list[j].window_beginning, index->list[j].bits );
                     if ( (j + 1) % 5 == 0 ) {
                         fprintf( stdout, "\n" );
                     }
