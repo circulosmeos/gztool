@@ -413,6 +413,8 @@ Other tools which try to provide random access to gzipped files
   * Go package [gzran](https://github.com/coreos/gzran). It seems to create the index only in memory, after decompressing the whole gzip file.
   * [jzran](https://code.google.com/archive/p/jzran/). It's a Java library based on the zran.c sample from zlib.
 
+* [`gzindex.c`](https://stackoverflow.com/questions/54584752/zlib-inflatemark-what-application-uses-this-function/54602723#54602723). Code written also by Mark Adler: *Build an index for a gzip file and then test it*. *This code demonstrates the use of new capabilities in zlib 1.2.3.4 or later to create and use a random access index. It is called with the name of a gzip file on the command line. That file is then indexed and the index is tested by accessing the blocks in reverse order.*
+
 * [*bgzip*](https://github.com/samtools/htslib/blob/develop/bgzip.c) command, available in linux with package *tabix* (used for chromosome handling). This discussion about the implementation is very interesting: [random-access-to-zlib-compressed-files](https://lh3.github.io/2014/07/05/random-access-to-zlib-compressed-files). I've developed also a [`bgztail` command tool](https://github.com/circulosmeos/bgztail) to tail bgzipped files, even as they grow.
 
 * [*dictzip*](http://manpages.ubuntu.com/manpages/bionic/man1/dictzip.1.html) command, is a format compatible with gzip that stores an index in the header of the file. Uncompressed size is limited to 4 GiB - see also `idzip` below. The dictionary header cannot be expanded if more gzip data is added, and it cannot be added to an existent gzip file - both issues are successfully managed by `gztool`.
