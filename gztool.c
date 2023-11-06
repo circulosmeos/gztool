@@ -4349,7 +4349,7 @@ action_create_index_wait_for_file_creation:
                     (char *)(file_name + strlen(file_name) - 3) )
                 ) {
                 // if gzip-file name is 'FILE.gz', output file name will be 'FILE'
-                char *output_filename = malloc( strlen(file_name) );
+                char *output_filename = malloc( strlen(file_name) + 1 );
                 sprintf(output_filename, "%s", file_name);
                 output_filename[strlen(file_name) - 3] = '\0';
                 printToStderr( VERBOSITY_NORMAL, "Decompressing to '%s'\n", output_filename );
@@ -6235,7 +6235,7 @@ int main(int argc, char **argv)
                              (char *)(file_name + strlen(file_name) - 3)
                             ) {
                             // if gzip-file name is 'FILE.gz', output file has been 'FILE'
-                            char *output_filename = malloc( strlen(file_name) );
+                            char *output_filename = malloc( strlen(file_name) + 1 );
                             sprintf(output_filename, "%s", file_name);
                             output_filename[strlen(file_name) - 3] = '\0';
                             if ( do_not_delete_original_file == 0 ) {
