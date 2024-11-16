@@ -1050,6 +1050,9 @@ local struct returned_output decompress_in_advance(
     uint64_t caller_last_processed_byte = 0LLU; // store parameter totin0 when initialize_function == DECOMPRESS_IN_ADVANCE_CONTINUE
     uint64_t process_until_this_byte = 0LLU; // inflate() until this input byte position is reached
     int gzip_eof_detected = 0;// 1 if a GZIP file format EOF is detected, and so, feof() is not trustworthy
+    // this value made static because control could return at <#Z_STREAM_END note> if totin >= process_until_this_byte:
+    static uint64_t strm_avail_in_decrement = 0; /* use to mark how many bytes must be discarded in the net read when processing
+                                                    a bgzip tail that is not complete in the actual input pointer block */
     static z_stream strm;
     // internal structure to store ret.error from inflate() (cloning decompress_and_build_index()'s code):
     static struct returned_output ret =
@@ -1362,7 +1365,14 @@ local struct returned_output decompress_in_advance(
             ret.error = Z_DATA_ERROR;
             goto decompress_in_advance_ret;
         }
-        strm.next_in = input;
+
+        // Set strm.next_in to input buffer.
+        // Note that if strm_avail_in_decrement == 0, strm.avail_in and totin don't change.
+        strm.next_in = input + strm_avail_in_decrement;
+        strm.avail_in -= strm_avail_in_decrement;
+        totin += strm_avail_in_decrement;
+        // after using strm_avail_in_decrement it must be set to zero
+        strm_avail_in_decrement = 0;
 
         do {
 
@@ -1385,13 +1395,22 @@ local struct returned_output decompress_in_advance(
             // .................................................
             // treat possible gzip tail:
             if ( ret.error == Z_STREAM_END &&
-                 strm.avail_in >= 8 &&
+                 // strm.avail_in >= 8 && // strm.avail_in may be less than the required 8 bytes for a tail
+                                          // this case must also be treated because inflate() would raise an error
+                                          // if initiated in the middle of a tail
                  decompressing_with_gzip_headers == 0 ) {
                 // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
                 // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
-                strm.avail_in -= 8;
-                strm.next_in += 8;
-                totin += 8;         // data is discarded from strm input, but it MUST be counted in total input
+                if ( strm.avail_in < 8 ) {
+                    strm.next_in += strm.avail_in;
+                    totin += strm.avail_in; // data is discarded from strm input, but it MUST be counted in total input
+                    strm_avail_in_decrement = 8 - strm.avail_in;
+                    strm.avail_in = 0;
+                } else {
+                    strm.next_in += 8;
+                    totin += 8; // data is discarded from strm input, but it MUST be counted in total input
+                    strm.avail_in -= 8;
+                }
                 ////if ( offset_in >= 8 )
                 ////    offset_in -= 8; // data is discarded from strm input, and also from offset_in
                 ////else
@@ -1637,7 +1656,7 @@ local struct returned_output decompress_in_advance(
                                            // there's a lot of code in the beginning of the loop
                                            // waiting to correctly treat this condition. Entering
                                            // there from a new call, is possible, preserving the state
-                                           //   { totin, ftello(), ret.error }
+                                           //   { totin, ftello(), ret.error, strm_avail_in_decrement }
                                            // which is what I've finally decided to do. But uncommenting
                                            // the condition "&& ret.error != Z_STREAM_END" is totally fine.
             break;
@@ -1952,6 +1971,8 @@ local struct returned_output decompress_and_build_index(
     uint64_t have_lines = 0;       /* number of lines in last chunk of uncompressed data */
     uint64_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
     uint64_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
+    uint64_t strm_avail_in_decrement = 0; /* use to mark how many bytes must be discarded in the net read when processing
+                                             a bgzip tail that is not complete in the actual input pointer block */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
     uint64_t actual_index_point = 0;  // only set initially to >0 if NULL != *built
@@ -2563,7 +2584,14 @@ local struct returned_output decompress_and_build_index(
             printToStderr( VERBOSITY_EXCESSIVE, "ERROR: abrupt EOF at %llu Byte\n", totin );
             goto decompress_and_build_index_error;
         }
-        strm.next_in = input;
+
+        // Set strm.next_in to input buffer.
+        // Note that if strm_avail_in_decrement == 0, strm.avail_in and totin don't change.
+        strm.next_in = input + strm_avail_in_decrement;
+        strm.avail_in -= strm_avail_in_decrement;
+        totin += strm_avail_in_decrement;
+        // after using strm_avail_in_decrement it must be set to zero
+        strm_avail_in_decrement = 0;
 
         //
         // INSERTION POINT FOR GZIP RECOVERY CODE (gzip_stream_may_be_damaged)
@@ -2710,13 +2738,22 @@ local struct returned_output decompress_and_build_index(
             // .................................................
             // treat possible gzip tail:
             if ( ret.error == Z_STREAM_END &&
-                 strm.avail_in >= 8 &&
+                 // strm.avail_in >= 8 && // strm.avail_in may be less than the required 8 bytes for a tail
+                                          // this case must also be treated because inflate() would raise an error
+                                          // if initiated in the middle of a tail
                  decompressing_with_gzip_headers == 0 ) {
                 // discard this data as it is probably the 8 gzip-tail bytes (4 CRC + 4 size%2^32)
                 // and zlib is not able to consume it if inflateInit2(&strm, -15) (raw decompressing)
-                strm.avail_in -= 8;
-                strm.next_in += 8;
-                totin += 8;         // data is discarded from strm input, but it MUST be counted in total input
+                if ( strm.avail_in < 8 ) {
+                    strm.next_in += strm.avail_in;
+                    totin += strm.avail_in; // data is discarded from strm input, but it MUST be counted in total input
+                    strm_avail_in_decrement = 8 - strm.avail_in;
+                    strm.avail_in = 0;
+                } else {
+                    strm.next_in += 8;
+                    totin += 8; // data is discarded from strm input, but it MUST be counted in total input
+                    strm.avail_in -= 8;
+                }
                 if ( offset_in >= 8 )
                     offset_in -= 8; // data is discarded from strm input, and also from offset_in
                 else
