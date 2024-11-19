@@ -2587,11 +2587,23 @@ local struct returned_output decompress_and_build_index(
 
         // Set strm.next_in to input buffer.
         // Note that if strm_avail_in_decrement == 0, strm.avail_in and totin don't change.
-        strm.next_in = input + strm_avail_in_decrement;
-        strm.avail_in -= strm_avail_in_decrement;
-        totin += strm_avail_in_decrement;
-        // after using strm_avail_in_decrement it must be set to zero
-        strm_avail_in_decrement = 0;
+        if ( strm_avail_in_decrement > 0 ) {
+            printToStderr( VERBOSITY_MANIAC, "Managing tail after Z_STREAM_END @%llu (%d, %llu)\n",
+                totin, strm.avail_in, strm_avail_in_decrement );
+        }
+        if ( strm.avail_in > strm_avail_in_decrement ) {
+            strm.next_in = input + strm_avail_in_decrement;
+            totin += strm_avail_in_decrement;
+            strm.avail_in -= strm_avail_in_decrement;
+            // after using strm_avail_in_decrement it must be set to zero
+            strm_avail_in_decrement = 0;
+        } else {
+            strm.next_in = input + strm.avail_in;
+            totin += strm.avail_in;
+            strm_avail_in_decrement -= strm.avail_in;
+            // after using strm.avail_in it must be set to zero
+            strm.avail_in = 0;
+        }
 
         //
         // INSERTION POINT FOR GZIP RECOVERY CODE (gzip_stream_may_be_damaged)
