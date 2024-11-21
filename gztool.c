@@ -1051,7 +1051,7 @@ local struct returned_output decompress_in_advance(
     uint64_t process_until_this_byte = 0LLU; // inflate() until this input byte position is reached
     int gzip_eof_detected = 0;// 1 if a GZIP file format EOF is detected, and so, feof() is not trustworthy
     // this value made static because control could return at <#Z_STREAM_END note> if totin >= process_until_this_byte:
-    static uint64_t strm_avail_in_decrement = 0; /* use to mark how many bytes must be discarded in the next read when processing
+    static uint64_t strm_avail_in_decrement = 0LLU; /* use to mark how many bytes must be discarded in the next read when processing
                                                     a bgzip tail that is not complete in the actual input pointer block */
     static z_stream strm;
     // internal structure to store ret.error from inflate() (cloning decompress_and_build_index()'s code):
@@ -1974,7 +1974,7 @@ local struct returned_output decompress_and_build_index(
     uint64_t have_lines = 0;       /* number of lines in last chunk of uncompressed data */
     uint64_t avail_in_0;           /* because strm.avail_in may not exhausts every cycle! */
     uint64_t avail_out_0;          /* because strm.avail_out may not exhausts every cycle! */
-    uint64_t strm_avail_in_decrement = 0; /* use to mark how many bytes must be discarded in the next read when processing
+    uint64_t strm_avail_in_decrement = 0LLU; /* use to mark how many bytes must be discarded in the next read when processing
                                              a bgzip tail that is not complete in the actual input pointer block */
     struct access *index = NULL;/* access points being generated */
     struct point *here = NULL;
@@ -2599,7 +2599,7 @@ local struct returned_output decompress_and_build_index(
 
         // Set strm.next_in to input buffer.
         // Note that if strm_avail_in_decrement == 0, strm.avail_in and totin don't change.
-        if ( strm_avail_in_decrement > 0 ) {
+        if ( strm_avail_in_decrement > 0LLU ) {
             printToStderr( VERBOSITY_MANIAC, "Managing tail after Z_STREAM_END @%llu (%d, %llu)\n",
                 totin, strm.avail_in, strm_avail_in_decrement );
         }
@@ -2608,7 +2608,7 @@ local struct returned_output decompress_and_build_index(
             totin += strm_avail_in_decrement;
             strm.avail_in -= strm_avail_in_decrement;
             // after using strm_avail_in_decrement it must be set to zero
-            strm_avail_in_decrement = 0;
+            strm_avail_in_decrement = 0LLU;
         } else {
             strm.next_in = input + strm.avail_in;
             totin += strm.avail_in;
