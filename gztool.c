@@ -1109,6 +1109,7 @@ local struct returned_output decompress_in_advance(
         end_on_first_proper_gzip_eof = end_on_first_proper_gzip_eof0;
         expected_first_byte = expected_first_byte0;
         first_call = true;
+        strm_avail_in_decrement = 0LLU;
         if ( DECOMPRESS_IN_ADVANCE_RESET == initialize_function ) {
             waiting_time = waiting_time0;
             lazy_gzip_stream_patching_at_eof = lazy_gzip_stream_patching_at_eof0;
