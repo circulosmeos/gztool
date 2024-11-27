@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Nov 17 2024" "gztool v1.7.0"
+.TH gztool 1 "Nov 21 2024" "gztool v1.8.0"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPrRStTwWxXzZ|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPqrRStTwWxXzZ|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -129,6 +129,10 @@ incorrectly terminated GZIP streams, and so then a careful
 like `-p`, but when used with `-[ST]` implies that checking
 for errors in stream is made as quick as possible as the gzip file
 grows. Warning: this may lead to some errors not being patched.
+.TP
+.BR \-q
+extract data as indicated with `-[bL]` of a still-growing gzip file
+and continue Supervising & extracting to STDOUT even after eof.
 .TP
 .BR \-r\ #
 (range): Number of bytes to extract when using `-[bL]`.
@@ -265,6 +269,10 @@ Creating and index for all "*gz" files in a directory:
 .BR \ \ \ \ $\ gztool\ -L\ 10m\ -WI\ None\ compressed_text_file.gz
 .br
 
+* Extract data from line 10 million, to STDOUT, on a still-growing file (`-q`), so if that line number still has not been reached, `gztool` will patiently wait until the gzip file grows enough to store that line, and show just it (`-R 1`). `-q` to wait for content can be used with both `-L` (line numbers) and `-b` (byte positions):
+
+.BR \ \ \ \ $\ gztool\ -q\ -L\ 10m\ -R\ 1\ compressed_text_file.gz
+.br
 
 * Extract all data from a \fBrsyslog's veryRobustZip\fP (//www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using \fBrsyslog's veryRobustZip omfile option\fP and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream \fBin the same file\fP. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
 

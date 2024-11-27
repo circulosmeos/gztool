@@ -98,14 +98,14 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.7.0)
+      gztool (v1.8.0)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
       No more waiting when the end of a 10 GiB gzip is needed!
       //github.com/circulosmeos/gztool (by Roberto S. Galende)
 
-      $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...
+      $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPqrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...
 
       Note that actions `-bcStT` proceed to an index file creation (if
       none exists) INTERLEAVED with data flow. As data flow and
@@ -149,6 +149,8 @@ Usage
      -P: like `-p`, but when used with `-[ST]` implies that checking
          for errors in stream is made as quick as possible as the gzip file
          grows. Warning: this may lead to some errors not being patched.
+     -q: extract data as indicated with `-[bL]` of a still-growing gzip file
+         and continue Supervising & extracting to STDOUT even after eof.
      -r #: (range): Number of bytes to extract when using `-[bL]`.
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -R #: (Range): Number of lines to extract when using `-[bL]`.
@@ -248,6 +250,10 @@ Examples of use
 * Nonetheless note that if in the precedent example an index was previously created for the gzip file without the `-x` parameter (or not using `-L`), **as it doesn't contain line numbering info**, `gztool` will complain and stop. This can be circumvented by telling `gztool` to use another new index file name (`-I`), or even not using anyone at all with `-W` (do not write index) and an index file name that doesn't exists (in this case `None` - it won't be created because of `-W`), and so ((just) this time) the gzip will be processed from the beginning:
 
         $ gztool -L 10m -WI None compressed_text_file.gz
+
+* Extract data from line 10 million, to STDOUT, on a still-growing file (`-q`), so if that line number still has not been reached, `gztool` will patiently wait until the gzip file grows enough to store that line, and show just it (`-R 1`). `-q` to wait for content can be used with both `-L` (line numbers) and `-b` (byte positions):
+
+        $ gztool -q -L 10m -R 1 compressed_text_file.gz
 
 * Extract all data from a [rsyslog's veryRobustZip](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) that contains dirty data. This *corrupted-gzip-files* can arise when using [rsyslog's veryRobustZip omfile option](https://www.rsyslog.com/doc/v8-stable/configuration/modules/omfile.html#veryrobustzip) and the process that is logging is abruptly terminated and then restarted - this produces an incorrectly-terminated-gzip stream that is followed by another gzip stream **in the same file**. `gzip` (nor `zlib`) cannot read this files beyond the point of error. But `gztool` can correctly extract all data (and only good data) using `-p` (*patch*) parameter:
 
@@ -447,7 +453,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.7.0**.
+This version is **v1.8.0**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 
