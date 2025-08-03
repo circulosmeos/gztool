@@ -4,7 +4,7 @@ TESTS_ENVIRONMENT = \
         gztool_abspath='$(abs_top_builddir)'/gztool; \
 	export gztool_abspath;
 bin_PROGRAMS = gztool
-gztool_SOURCES = gztool.c
+gztool_SOURCES = gztool.c gztool_internal.c main.c
 gztool_LDADD = -lm -lz
 dist_doc_DATA = README.md
 dist_man_MANS = gztool.1

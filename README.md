@@ -71,7 +71,7 @@ Compilation
 
     $ sudo apt-get install zlib1g-dev
 
-    $ gcc -O3 -o gztool gztool.c -lz -lm
+    $ gcc -O3 -o gztool gztool.c gztool.h gztool_internal.c gztool_internal.h main.c -lz -lm
 
 If you wish you can use autoconf to check the dependencies, build and
 test `gztool`:
