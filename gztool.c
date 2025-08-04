@@ -318,30 +318,30 @@ char *giveMeSIUnits ( uint64_t input_number, int binary ) {
 /**************
  * Endianness *
  **************/
-static inline int endiannes_is_big(void)
+static inline int endianness_is_big(void)
 {
     long one= 1;
     return !(*((char *)(&one)));
 }
-static inline uint32_t endiannes_swap_4(uint32_t v)
+static inline uint32_t endianness_swap_4(uint32_t v)
 {
     v = ((v & 0x0000FFFFU) << 16) | (v >> 16);
     return ((v & 0x00FF00FFU) << 8) | ((v & 0xFF00FF00U) >> 8);
 }
-static inline void *endiannes_swap_4p(void *x)
+static inline void *endianness_swap_4p(void *x)
 {
-    *(uint32_t*)x = endiannes_swap_4(*(uint32_t*)x);
+    *(uint32_t*)x = endianness_swap_4(*(uint32_t*)x);
     return x;
 }
-static inline uint64_t endiannes_swap_8(uint64_t v)
+static inline uint64_t endianness_swap_8(uint64_t v)
 {
     v = ((v & 0x00000000FFFFFFFFLLU) << 32) | (v >> 32);
     v = ((v & 0x0000FFFF0000FFFFLLU) << 16) | ((v & 0xFFFF0000FFFF0000LLU) >> 16);
     return ((v & 0x00FF00FF00FF00FFLLU) << 8) | ((v & 0xFF00FF00FF00FF00LLU) >> 8);
 }
-static inline void *endiannes_swap_8p(void *x)
+static inline void *endianness_swap_8p(void *x)
 {
-    *(uint64_t*)x = endiannes_swap_8(*(uint64_t*)x);
+    *(uint64_t*)x = endianness_swap_8(*(uint64_t*)x);
     return x;
 }
 
@@ -358,16 +358,16 @@ local size_t fread_endian( void * ptr, size_t size, FILE * stream ) {
 
     size_t output = fread(ptr, size, 1, stream);
 
-    if (endiannes_is_big()) {
+    if (endianness_is_big()) {
         ;
     } else {
         // machine is little endian: flip bytes
         switch (size) {
             case 4:
-                endiannes_swap_4p(ptr);
+                endianness_swap_4p(ptr);
                 break;
             case 8:
-                endiannes_swap_8p(ptr);
+                endianness_swap_8p(ptr);
                 break;
             default:
                 assert(0);
@@ -394,18 +394,18 @@ local size_t fwrite_endian( void * ptr, size_t size, FILE * stream ) {
 
     endian_ptr = malloc(size);
 
-    if (endiannes_is_big()) {
+    if (endianness_is_big()) {
         memcpy(endian_ptr, ptr, size);
     } else {
         // machine is little endian: flip bytes
         switch (size) {
             case 4:
                 *(uint32_t *)endian_ptr = *(uint32_t *)ptr;
-                endiannes_swap_4p(endian_ptr);
+                endianness_swap_4p(endian_ptr);
                 break;
             case 8:
                 *(uint64_t *)endian_ptr = *(uint64_t *)ptr;
-                endiannes_swap_8p(endian_ptr);
+                endianness_swap_8p(endian_ptr);
                 break;
             default:
                 assert(0);
