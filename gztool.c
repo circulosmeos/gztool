@@ -268,7 +268,7 @@ enum DECOMPRESS_IN_ADVANCE_INITIALIZERS {
 char number_output[MAX_GIVEMESIUNITS_RETURNED_LENGTH];
 
 // `fprintf` substitute for printing with VERBOSITY_LEVEL
-void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) {
+void print_to_stderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) {
 
     // if verbosity of message is above general verbosity_level, ignore message
     if ( verbosity <= verbosity_level ) {
@@ -596,7 +596,7 @@ local unsigned char *decompress_chunk(unsigned char *source, uint64_t *size)
     free(in);
     free(out);
     if (ret != Z_OK && ret != Z_STREAM_END) {
-        printToStderr( VERBOSITY_NORMAL, "Decompression of index' chunk terminated with error (%d).\n", ret);
+        print_to_stderr( VERBOSITY_NORMAL, "Decompression of index' chunk terminated with error (%d).\n", ret);
     }
     // return size of returned char array in size pointer parameter
     *size = output_size;
@@ -743,7 +743,7 @@ local struct access *add_point( struct access *index, uint32_t bits,
             // compress window
             compressed_chunk = compress_chunk(next->window, &size, Z_DEFAULT_COMPRESSION);
             if (compressed_chunk == NULL) {
-                printToStderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
+                print_to_stderr( VERBOSITY_NORMAL, "Error whilst compressing index chunk\nProcess aborted\n." );
                 return NULL;
             }
             free(next->window);
@@ -751,7 +751,7 @@ local struct access *add_point( struct access *index, uint32_t bits,
             /* uint64_t size and uint32_t window_size, but windows are small, so this will always fit */
             next->window_size = size;
         }
-        printToStderr( VERBOSITY_EXCESSIVE, "\t[%llu/%llu] window_size = %d\n", index->have+1, index->size, next->window_size);
+        print_to_stderr( VERBOSITY_EXCESSIVE, "\t[%llu/%llu] window_size = %d\n", index->have+1, index->size, next->window_size);
     } else {
         // if NULL == window, this creates a NULL window: it resides on file,
         // and can/will later loaded on memory with its correct ->window_size;
@@ -847,16 +847,16 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
                   ( (index->index_version == 1)? sizeof(here->line_number): 0 );
     }
     fseeko( output_file, offset, SEEK_SET);
-    printToStderr( VERBOSITY_MANIAC, "index_last_written_point = %llu\n", index_last_written_point );
+    print_to_stderr( VERBOSITY_MANIAC, "index_last_written_point = %llu\n", index_last_written_point );
     if (NULL!=here) {
-        printToStderr( VERBOSITY_MANIAC, "%llu->window_size = %d\n", i, here->window_size );
+        print_to_stderr( VERBOSITY_MANIAC, "%llu->window_size = %d\n", i, here->window_size );
     }
-    printToStderr( VERBOSITY_MANIAC, "have = %llu, offset = %llu\n", index->have, offset );
+    print_to_stderr( VERBOSITY_MANIAC, "have = %llu, offset = %llu\n", index->have, offset );
 
     if ( index_last_written_point != index->have ) {
         for (i = index_last_written_point; i < index->have; i++) {
             here = &(index->list[i]);
-            printToStderr( VERBOSITY_EXCESSIVE, "writing new point #%llu (%llu, %llu)\n", i+1, here->in, here->out );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "writing new point #%llu (%llu, %llu)\n", i+1, here->in, here->out );
             fwrite_endian(&(here->out),  sizeof(here->out),  output_file);
             fwrite_endian(&(here->in),   sizeof(here->in),   output_file);
             fwrite_endian(&(here->bits), sizeof(here->bits), output_file);
@@ -869,7 +869,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
             here->window_beginning = ftello(output_file);
             if ( NULL == here->window &&
                  here->window_size != 0 ) {
-                printToStderr( VERBOSITY_NORMAL, "Index incomplete! - index writing aborted.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Index incomplete! - index writing aborted.\n" );
                 return 0;
             } else {
                 if ( here->window_size > 0 )
@@ -928,11 +928,11 @@ int check_index_file( struct access *index, char *file_name, char *index_filenam
             // size of input file
             struct stat st;
             stat( file_name, &st );
-            printToStderr( VERBOSITY_EXCESSIVE, "(%llu >= %llu)\n", st.st_size, ( index->list[index->have - 1].in ) );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "(%llu >= %llu)\n", st.st_size, ( index->list[index->have - 1].in ) );
             if ( index->have > 1 &&
                 (uint64_t) st.st_size < ( index->list[index->have - 1].in )
                 ) {
-                printToStderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' corresponds to a file bigger than '%s'\n",
+                print_to_stderr( VERBOSITY_NORMAL, "WARNING: Index file '%s' corresponds to a file bigger than '%s'\n",
                     index_filename, file_name );
                 return 0;
             }
@@ -1143,7 +1143,7 @@ local struct returned_output decompress_in_advance(
 
     // move file read position to last processed byte by this function:
     if ( 0 != fseeko( file_in, last_processed_byte, SEEK_SET ) ) {
-        printToStderr( VERBOSITY_NORMAL,
+        print_to_stderr( VERBOSITY_NORMAL,
             "ERROR: Cannot seek input file to @%llu Byte.\n", totin );
         returned_value.error = GZIP_MARK_FATAL_ERROR;
         return returned_value;
@@ -1155,7 +1155,7 @@ local struct returned_output decompress_in_advance(
         // deep copy:
         if ( Z_OK != inflateCopy( (z_streamp)&strm, strm_original ) ) {
             // no work can be done in this function! :
-            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: internal inflateCopy() failed.\n" );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "ERROR: internal inflateCopy() failed.\n" );
             returned_value.value = 0LLU;
             returned_value.error = GZIP_MARK_ERROR;
             return returned_value;
@@ -1226,10 +1226,10 @@ local struct returned_output decompress_in_advance(
             // ( note "[*]":
             //    see <#but not here in decompress_in_advance()> comment about why buffer is ahead of ftello(). )
              ) {
-            printToStderr( VERBOSITY_MANIAC,
+            print_to_stderr( VERBOSITY_MANIAC,
                     "PATCHING: Adjusting 'in advance' read position from %llu to %llu.\n", ftello(file_in), totin );
             if ( 0 != fseeko( file_in, totin + strm.avail_in, SEEK_SET ) ) {
-                printToStderr( VERBOSITY_NORMAL,
+                print_to_stderr( VERBOSITY_NORMAL,
                     "ERROR: Cannot seek input file to @%llu Byte.\n", totin );
                 returned_value.error = GZIP_MARK_FATAL_ERROR;
                 return returned_value;
@@ -1252,7 +1252,7 @@ local struct returned_output decompress_in_advance(
                  // in each call there's no problem as strm_avail_in0 == CHUNK and so this fread() reads 0 bytes.
             ) {
                 strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in); // here I do not use pread() just to maintain the same code base as in decompress_and_build_index()
-                printToStderr( VERBOSITY_MANIAC, "[read in advance %d B]", strm.avail_in );
+                print_to_stderr( VERBOSITY_MANIAC, "[read in advance %d B]", strm.avail_in );
                 strm.avail_in += strm_avail_in0;
             }
         }
@@ -1265,7 +1265,7 @@ local struct returned_output decompress_in_advance(
             ) {
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
+                print_to_stderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
                 if ( (uint64_t)( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a truncated gzip
@@ -1273,7 +1273,7 @@ local struct returned_output decompress_in_advance(
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
                     // this condition won't arise because (10 < 0) is false (index doesn't exist) and
                     // (10 < 10) is false (index contains always the first access point))
-                    printToStderr( VERBOSITY_NORMAL, "\nPATCHING: Detected '%s' gzip file overwriting, so ending patching process\n", file_name );
+                    print_to_stderr( VERBOSITY_NORMAL, "\nPATCHING: Detected '%s' gzip file overwriting, so ending patching process\n", file_name );
                     break;
                 }
             }
@@ -1286,7 +1286,7 @@ local struct returned_output decompress_in_advance(
         // .................................................
         // decompressor state MUST be reinitiated after Z_STREAM_END
         if ( ret.error == Z_STREAM_END ) {
-            printToStderr( VERBOSITY_MANIAC, "Reinitializing zlib 'in advance' strm data @%llu...\n", totin );
+            print_to_stderr( VERBOSITY_MANIAC, "Reinitializing zlib 'in advance' strm data @%llu...\n", totin );
             strm_avail_in0 = strm.avail_in;
             (void)inflateEnd(&strm);
             strm.zalloc = Z_NULL;
@@ -1353,7 +1353,7 @@ local struct returned_output decompress_in_advance(
             // with not Supervising options, strm.avail_in == 8 + eof is equivalent to Correct END OF GZIP at EOF
             if ( ( feof( file_in ) || initial_file_EOF != 0 ) &&
                  strm.avail_in == 8 ) {
-                printToStderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected 'in advance' at EOF-8.\n" );
+                print_to_stderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected 'in advance' at EOF-8.\n" );
                 break;
             }
         }
@@ -1416,7 +1416,7 @@ local struct returned_output decompress_in_advance(
                 ////    offset_in -= 8; // data is discarded from strm input, and also from offset_in
                 ////else
                 ////    offset_in = 0;
-                printToStderr( VERBOSITY_MANIAC,
+                print_to_stderr( VERBOSITY_MANIAC,
                     "END OF GZIP passed @%llu while in raw 'in advance' mode (avail_in=%d, ftello=%llu)\n",
                     totin, strm.avail_in, ftello(file_in) );
                 if ( end_on_first_proper_gzip_eof == 1 ||
@@ -1445,7 +1445,7 @@ local struct returned_output decompress_in_advance(
                 returned_value.error = GZIP_MARK_NONE;
                 // Which position exactly has the error been found at:
                 off_t file_position_of_error = totin;
-                printToStderr( VERBOSITY_NORMAL,
+                print_to_stderr( VERBOSITY_NORMAL,
                     "PATCHING: Gzip stream error %d found @ %llu Byte.\n", ret.error, file_position_of_error );
                 if ( file_position_of_error == 0 ) {
                     // there's no room for more backwards searching for gzip initial markers
@@ -1617,7 +1617,7 @@ local struct returned_output decompress_in_advance(
                            initial_file_EOF != 0 ) // as we're using the same initial buffer with ftello(file_in)>totin
                                                    // this precaution is compulsory
                          && strm.avail_in == 0 ) {
-                        printToStderr( VERBOSITY_MANIAC, "Correct END OF GZIP file detected at EOF whilst 'in advance' mode.\n" );
+                        print_to_stderr( VERBOSITY_MANIAC, "Correct END OF GZIP file detected at EOF whilst 'in advance' mode.\n" );
                         gzip_eof_detected = 0; // to exit loop, as "gzip_eof_detected == 1" is one ORed condition
                                                // and now this variable is not needed anymore.
                         break;
@@ -1631,7 +1631,7 @@ local struct returned_output decompress_in_advance(
                         gzip_eof_detected = 0;
                     } else {
                         gzip_eof_detected = 1;
-                        ////printToStderr( VERBOSITY_NORMAL, "Warning: GZIP end detected in the middle of data: deactivating `-E`\n" );
+                        ////print_to_stderr( VERBOSITY_NORMAL, "Warning: GZIP end detected in the middle of data: deactivating `-E`\n" );
                         end_on_first_proper_gzip_eof = 0;
                     }
                 }
@@ -1685,7 +1685,7 @@ local struct returned_output decompress_in_advance(
     // OR if fread() has been used, which is always the case (just to maintain the
     // same code base as in decompress_and_build_index()).
     if ( 0 != fseeko( file_in, initial_file_position, SEEK_SET ) ) {
-        printToStderr( VERBOSITY_NORMAL,
+        print_to_stderr( VERBOSITY_NORMAL,
             "ERROR: Cannot seek input file to @%llu Byte.\n", initial_file_position );
         returned_value.error = GZIP_MARK_FATAL_ERROR;
     }
@@ -1694,7 +1694,7 @@ local struct returned_output decompress_in_advance(
             // If file_in has grown in the interim, it doesn't matter if feof() is
             // not maintained because then the feof() won't be "correct" anyway...
             if ( 0 != fseeko( file_in, initial_file_position, SEEK_SET ) ) {
-                printToStderr( VERBOSITY_NORMAL,
+                print_to_stderr( VERBOSITY_NORMAL,
                     "ERROR: Cannot seek input file to @%llu Byte.\n", initial_file_position );
                 returned_value.error = GZIP_MARK_FATAL_ERROR;
             }
@@ -1713,7 +1713,7 @@ local struct returned_output decompress_in_advance(
           returned_value.error == GZIP_MARK_FULL_FLUSH ) &&
          returned_value.value < caller_last_processed_byte ) {
         if ( output_data_counter > 0LLU ) {
-            printToStderr( VERBOSITY_NORMAL,
+            print_to_stderr( VERBOSITY_NORMAL,
                 "PATCHING WARNING:\n"
                 "    Part of data extracted after (compressed %llu / uncompressed %llu) Byte\n"
                 "    overlaps with previously extracted data, after a badly-ended gzip stream\n"
@@ -1726,14 +1726,14 @@ local struct returned_output decompress_in_advance(
                  JUST_CREATE_INDEX         != indx_n_extraction_opts &&
                  COMPRESS_AND_CREATE_INDEX != indx_n_extraction_opts
                  ) {
-                printToStderr( VERBOSITY_NORMAL,
+                print_to_stderr( VERBOSITY_NORMAL,
                     "PATCHING WARNING:\n"
                     "    Beginning of extracted data will begin BEFORE indicated\n"
                     "    `-[bL]` value, due to an unfinished gzip-erroneous-stream.\n"
                     );
             } else {
                 // unless there was nothing to extract!
-                printToStderr( VERBOSITY_NORMAL,
+                print_to_stderr( VERBOSITY_NORMAL,
                     "PATCHING WARNING:\n"
                     "    Data extracted around the patching point may overlap.\n"
                     );
@@ -2018,16 +2018,16 @@ local struct returned_output decompress_and_build_index(
         // this condition is never true because index is passed always as incomplete
         (*built)->index_complete == 1 ) {
         // even though index is complete, processing will occur because gzip file may have changed!
-        printToStderr( VERBOSITY_NORMAL, "Using index '%s'...\n", index_filename );
+        print_to_stderr( VERBOSITY_NORMAL, "Using index '%s'...\n", index_filename );
     } else {
         if ( write_index_to_disk == 1 ) {
             if ( strlen(index_filename) > 0 )
-                printToStderr( VERBOSITY_NORMAL, "Processing index to '%s'...\n", index_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Processing index to '%s'...\n", index_filename );
             else
-                printToStderr( VERBOSITY_NORMAL, "Processing index to STDOUT...\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Processing index to STDOUT...\n" );
         } else {
             if ( indx_n_extraction_opts != DECOMPRESS )
-                printToStderr( VERBOSITY_NORMAL, "Reading index '%s'...\n", index_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Reading index '%s'...\n", index_filename );
         }
     }
 
@@ -2038,7 +2038,7 @@ local struct returned_output decompress_and_build_index(
           (*built)->index_complete == 0 )
         ) {
         if ( indx_n_extraction_opts != DECOMPRESS ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
             if ( write_index_to_disk == 1 ) {
                 if ( access( index_filename, F_OK ) != -1 ) {
                     // index_filename already exist:
@@ -2046,16 +2046,16 @@ local struct returned_output decompress_and_build_index(
                     // r+, because the index may be incomplete, and so decompress_and_build_index() will
                     // append new data and complete it (->have & ->size to correct values, not 0x0..0, 0xf..f).
                     index_file = fopen( index_filename, "r+b" );
-                    printToStderr( VERBOSITY_EXCESSIVE, " (r+b)\n" );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, " (r+b)\n" );
                 } else {
                     // index_filename does not exist:
                     index_file = fopen( index_filename, "w+b" );
-                    printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
                 }
             } else {
                 // open index file in read-only mode (if file does not exist, NULL == index_file)
                 index_file = fopen( index_filename, "rb" );
-                printToStderr( VERBOSITY_EXCESSIVE, " (rb)\n" );
+                print_to_stderr( VERBOSITY_EXCESSIVE, " (rb)\n" );
             }
         }
     } else {
@@ -2065,7 +2065,7 @@ local struct returned_output decompress_and_build_index(
         index_file = stdout;
     }
     if ( NULL == index_file && write_index_to_disk == 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
+        print_to_stderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
         ret.error = Z_ERRNO;
         return ret;
     }
@@ -2172,7 +2172,7 @@ local struct returned_output decompress_and_build_index(
 
         assert( NULL != here );
 
-        printToStderr( VERBOSITY_EXCESSIVE, "Starting from index point %llu (@%llu->%llu,L%llu).\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "Starting from index point %llu (@%llu->%llu,L%llu).\n",
             actual_index_point+1, here->in, here->out, here->line_number );
 
         // fseek in data for correct position
@@ -2183,7 +2183,7 @@ local struct returned_output decompress_and_build_index(
             // checking expected_first_byte value:
             // (although this has already been done for `-b`, `-L` could not be checked until now)
             if ( ( expected_first_byte -1 ) > position ) {
-                printToStderr( VERBOSITY_NORMAL, "ERROR: `-n %llu` is beyond required index point @%llu byte.\n",
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-n %llu` is beyond required index point @%llu byte.\n",
                     expected_first_byte, position );
                 ret.error = Z_ERRNO;
                 // strm and index are already filled, so a simple return isn't possible:
@@ -2229,14 +2229,14 @@ local struct returned_output decompress_and_build_index(
             FILE *index_file;
             if ( index->file_name == NULL ||
                 strlen(index->file_name) == 0 ) {
-                printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto decompress_and_build_index_error;
             }
             if (NULL == (index_file = fopen(index->file_name, "rb")) ||
                 0 != fseeko(index_file, here->window_beginning, SEEK_SET)
                 ) {
-                printToStderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Error while opening index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto decompress_and_build_index_error;
             }
@@ -2245,7 +2245,7 @@ local struct returned_output decompress_and_build_index(
                 ( NULL == (here->window = malloc(here->window_size)) ||
                  !fread(here->window, here->window_size, 1, index_file) )
                 ) {
-                printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\nAborted.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Error while reading index file.\nAborted.\n" );
                 ret.error = Z_ERRNO;
                 goto decompress_and_build_index_error;
             }
@@ -2312,7 +2312,7 @@ local struct returned_output decompress_and_build_index(
                         } else {
                             offset_in = st.st_size - CHUNK;
                         }
-                        printToStderr( VERBOSITY_EXCESSIVE, "offset_in=%llu\n", offset_in );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, "offset_in=%llu\n", offset_in );
                     } else {
                         extraction_from_offset_in = 1;
                     }
@@ -2378,7 +2378,7 @@ local struct returned_output decompress_and_build_index(
         strm.next_in = Z_NULL;
         ret.error = inflateInit2(&strm, 47);      /* automatic zlib or gzip decoding (15 + automatic header detection) */
         decompressing_with_gzip_headers = 1;
-        printToStderr( VERBOSITY_MANIAC, "inflateInit2 = %d\n", ret.error );
+        print_to_stderr( VERBOSITY_MANIAC, "inflateInit2 = %d\n", ret.error );
         if (ret.error != Z_OK)
             goto decompress_and_build_index_error;
         totin = totout = last = 0;
@@ -2407,7 +2407,7 @@ local struct returned_output decompress_and_build_index(
             else {
                 index->line_number_format = 0;
                 if ( 3 == extend_index_with_lines ) {
-                    printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (decompress_and_build_index).\n" );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (decompress_and_build_index).\n" );
                 }
                 // end now possible extend_index_with_lines == 3 (implicit `-x`)
                 extend_index_with_lines = 1;
@@ -2448,7 +2448,7 @@ local struct returned_output decompress_and_build_index(
         int strm_avail_in0 = strm.avail_in;
         if ( !feof( file_in ) ) { // on last block, strm.avail_in > 0 is possible with feof(file_in)==1 already!
             strm.avail_in = fread(input + strm_avail_in0, 1, CHUNK - strm_avail_in0, file_in);
-            printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
+            print_to_stderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
         }
         if ( feof( file_in ) ) {
@@ -2460,7 +2460,7 @@ local struct returned_output decompress_and_build_index(
             ) {
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
+                print_to_stderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size + GZIP_HEADER_SIZE_BY_ZLIB, totin );
                 if ( (uint64_t)( st.st_size + GZIP_HEADER_SIZE_BY_ZLIB ) < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a truncated gzip
@@ -2468,13 +2468,13 @@ local struct returned_output decompress_and_build_index(
                     // fseeko() previously failed. Also if gzip-file size is 0 (which is possible and allowed)
                     // this condition won't arise because (10 < 0) is false (index doesn't exist) and
                     // (10 < 10) is false (index contains always the first access point))
-                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting", file_name );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' gzip file overwriting", file_name );
                     if ( SUPERVISE_DO_AND_EXTRACT_FROM_TAIL != indx_n_extraction_opts ||
                          0 != write_index_to_disk
                        ) {
-                        printToStderr( VERBOSITY_EXCESSIVE, ", so ending process" );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, ", so ending process" );
                     }
-                    printToStderr( VERBOSITY_EXCESSIVE, "\n" );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "\n" );
                     ret.error = EXIT_FILE_OVERWRITTEN;
                     break;
                 }
@@ -2483,7 +2483,7 @@ local struct returned_output decompress_and_build_index(
         // .................................................
         // decompressor state MUST be reinitiated after Z_STREAM_END
         if ( ret.error == Z_STREAM_END ) {
-            printToStderr( VERBOSITY_MANIAC, "Reinitializing zlib strm data @%llu...\n", totin );
+            print_to_stderr( VERBOSITY_MANIAC, "Reinitializing zlib strm data @%llu...\n", totin );
             strm_avail_in0 = strm.avail_in;
             (void)inflateEnd(&strm);
             strm.zalloc = Z_NULL;
@@ -2506,7 +2506,7 @@ local struct returned_output decompress_and_build_index(
 
         avail_in_0 = strm.avail_in;
 
-        printToStderr( VERBOSITY_CRAZY, "output_data_counter=%llu,totin=%llu,totout=%llu,totlines=%llu,ftello=%llu,avail_in=%d\n",
+        print_to_stderr( VERBOSITY_CRAZY, "output_data_counter=%llu,totin=%llu,totout=%llu,totlines=%llu,ftello=%llu,avail_in=%d\n",
             output_data_counter, totin, totout, totlines, ftello(file_in), strm.avail_in );
 
         if ( (indx_n_extraction_opts == SUPERVISE_DO ||
@@ -2515,7 +2515,7 @@ local struct returned_output decompress_and_build_index(
              strm.avail_in == 0 ) {
 
             // check conditions to start output of uncompressed data
-            printToStderr( VERBOSITY_CRAZY, ">>> %d, %d, %d",
+            print_to_stderr( VERBOSITY_CRAZY, ">>> %d, %d, %d",
                 extraction_from_offset_in, start_extraction_on_first_depletion, indx_n_extraction_opts );
             if ( start_extraction_on_first_depletion == 1 ) {
                 start_extraction_on_first_depletion = 0;
@@ -2526,7 +2526,7 @@ local struct returned_output decompress_and_build_index(
                     if ( window2_size > 0 ) {
                         // if we have previous data to show, show it, because now we're out of fresh data!
                         output_data_counter += window2_size;
-                        printToStderr( VERBOSITY_MANIAC, "[..>%d]", window2_size );
+                        print_to_stderr( VERBOSITY_MANIAC, "[..>%d]", window2_size );
                         if (fwrite(window2, 1, window2_size, file_out) != window2_size || ferror(file_out)) {
                             (void)inflateEnd(&strm);
                             ret.error = Z_ERRNO;
@@ -2539,7 +2539,7 @@ local struct returned_output decompress_and_build_index(
                     }
                 } else {
                     output_data_counter += have;
-                    printToStderr( VERBOSITY_MANIAC, "[.>%d]", have );
+                    print_to_stderr( VERBOSITY_MANIAC, "[.>%d]", have );
                     if (fwrite(strm.next_out, 1, have, file_out) != have || ferror(file_out)) {
                         (void)inflateEnd(&strm);
                         ret.error = Z_ERRNO;
@@ -2581,26 +2581,26 @@ local struct returned_output decompress_and_build_index(
              indx_n_extraction_opts == EXTRACT_TAIL ) {
             // with not Supervising options, strm.avail_in == 8 + eof is equivalent to Correct END OF GZIP at EOF
             if ( feof( file_in ) && strm.avail_in == 8 ) {
-                printToStderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF-8.\n" );
+                print_to_stderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF-8.\n" );
                 break;
             }
         }
 
         if (ferror(file_in)) {
             ret.error = Z_ERRNO;
-            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: while reading file at %llu Byte\n", totin );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "ERROR: while reading file at %llu Byte\n", totin );
             goto decompress_and_build_index_error;
         }
         if (strm.avail_in == 0) {
             ret.error = Z_DATA_ERROR;
-            printToStderr( VERBOSITY_EXCESSIVE, "ERROR: abrupt EOF at %llu Byte\n", totin );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "ERROR: abrupt EOF at %llu Byte\n", totin );
             goto decompress_and_build_index_error;
         }
 
         // Set strm.next_in to input buffer.
         // Note that if strm_avail_in_decrement == 0, strm.avail_in and totin don't change.
         if ( strm_avail_in_decrement > 0LLU ) {
-            printToStderr( VERBOSITY_MANIAC, "Managing tail after Z_STREAM_END @%llu (%d, %llu)\n",
+            print_to_stderr( VERBOSITY_MANIAC, "Managing tail after Z_STREAM_END @%llu (%d, %llu)\n",
                 totin, strm.avail_in, strm_avail_in_decrement );
         }
         if ( strm.avail_in > strm_avail_in_decrement ) {
@@ -2637,7 +2637,7 @@ local struct returned_output decompress_and_build_index(
                     // and unrecoverable gzip error was found or
                     // a processing error raised which makes recovery impossible:
                     // progress as usual, as nothing more can be done.
-                    printToStderr( VERBOSITY_NORMAL,
+                    print_to_stderr( VERBOSITY_NORMAL,
                         "PATCHING: GZIP errors cannot be fixed.\n" );
                     // set these values to avoid entering this loop again:
                     decompress_until_this_point_byte = ret.value;
@@ -2651,12 +2651,12 @@ local struct returned_output decompress_and_build_index(
                 case GZIP_MARK_FATAL_ERROR:
                     // an internal and compulsory fseeko() failed, so process
                     // MUST stop here, as read won't be correct at this ftello(file_in):
-                    printToStderr( VERBOSITY_NORMAL,
+                    print_to_stderr( VERBOSITY_NORMAL,
                         "PATCHING ERROR: Fatal Read error of input file obliges to stop process.\n" );
                     ret.error = Z_DATA_ERROR;
                     goto decompress_and_build_index_error;
                 case GZIP_MARK_FULL_FLUSH:
-                    printToStderr( VERBOSITY_NORMAL,
+                    print_to_stderr( VERBOSITY_NORMAL,
                         "PATCHING: New valid gzip full flush found @ %llu Byte.\n", ret.value );
                     // a new GZIP-stream beginning mark was found:
                     decompress_until_this_point_byte = ret.value;
@@ -2664,7 +2664,7 @@ local struct returned_output decompress_and_build_index(
                     break;
                 case GZIP_MARK_BEGINNING:
                     if ( GZIP_MARK_BEGINNING == ret.error ) {
-                        printToStderr( VERBOSITY_NORMAL,
+                        print_to_stderr( VERBOSITY_NORMAL,
                             "PATCHING: New valid gzip stream beginning found @ %llu Byte.\n", ret.value );
                     }
                     // a new GZIP-stream beginning mark was found:
@@ -2700,17 +2700,17 @@ local struct returned_output decompress_and_build_index(
                     // ( This goto point (which I know it'd not exist) must be inside this
                     // do { ... } while ( strm.avail_in != 0 ); cycle
                     // not to disturb (too much) the proper progression of the algorithm )
-                    printToStderr( VERBOSITY_MANIAC,
+                    print_to_stderr( VERBOSITY_MANIAC,
                         "\nPATCHING: Reinitiating decompression point backwards.\n" );
                     goto decompress_and_build_index_Set_next_good_decompression_point;
                 } else {
                     // We are still in the good data buffer, but we must process with
                     // caution and chop the entry before the next good reentry point, so
                     // cut input data to just the byte before decompress_until_this_point_byte
-                    printToStderr( VERBOSITY_MANIAC,
+                    print_to_stderr( VERBOSITY_MANIAC,
                         "\nPATCHING: Adjusting size of decompression buffer from %d", strm.avail_in );
                     strm.avail_in -= ( totin + strm.avail_in ) - decompress_until_this_point_byte - 1;
-                    printToStderr( VERBOSITY_MANIAC, " to %d.\n", strm.avail_in );
+                    print_to_stderr( VERBOSITY_MANIAC, " to %d.\n", strm.avail_in );
                 }
             }
 
@@ -2752,7 +2752,7 @@ local struct returned_output decompress_and_build_index(
                    indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ) ) {
                 if ( avail_out_0 - strm.avail_out > 0 ) { // if have == 0, maintain previous (data and) window2_size value
                     window2_size = WINSIZE - strm.avail_out;
-                    printToStderr( VERBOSITY_NUTS, "(w2s=%d)", window2_size );
+                    print_to_stderr( VERBOSITY_NUTS, "(w2s=%d)", window2_size );
                     if ( window2_size <= WINSIZE )
                         memcpy( window2, window, window2_size );
                 }
@@ -2782,7 +2782,7 @@ local struct returned_output decompress_and_build_index(
                     offset_in -= 8; // data is discarded from strm input, and also from offset_in
                 else
                     offset_in = 0;
-                printToStderr( VERBOSITY_EXCESSIVE,
+                print_to_stderr( VERBOSITY_EXCESSIVE,
                     "END OF GZIP passed @%llu while in raw mode (totout=%llu, avail_in=%d, ftello=%llu)\n",
                     totin, totout, strm.avail_in, ftello(file_in) );
                 if ( end_on_first_proper_gzip_eof == 1 ||
@@ -2802,11 +2802,11 @@ local struct returned_output decompress_and_build_index(
 
             if ( ret.error != Z_OK ) {
                 if ( ret.error != Z_STREAM_END ) {
-                    printToStderr( VERBOSITY_EXCESSIVE,
+                    print_to_stderr( VERBOSITY_EXCESSIVE,
                         "ERR %d: totin=%llu, totout=%llu, ftello=%llu\n",
                             ret.error, totin, totout, ftello(file_in) );
                 } else {
-                    printToStderr( VERBOSITY_MANIAC,
+                    print_to_stderr( VERBOSITY_MANIAC,
                         "Z_STREAM_END: totin=%llu, totout=%llu, ftello=%llu\n",
                             totin, totout, ftello(file_in) );
                 }
@@ -2817,7 +2817,7 @@ local struct returned_output decompress_and_build_index(
             }
 
             if (ret.error == Z_MEM_ERROR || ret.error == Z_DATA_ERROR) {
-                printToStderr( VERBOSITY_EXCESSIVE,
+                print_to_stderr( VERBOSITY_EXCESSIVE,
                     "ERROR: compressed data error @%llu.\n", totin );
                 goto decompress_and_build_index_error;
             }
@@ -2829,7 +2829,7 @@ local struct returned_output decompress_and_build_index(
                      indx_n_extraction_opts == EXTRACT_TAIL ) {
                     // with not Supervising options, a Z_STREAM_END at feof() is correct!
                     if ( feof( file_in ) && strm.avail_in == 0 ) {
-                        printToStderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF.\n" );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, "Correct END OF GZIP file detected at EOF.\n" );
                         gzip_eof_detected = 0; // to exit loop, as "gzip_eof_detected == 1" is one ORed condition
                                                // and now this variable is not needed anymore.
                         break;
@@ -2843,7 +2843,7 @@ local struct returned_output decompress_and_build_index(
                         gzip_eof_detected = 0;
                     } else {
                         gzip_eof_detected = 1;
-                        printToStderr( VERBOSITY_NORMAL, "Warning: GZIP end detected in the middle of data: deactivating `-E`\n" );
+                        print_to_stderr( VERBOSITY_NORMAL, "Warning: GZIP end detected in the middle of data: deactivating `-E`\n" );
                         end_on_first_proper_gzip_eof = 0;
                     }
                 }
@@ -2871,7 +2871,7 @@ local struct returned_output decompress_and_build_index(
                        indx_n_extraction_opts_4_tailing_on_eof == EXTRACT_FROM_BYTE )
                     ) {
                     unsigned have = avail_out_0 - strm.avail_out;
-                    printToStderr( VERBOSITY_NUTS, "[>1>%llu,%d,%d,%d]", offset, have, strm.avail_out, strm.avail_in );
+                    print_to_stderr( VERBOSITY_NUTS, "[>1>%llu,%d,%d,%d]", offset, have, strm.avail_out, strm.avail_in );
                     if ( offset > have ) {
                         offset -= have;
                     } else {
@@ -2907,7 +2907,7 @@ local struct returned_output decompress_and_build_index(
                                                                 &output_data_counter, &output_lines_counter, &have_lines,
                                                                 window + offset + (WINSIZE - avail_out_0),
                                                                 index->line_number_format );
-                            printToStderr( VERBOSITY_CRAZY, "[>1>%d]", have - offset );
+                            print_to_stderr( VERBOSITY_CRAZY, "[>1>%d]", have - offset );
                             if (fwrite(window + offset + (WINSIZE - avail_out_0), 1, have - offset, file_out) != (have - offset) ||
                                 ferror(file_out)) {
                                 (void)inflateEnd(&strm);
@@ -2922,7 +2922,7 @@ local struct returned_output decompress_and_build_index(
                 } else {
                     // indx_n_extraction_opts == EXTRACT_FROM_LINE
                     unsigned have = avail_out_0 - strm.avail_out;
-                    printToStderr( VERBOSITY_NUTS, "[>3>%llu,%d,%d,%d]",
+                    print_to_stderr( VERBOSITY_NUTS, "[>3>%llu,%d,%d,%d]",
                         line_number_offset, have_lines, strm.avail_out, strm.avail_in );
                     if ( line_number_offset > have_lines ) {
                         line_number_offset -= have_lines;
@@ -2931,7 +2931,7 @@ local struct returned_output decompress_and_build_index(
                             line_number_offset == 0 ) {
                             output_lines_counter += have_lines - line_number_offset;
                             // print have_lines - line_number_offset bytes
-                            printToStderr( VERBOSITY_CRAZY, "[>3>%d]", have_lines - line_number_offset );
+                            print_to_stderr( VERBOSITY_CRAZY, "[>3>%d]", have_lines - line_number_offset );
                             // If line_number_offset==0 (from line_number_offset byte on) this prints always all bytes:
                             if ( line_number_offset != 0 ) {
                                 // calculate at which byte to start fwrite output:
@@ -2986,13 +2986,13 @@ local struct returned_output decompress_and_build_index(
                     unsigned have = avail_out_0 - strm.avail_out;
                     unsigned have_in = avail_in_0 - strm.avail_in;
                     avail_in_0 = strm.avail_in;
-                    printToStderr( VERBOSITY_NUTS, "[>2>%llu,%d,%d]", offset_in, have_in, strm.avail_in );
+                    print_to_stderr( VERBOSITY_NUTS, "[>2>%llu,%d,%d]", offset_in, have_in, strm.avail_in );
                     if ( ( offset_in > 0 && offset_in <= have_in ) ||
                         offset_in <= 0 ) {
                         // print all "have" bytes as with offset_in it is not possible
                         // to know how much output discard (uncompressed != compressed)
                         output_data_counter += have;
-                        printToStderr( VERBOSITY_CRAZY, "[>2>%d]", have );
+                        print_to_stderr( VERBOSITY_CRAZY, "[>2>%d]", have );
                         if (fwrite(window + (WINSIZE - avail_out_0), 1, have, file_out) != have ||
                             ferror(file_out)) {
                             (void)inflateEnd(&strm);
@@ -3026,7 +3026,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
                 // this possible?) will be discarded.
                 // All counters will remain the same as the stream will be considered "correct".
                 totin = decompress_until_this_point_byte; // do not count duplicate input bytes, even if that is what occurred
-                printToStderr( VERBOSITY_MANIAC, "Reinitializing zlib strm data @%llu...\n", totin );
+                print_to_stderr( VERBOSITY_MANIAC, "Reinitializing zlib strm data @%llu...\n", totin );
                 (void)inflateEnd(&strm);
                 strm.zalloc = Z_NULL;
                 strm.zfree = Z_NULL;
@@ -3116,8 +3116,8 @@ decompress_and_build_index_Set_next_good_decompression_point:
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
                 // we must add_point() from now on :
-                printToStderr( VERBOSITY_MANIAC, "actual_index_point = %llu,", actual_index_point+1 );
-                printToStderr( VERBOSITY_MANIAC, "(%llu, %llu)\n", totout, last );
+                print_to_stderr( VERBOSITY_MANIAC, "actual_index_point = %llu,", actual_index_point+1 );
+                print_to_stderr( VERBOSITY_MANIAC, "(%llu, %llu)\n", totout, last );
                 if ( actual_index_point > 0 )
                     ++actual_index_point;
                 if ( NULL != index &&
@@ -3139,10 +3139,10 @@ decompress_and_build_index_Set_next_good_decompression_point:
                     if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
 
                         if ( NULL != index )
-                            printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
+                            print_to_stderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
                                 index->have, index_last_written_point );
                         else
-                            printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
+                            print_to_stderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
                                 index_last_written_point );
                         index = add_point(index, strm.data_type & 7, totin,
                                          totout, strm.avail_out, window, window_size, totlines, 1);
@@ -3181,17 +3181,17 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
         unsigned have = WINSIZE - strm.avail_out;
 
-        printToStderr( VERBOSITY_EXCESSIVE, "last extraction: %d\n", have );
+        print_to_stderr( VERBOSITY_EXCESSIVE, "last extraction: %d\n", have );
 
         if ( have > 0 ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "[.L>%d]", have );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "[.L>%d]", have );
             if (fwrite(strm.next_out, 1, have, file_out) != have || ferror(file_out)) {
                 ret.error = Z_ERRNO;
             }
             output_data_counter += have;
         } else {
             // use backup window
-            printToStderr( VERBOSITY_EXCESSIVE, "[..L>%d]", window2_size );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "[..L>%d]", window2_size );
             if (fwrite(window2, 1, window2_size, file_out) != window2_size || ferror(file_out)) {
                 ret.error = Z_ERRNO;
             }
@@ -3211,7 +3211,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
         if ( NULL == next ) {
             ret.error = Z_MEM_ERROR;
             ret.value = 0;
-            printToStderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
             goto decompress_and_build_index_error;
         }
         index->list = next;
@@ -3231,15 +3231,15 @@ decompress_and_build_index_Set_next_good_decompression_point:
         // use markers to detect index updates and to not write if index isn't updated
         if ( index_points_0 != index->have ||
              index_file_size_0 != index->file_size ) {
-            printToStderr( VERBOSITY_EXCESSIVE,
+            print_to_stderr( VERBOSITY_EXCESSIVE,
                 "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
                 index->have, index->file_size );
             if ( ! serialize_index_to_file( index_file, index, index->have ) )
                 goto decompress_and_build_index_error;
             if ( strlen(index_filename) > 0 )
-                printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
             else
-                printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
             /* index is now complete */
         }
     }
@@ -3249,7 +3249,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
+        print_to_stderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
             give_me_si_units(output_data_counter, 1), output_data_counter );
     }
 
@@ -3257,11 +3257,11 @@ decompress_and_build_index_Set_next_good_decompression_point:
     if ( ( indx_n_extraction_opts == EXTRACT_FROM_LINE ||
            ( NULL != index && index->index_version > 0) ) &&
         output_lines_counter > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
+        print_to_stderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
         if ( output_lines_counter > 1000 ) {
-            printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
+            print_to_stderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
         } else {
-            printToStderr( VERBOSITY_NORMAL, ".\n" );
+            print_to_stderr( VERBOSITY_NORMAL, ".\n" );
         }
     }
 
@@ -3289,7 +3289,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
+        print_to_stderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
             give_me_si_units(output_data_counter, 1), output_data_counter );
     }
 
@@ -3297,11 +3297,11 @@ decompress_and_build_index_Set_next_good_decompression_point:
     if ( ( indx_n_extraction_opts == EXTRACT_FROM_LINE ||
            ( NULL != index && index->index_version > 0) ) &&
         output_lines_counter > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
+        print_to_stderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
         if ( output_lines_counter > 1000 ) {
-            printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
+            print_to_stderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
         } else {
-            printToStderr( VERBOSITY_NORMAL, ".\n" );
+            print_to_stderr( VERBOSITY_NORMAL, ".\n" );
         }
     }
 
@@ -3317,7 +3317,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
         // return index pointer and write index to index file, ignoring the decompression error
         *built = index;
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
-            printToStderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
     } else {
         if (index != NULL)
             free_index(index);
@@ -3379,7 +3379,7 @@ struct access *deserialize_index_from_file(
             *((uint64_t *)header) == 0 ) {
             if ( strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING, GZIP_INDEX_HEADER_SIZE/2) != 0 ) {
                 if ( strncmp(&header[GZIP_INDEX_HEADER_SIZE/2], GZIP_INDEX_IDENTIFIER_STRING_V1, GZIP_INDEX_HEADER_SIZE/2) != 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: File is not a valid gzip index file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: File is not a valid gzip index file.\n" );
                     return NULL;
                 } else {
                     index_version = 1;
@@ -3388,7 +3388,7 @@ struct access *deserialize_index_from_file(
                 index_version = 0;
             }
         } else {
-            printToStderr( VERBOSITY_NORMAL, "ERROR: File is not a valid gzip index file.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: File is not a valid gzip index file.\n" );
             return NULL;
         }
     } else {
@@ -3407,13 +3407,13 @@ struct access *deserialize_index_from_file(
     if ( 0 == index_version &&
          extend_index_with_lines > 0 ) {
         if ( 3 != extend_index_with_lines ) {
-            printToStderr( VERBOSITY_NORMAL, "ERROR: Existing index has no line number information.\n" );
-            printToStderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s).\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Existing index has no line number information.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Aborting on `-[LRxX]` parameter(s).\n" );
             goto deserialize_index_from_file_error;
         } else {
             // transparently handle v0 files, as `-x` was implicitly tried (v>1.4.2), but it is not compulsory
             extend_index_with_lines = 0; // this value is not used - set here only for clarity
-            printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0 (deserialize_index_from_file).\n" );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0 (deserialize_index_from_file).\n" );
         }
     }
 
@@ -3428,20 +3428,20 @@ struct access *deserialize_index_from_file(
     fread_endian(&(index_have), sizeof(index_have), input_file);
     fread_endian(&(index_size), sizeof(index_size), input_file);
 
-    printToStderr( VERBOSITY_MANIAC, "Number of index points declared: %llu - %llu\n", index_have, index_size );
+    print_to_stderr( VERBOSITY_MANIAC, "Number of index points declared: %llu - %llu\n", index_have, index_size );
 
     number_of_index_points = index_have;
 
     // index->size equals index->have when the index file is correctly closed,
     // and index->have on disk == 0 && index->have on disk = index->size whilst the index is growing:
     if ( index_have != index_size ) {
-        printToStderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "Index file is incomplete.\n" );
         index_complete = 0;
         number_of_index_points = index_size;
     }
 
     if ( verbosity_level == VERBOSITY_EXCESSIVE )
-        printToStderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %llu\n", number_of_index_points );
+        print_to_stderr( VERBOSITY_EXCESSIVE, "Number of index points declared: %llu\n", number_of_index_points );
 
     position_at_file = GZIP_INDEX_HEADER_SIZE +
         ( (1 == index->index_version)? sizeof(index->line_number_format): 0 ) +
@@ -3455,13 +3455,13 @@ struct access *deserialize_index_from_file(
         fread_endian(&(here.bits), sizeof(here.bits), input_file);
         fread_endian(&(here.window_size), sizeof(here.window_size), input_file);
         position_at_file += sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) + sizeof(here.window_size);
-        printToStderr( VERBOSITY_MANIAC, "#%llu: READ window_size=%d",
+        print_to_stderr( VERBOSITY_MANIAC, "#%llu: READ window_size=%d",
             ((NULL==index)? 1: index->have +1), here.window_size );
 
         if ( here.bits > 8 )
         {
-            printToStderr( VERBOSITY_MANIAC, "\t(%p, %d, %llu, %llu, %d, %llu)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
-            printToStderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%llu.\nIgnoring data subsequent to point %llu.\n",
+            print_to_stderr( VERBOSITY_MANIAC, "\t(%p, %d, %llu, %llu, %d, %llu)\n", index, here.bits, here.in, here.out, here.window_size, file_size );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "Unexpected data found in index file '%s' @%llu.\nIgnoring data subsequent to point %llu.\n",
                     file_name, position_at_file, index_size - number_of_index_points + 1 );
             break; // exit do loop
         }
@@ -3478,12 +3478,12 @@ struct access *deserialize_index_from_file(
                 uint64_t position = here.window_size;
                 unsigned char *input = malloc(CHUNK);
                 if ( NULL == input ) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from STDIN.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from STDIN.\n" );
                     goto deserialize_index_from_file_error;
                 }
                 while ( pos < position ) {
                     if ( !fread(input, 1, (pos+CHUNK < position)? CHUNK: (position - pos), input_file) ) {
-                        printToStderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
+                        print_to_stderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
                         goto deserialize_index_from_file_error;
                     }
                     pos += CHUNK;
@@ -3501,11 +3501,11 @@ struct access *deserialize_index_from_file(
                 // a here.window_beginning = 0 (which is impossible with gzipindx format)
                 here.window_beginning = 0;
                 if (here.window == NULL) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
                     goto deserialize_index_from_file_error;
                 }
                 if ( !fread(here.window, here.window_size, 1, input_file) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Error while reading index file.\n" );
                     goto deserialize_index_from_file_error;
                 }
             } else {
@@ -3521,7 +3521,7 @@ struct access *deserialize_index_from_file(
             here.line_number = 0;
         }
 
-        printToStderr( VERBOSITY_MANIAC, "(%p, %d, %llu, %llu, %d, %llu, %llu)\n",
+        print_to_stderr( VERBOSITY_MANIAC, "(%p, %d, %llu, %llu, %d, %llu, %llu)\n",
             index, here.bits, here.in, here.out, here.window_size, here.window_beginning, here.line_number );
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
@@ -3532,7 +3532,7 @@ struct access *deserialize_index_from_file(
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
 
-        printToStderr( VERBOSITY_NUTS, "{%llu>=%llu && %llu>0}", ( file_size - position_at_file ),
+        print_to_stderr( VERBOSITY_NUTS, "{%llu>=%llu && %llu>0}", ( file_size - position_at_file ),
             ( sizeof(here.out) + sizeof(here.in) + sizeof(here.bits) +
               sizeof(here.window_size) ), number_of_index_points -1 );
 
@@ -3560,7 +3560,7 @@ struct access *deserialize_index_from_file(
     index->file_name = malloc( strlen(file_name) + 1 );
     if ( NULL == index->file_name ||
          NULL == memcpy( index->file_name, file_name, strlen(file_name) + 1 ) ) {
-        printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
         goto deserialize_index_from_file_error;
     }
 
@@ -3864,16 +3864,16 @@ local struct returned_output compress_and_build_index(
     // index_filename DOES NOT previously exists: this has has been checked on caller
     if ( strlen(index_filename) > 0 ) {
         if ( write_index_to_disk == 1 ) {
-            printToStderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "write_index_to_disk = %d", write_index_to_disk );
             if ( access( index_filename, F_OK ) != -1 ) {
                 // index_filename already exist:
                 // Abort, as we would overwrite it:
-                printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exist. Aborted.\n", index_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Index file '%s' already exist. Aborted.\n", index_filename );
                 goto compress_and_build_index_error;
             } else {
                 // index_filename does not exist:
                 index_file = fopen( index_filename, "w+b" );
-                printToStderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
+                print_to_stderr( VERBOSITY_EXCESSIVE, " (w+b)\n" );
             }
         }
     } else {
@@ -3881,7 +3881,7 @@ local struct returned_output compress_and_build_index(
         index_file = stdout;
     }
     if ( NULL == index_file && write_index_to_disk == 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
+        print_to_stderr( VERBOSITY_NORMAL, "Could not write index to file '%s'.\n", index_filename );
         goto compress_and_build_index_error;
     }
 
@@ -3901,10 +3901,10 @@ local struct returned_output compress_and_build_index(
             // write index point
             if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
                 if ( NULL != index )
-                    printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
                         index->have, index_last_written_point );
                 else
-                    printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
                         index_last_written_point );
                 index = add_point(index, 0,
                                  ( ( 0==totout )? GZIP_HEADER_SIZE_BY_ZLIB: totout ), // compressed byte after header <=> uncompressed byte 0
@@ -3925,7 +3925,7 @@ local struct returned_output compress_and_build_index(
         }
 
         strm.avail_in = fread(input, 1, CHUNK, file_in);
-        printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
+        print_to_stderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
         totin += strm.avail_in;
         // count lines in this source chunk
         if ( extend_index_with_lines > 0 ) {
@@ -3963,7 +3963,7 @@ local struct returned_output compress_and_build_index(
 
             strm.avail_out = CHUNK;
             strm.next_out = output;
-            printToStderr( VERBOSITY_NUTS, "(avail_in=%d),",
+            print_to_stderr( VERBOSITY_NUTS, "(avail_in=%d),",
                 strm.avail_in );
             ret.error = deflate(&strm, flush);    /* no bad return value */
             assert(ret.error != Z_STREAM_ERROR);  /* state not clobbered */
@@ -3971,9 +3971,9 @@ local struct returned_output compress_and_build_index(
             have = CHUNK - strm.avail_out;
             totout += have;
 
-            printToStderr( VERBOSITY_NUTS, "flush=%d,have=%d,avail_out=%d,",
+            print_to_stderr( VERBOSITY_NUTS, "flush=%d,have=%d,avail_out=%d,",
                 flush, have, strm.avail_out );
-            printToStderr( VERBOSITY_CRAZY, "totin=%llu,totout=%llu,ftello=%llu,avail_in=%d,",
+            print_to_stderr( VERBOSITY_CRAZY, "totin=%llu,totout=%llu,ftello=%llu,avail_in=%d,",
                 totin, totout, ftello(file_in), strm.avail_in );
 
             if (fwrite(output, 1, have, file_out) != have || ferror(file_out)) {
@@ -3995,12 +3995,12 @@ local struct returned_output compress_and_build_index(
             if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
                 struct stat st;
                 stat(file_name, &st);
-                printToStderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size, totin );
+                print_to_stderr( VERBOSITY_NUTS, "(%llu<%llu?)", st.st_size, totin );
                 if ( (uint64_t) st.st_size < totin ) {
                     // file has shrunk! so do a correct finish of the action_create_index (whatever it is)
                     // (Note that it is not possible that this condition arises when accessing a file
                     // with size 0 (which is possible and allowed) because (0 < 0) is false )
-                    printToStderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' file overwriting, so ending process\n", file_name );
+                    print_to_stderr( VERBOSITY_EXCESSIVE, "\nDetected '%s' file overwriting, so ending process\n", file_name );
                     end_on_first_eof = 1;
                     // loop will continue and because feof() will activate again (because source file
                     // won't be overwritten so quick as to surpase actual total_in bytes) a Z_FINISH
@@ -4035,7 +4035,7 @@ local struct returned_output compress_and_build_index(
         if ( NULL == next ) {
             ret.error = Z_MEM_ERROR;
             ret.value = 0;
-            printToStderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "Z_MEM_ERROR\n" );
             goto compress_and_build_index_error;
         }
         index->list = next;
@@ -4052,14 +4052,14 @@ local struct returned_output compress_and_build_index(
     if ( NULL != index &&
          index->index_complete == 0 &&
          write_index_to_disk == 1 ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
             index->have, index->file_size );
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto compress_and_build_index_error;
         if ( strlen(index_filename) > 0 )
-            printToStderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
+            print_to_stderr( VERBOSITY_NORMAL, "Index written to '%s'.\n", index_filename );
         else
-            printToStderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "Index written to STDOUT.\n" );
         /* index is now complete */
     }
 
@@ -4068,19 +4068,19 @@ local struct returned_output compress_and_build_index(
 
     // print totin info
     if ( totin > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
+        print_to_stderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
             give_me_si_units(totin, 1), totin );
         if ( extend_index_with_lines > 0 &&
             totlines > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "%llu lines compressed.\n", totlines );
+            print_to_stderr( VERBOSITY_NORMAL, "%llu lines compressed.\n", totlines );
             if ( totlines > 1000 ) {
-                printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
+                print_to_stderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
             } else {
-                printToStderr( VERBOSITY_NORMAL, ".\n" );
+                print_to_stderr( VERBOSITY_NORMAL, ".\n" );
             }
         }
         if ( totout > 0 )
-            printToStderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n",
+            print_to_stderr( VERBOSITY_NORMAL, "%llu bytes of gzip data (%.2f%%).\n",
                 totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
@@ -4104,19 +4104,19 @@ local struct returned_output compress_and_build_index(
 
     // print totin info
     if ( totin > 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
+        print_to_stderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
             give_me_si_units(totin, 1), totin );
         if ( extend_index_with_lines > 0 &&
             totlines > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "%llu lines compressed", ( (0 == there_are_more_chars)? totlines-1: totlines ) );
+            print_to_stderr( VERBOSITY_NORMAL, "%llu lines compressed", ( (0 == there_are_more_chars)? totlines-1: totlines ) );
             if ( totlines > 1000 ) {
-                printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
+                print_to_stderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
             } else {
-                printToStderr( VERBOSITY_NORMAL, ".\n" );
+                print_to_stderr( VERBOSITY_NORMAL, ".\n" );
             }
         }
         if ( totout > 0 )
-            printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of gzip data (%.2f%%).\n",
+            print_to_stderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of gzip data (%.2f%%).\n",
                 give_me_si_units(totout, 1), totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
@@ -4133,7 +4133,7 @@ local struct returned_output compress_and_build_index(
             *built = index;
             if ( write_index_to_disk == 1 ) {
                 if ( ! serialize_index_to_file( index_file, index, index->have ) )
-                    printToStderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR whilst writing index file '%s'.\n", index_file );
             }
         }
     } else {
@@ -4238,8 +4238,8 @@ local int action_create_index(
         ) {
         // input is stdin, output is stdout, and no file name has been
         // indicated for index output, so action is not possible:
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Please, note that extracted data will be output to STDOUT\n" );
-        printToStderr( VERBOSITY_NORMAL, "       so an index file name is needed (`-I`).\nAborted.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Please, note that extracted data will be output to STDOUT\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "       so an index file name is needed (`-I`).\nAborted.\n" );
         return EXIT_GENERIC_ERROR;
     }
 
@@ -4254,21 +4254,21 @@ action_create_index_wait_for_file_creation:
                    indx_n_extraction_opts == COMPRESS_AND_CREATE_INDEX ||
                    indx_n_extraction_opts == DECOMPRESS ) ) {
                 if ( waiting == 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "Waiting for creation of file '%s'\n", file_name );
+                    print_to_stderr( VERBOSITY_NORMAL, "Waiting for creation of file '%s'\n", file_name );
                     waiting = 1;
                 }
                 sleep( waiting_time );
                 goto action_create_index_wait_for_file_creation;
             }
-            printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
+            print_to_stderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
-        printToStderr( VERBOSITY_NORMAL, "Processing '%s' ...\n", file_name );
+        print_to_stderr( VERBOSITY_NORMAL, "Processing '%s' ...\n", file_name );
     } else {
         // stdin
         SET_BINARY_MODE(STDIN); // sets binary mode for stdin in Windows
         file_in = stdin;
-        printToStderr( VERBOSITY_NORMAL, "Processing STDIN ...\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "Processing STDIN ...\n" );
     }
 
     if ( indx_n_extraction_opts == COMPRESS_AND_CREATE_INDEX ) {
@@ -4283,33 +4283,33 @@ action_create_index_wait_for_file_creation:
             // check that destination file doesn't exist
             if ( access( out_filename, F_OK ) != -1 ) {
                 if ( 0 == force_action ) {
-                    printToStderr( VERBOSITY_NORMAL, "Compress destination file '%s' already exist.\nAborted\n", out_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Compress destination file '%s' already exist.\nAborted\n", out_filename );
                     free( out_filename );
                     return EXIT_GENERIC_ERROR;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", out_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", out_filename );
                 }
             }
             file_out = fopen( out_filename, "w+b" );
             if ( NULL == file_out ) {
-                printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for writing.\nAborted.\n", out_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Could not open '%s' for writing.\nAborted.\n", out_filename );
                 free( out_filename );
                 return EXIT_GENERIC_ERROR;
             }
-            printToStderr( VERBOSITY_NORMAL, "Compressing to '%s'\n", out_filename );
+            print_to_stderr( VERBOSITY_NORMAL, "Compressing to '%s'\n", out_filename );
             free( out_filename );
         } else {
             // stdin
             // If using STDIN, the output will be STDOUT
             SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
             file_out = stdout;
-            printToStderr( VERBOSITY_NORMAL, "Compressing to STDOUT ...\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "Compressing to STDOUT ...\n" );
         }
 
         if ( extend_index_with_lines == 3 ) {
             extend_index_with_lines = 1; // in case of COMPRESS_AND_CREATE_INDEX, direct v1 index
                                          // as no previous index is possible, so there's no doubt.
-            printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (action_create_index).\n" );
+            print_to_stderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1 (action_create_index).\n" );
         }
 
         ret = compress_and_build_index( file_in, file_out, compression_factor,
@@ -4326,7 +4326,7 @@ action_create_index_wait_for_file_creation:
                 (*index)->file_name = malloc( strlen(index_filename) + 1 );
                 if ( NULL == (*index)->file_name ||
                      NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
                     if ( NULL != (*index)->file_name )
                         free( (*index)->file_name );
                     return EXIT_GENERIC_ERROR;
@@ -4353,7 +4353,7 @@ action_create_index_wait_for_file_creation:
                     *index = deserialize_index_from_file( index_file, 0, index_filename, extend_index_with_lines );
                     fclose( index_file );
                     if ( NULL == *index ) {
-                        printToStderr( VERBOSITY_NORMAL, "Could not load index from file '%s'.\nAborted.\n", index_filename );
+                        print_to_stderr( VERBOSITY_NORMAL, "Could not load index from file '%s'.\nAborted.\n", index_filename );
                         return EXIT_GENERIC_ERROR;
                     }
                     // index ok, continue
@@ -4363,13 +4363,13 @@ action_create_index_wait_for_file_creation:
                     // (this way a possible extend_index_with_lines == 3 is reconverted to a usable value {0,1,2})
                     if ( 0 == (*index)->index_version ) {
                         extend_index_with_lines = 0;
-                        printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0  (action_create_index).\n" );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 0  (action_create_index).\n" );
                     } else {
                         extend_index_with_lines = (*index)->line_number_format;
-                        printToStderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1\\%d (action_create_index).\n", extend_index_with_lines );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, "implicit `-x`: 1\\%d (action_create_index).\n", extend_index_with_lines );
                     }
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Could not open '%s' for reading.\nAborted.\n", index_filename );
                     return EXIT_GENERIC_ERROR;
                 }
             } else {
@@ -4383,7 +4383,7 @@ action_create_index_wait_for_file_creation:
                 (*index)->file_name = malloc( strlen(index_filename) + 1 );
                 if ( NULL == (*index)->file_name ||
                      NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
                     if ( NULL != (*index)->file_name )
                         free( (*index)->file_name );
                     return EXIT_GENERIC_ERROR;
@@ -4419,11 +4419,11 @@ action_create_index_wait_for_file_creation:
                 char *output_filename = malloc( strlen(file_name) + 1 );
                 sprintf(output_filename, "%s", file_name);
                 output_filename[strlen(file_name) - 3] = '\0';
-                printToStderr( VERBOSITY_NORMAL, "Decompressing to '%s'\n", output_filename );
+                print_to_stderr( VERBOSITY_NORMAL, "Decompressing to '%s'\n", output_filename );
                 // now, if output_filename already exist, we cannot proceed...
                 if ( access( output_filename, F_OK ) != -1 ) {
                     if ( force_action == 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "Output file name '%s' already exists.\nAborted.\n", output_filename );
+                        print_to_stderr( VERBOSITY_NORMAL, "Output file name '%s' already exists.\nAborted.\n", output_filename );
                         free ( output_filename );
                         return EXIT_GENERIC_ERROR;
                     }
@@ -4431,14 +4431,14 @@ action_create_index_wait_for_file_creation:
                 // destination file will be overwritten:
                 file_out = fopen( output_filename, "wb" );
                 if ( NULL == file_out ) {
-                    printToStderr( VERBOSITY_NORMAL, "Could not open '%s' for writing.\nAborted.\n", output_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Could not open '%s' for writing.\nAborted.\n", output_filename );
                     free ( output_filename );
                     return EXIT_GENERIC_ERROR;
                 }
                 free( output_filename );
             } else {
                 // otherwise decompression cannot proceed
-                printToStderr( VERBOSITY_NORMAL, "File '%s' does not have '.gz' extension.\nAborted.\n", file_name );
+                print_to_stderr( VERBOSITY_NORMAL, "File '%s' does not have '.gz' extension.\nAborted.\n", file_name );
                 return EXIT_GENERIC_ERROR;
             }
 
@@ -4469,7 +4469,7 @@ action_create_index_wait_for_file_creation:
                 (*index)->file_name = malloc( strlen(index_filename) + 1 );
                 if ( NULL == (*index)->file_name ||
                      NULL == memcpy( (*index)->file_name, index_filename, strlen(index_filename) + 1 ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "Not enough memory to load index from file.\n" );
                     if ( NULL != (*index)->file_name )
                         free( (*index)->file_name );
                     return EXIT_GENERIC_ERROR;
@@ -4489,22 +4489,22 @@ action_create_index_wait_for_file_creation:
     if ( ret.error < 0 ) {
         switch ( ret.error ) {
             case Z_MEM_ERROR:
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Out of memory.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: Out of memory.\n" );
                 break;
             case Z_DATA_ERROR:
                 if ( strlen(file_name) > 0 )
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in '%s'.\n", file_name );
                 else
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in STDIN.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Compressed data error in STDIN.\n" );
                 break;
             case Z_ERRNO:
                 if ( strlen(file_name) > 0 )
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Read error on '%s'.\n", file_name );
                 else
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Read error on STDIN.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Read error on STDIN.\n" );
                 break;
             default:
-               printToStderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
+               print_to_stderr( VERBOSITY_NORMAL, "ERROR: Error %d while applying action.\n", ret.error );
        }
        return EXIT_GENERIC_ERROR;
     }
@@ -4512,10 +4512,10 @@ action_create_index_wait_for_file_creation:
     if ( NULL != index && NULL != *index &&
          number_of_index_points != (*index)->have && write_index_to_disk == 1 ) {
         if ( number_of_index_points > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "Updated index with %llu new access points.\n", ret.value - number_of_index_points);
-            printToStderr( VERBOSITY_NORMAL, "Now index has %llu access points.\n", ret.value);
+            print_to_stderr( VERBOSITY_NORMAL, "Updated index with %llu new access points.\n", ret.value - number_of_index_points);
+            print_to_stderr( VERBOSITY_NORMAL, "Now index has %llu access points.\n", ret.value);
         } else {
-            printToStderr( VERBOSITY_NORMAL, "Built index with %llu access points.\n", ret.value);
+            print_to_stderr( VERBOSITY_NORMAL, "Built index with %llu access points.\n", ret.value);
         }
     }
 
@@ -4565,12 +4565,12 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
             fprintf( stdout, "Checking index file '%s' ...\n", file_name );
         in = fopen( file_name, "rb" );
         if ( NULL == in ) {
-            printToStderr( VERBOSITY_NORMAL, "Could not open %s for reading.\nAborted.\n", file_name );
+            print_to_stderr( VERBOSITY_NORMAL, "Could not open %s for reading.\nAborted.\n", file_name );
             return EXIT_GENERIC_ERROR;
         }
     } else {
         // stdin
-        printToStderr( VERBOSITY_NORMAL, "Checking index from STDIN ...\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "Checking index from STDIN ...\n" );
         SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
         in = stdin;
     }
@@ -4664,9 +4664,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
     if ( ! index ) {
 
         if ( strlen( file_name ) > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "Could not read index from file '%s'.\n", file_name );
+            print_to_stderr( VERBOSITY_NORMAL, "Could not read index from file '%s'.\n", file_name );
         } else {
-            printToStderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "Could not read index from STDIN.\n" );
         }
         ret_value = EXIT_GENERIC_ERROR;
         goto action_list_info_error;
@@ -4785,7 +4785,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                         unsigned char *decompressed_window = NULL;
                         decompressed_window = decompress_chunk(index->list[j].window, &local_window_size);
                         if ( NULL == decompressed_window ) {
-                            printToStderr( VERBOSITY_NORMAL,
+                            print_to_stderr( VERBOSITY_NORMAL,
                                 "\nERROR: Could not decompress window #%llu from index file '%s'.\n",
                                 j +1, file_name);
                             ret_value = EXIT_GENERIC_ERROR;
@@ -5106,7 +5106,7 @@ int main(int argc, char **argv)
                 waiting_time = (int)strtol( optarg, NULL, 10 );
                 if ( waiting_time == 0 &&
                      ( strlen( optarg ) != 1 || '0' != optarg[0] ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%s'\n", optarg );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%s'\n", optarg );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5193,7 +5193,7 @@ int main(int argc, char **argv)
             case 'n':
                 expected_first_byte = (uint64_t)giveMeAnInteger( optarg );
                 if ( expected_first_byte == 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-n 0` invalid: must be >= 1.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Option `-n 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5220,7 +5220,7 @@ int main(int argc, char **argv)
             case 'r':
                 range_number_of_bytes = (uint64_t)giveMeAnInteger( optarg );
                 if ( range_number_of_bytes == 0LLU ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-r 0` invalid: must be >= 1.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Option `-r 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5229,7 +5229,7 @@ int main(int argc, char **argv)
             case 'R':
                 range_number_of_lines = (uint64_t)giveMeAnInteger( optarg );
                 if ( range_number_of_lines == 0LLU ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-R 0` invalid: must be >= 1.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Option `-R 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
                 if ( extend_index_with_lines == 0 ) {
@@ -5242,7 +5242,7 @@ int main(int argc, char **argv)
                 // span is converted from MiB to bytes for internal use
                 span_between_points = strtoll( optarg, NULL, 10 );
                 if ( span_between_points > UINT64_MAX / 1024 / 1024 ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-s %llu` MiB value too high!\n", span_between_points );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Option `-s %llu` MiB value too high!\n", span_between_points );
                     return EXIT_INVALID_OPTION;
                 }
                 span_between_points = span_between_points * 1024 * 1024;
@@ -5290,11 +5290,11 @@ int main(int argc, char **argv)
                             utility_option = optarg[0];
                             break;
                         default:
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
+                            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
                             return EXIT_INVALID_OPTION;
                     }
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-u %s` (`-u [cCdD]`).\n", optarg );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5305,7 +5305,7 @@ int main(int argc, char **argv)
                      strlen( optarg ) > 1 ||
                      verbosity_level > VERBOSITY_NUTS ) {
                     verbosity_level = VERBOSITY_NORMAL; // without this an erroneous `-v` may not be shown
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-v %s` (`-v [0..5]`).\n", optarg );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid option `-v %s` (`-v [0..5]`).\n", optarg );
                     return EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5339,15 +5339,15 @@ int main(int argc, char **argv)
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
                     if ( NULL == strchr("123456789aAbcCdDeEfFhiIlLnpPrRSstTuvwWxXzZ", optopt) ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
                 } else
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option character `\\x%x'.\n", optopt);
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Unknown option character `\\x%x'.\n", optopt);
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 return EXIT_INVALID_OPTION;
             default:
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 abort ();
         }
 
@@ -5368,7 +5368,7 @@ int main(int argc, char **argv)
     if ( compression_factor > 0 ) {
         if ( action != ACT_COMPRESS_AND_CREATE_INDEX &&
              action != ACT_COMPRESS_CHUNK ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: compression factor (`-[1..9]`) must be used with `-[c|u[cC]]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: compression factor (`-[1..9]`) must be used with `-[c|u[cC]]`.\n" );
         return EXIT_INVALID_OPTION;
         }
     } else {
@@ -5376,21 +5376,21 @@ int main(int argc, char **argv)
     }
 
     if ( actions_set > 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: do not merge parameters `-[bcdilLStTu]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: do not merge parameters `-[bcdilLStTu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( write_index_to_disk == 0 &&
            ( force_action == 1 || force_strict_order == 1)
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: do not merge contradictory parameters `-W` and `-[fF]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: do not merge contradictory parameters `-W` and `-[fF]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( ( action != ACT_SUPERVISE && action != ACT_EXTRACT_TAIL_AND_CONTINUE &&
            action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) &&
         wait_for_file_creation == 1 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-w` only apply to `-[cdST]`\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-w` only apply to `-[cdST]`\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5400,7 +5400,7 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFIsW]` does not apply to `-u`\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFIsW]` does not apply to `-u`\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5410,36 +5410,36 @@ int main(int argc, char **argv)
             end_on_first_proper_gzip_eof == 1 || always_create_a_complete_index == 1 ||
             waiting_time != WAITING_TIME )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFsW]` does not apply to `-l`\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[aCEfFsW]` does not apply to `-l`\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( (unsigned int) waiting_time >= UINT32_MAX || waiting_time < 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%d'\n", waiting_time );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid awaiting value of '%d'\n", waiting_time );
         return EXIT_INVALID_OPTION;
     }
 
     if ( do_not_delete_original_file == 1 &&
          ( action != ACT_COMPRESS_AND_CREATE_INDEX && action != ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-D` option invalid when not using `-[cd]`\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-D` option invalid when not using `-[cd]`\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( span_between_points <= 0 ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%llu'\n", span_between_points );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Invalid `-s` parameter value: '%llu'\n", span_between_points );
         return EXIT_INVALID_OPTION;
     }
     if ( span_between_points != SPAN &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-s` parameter does not apply to `-[lu]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-s` parameter does not apply to `-[lu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( ( extend_index_with_lines > 0 || true == force_index_without_lines || true == adjust_index_points_to_byte_boundary ) &&
         ( action == ACT_COMPRESS_CHUNK || action == ACT_DECOMPRESS_CHUNK || action == ACT_LIST_INFO )
         ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[xXzZ]` parameters do not apply to `-[lu]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[xXzZ]` parameters do not apply to `-[lu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5449,7 +5449,7 @@ int main(int argc, char **argv)
             action = ACT_CREATE_INDEX;
             if ( (optind + 1) < argc ) {
                 // too much files indicated to use `-I`
-                printToStderr( VERBOSITY_NORMAL, "ERROR: `-I` is incompatible with multiple input files.\nAborted.\n\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-I` is incompatible with multiple input files.\nAborted.\n\n" );
                 return EXIT_INVALID_OPTION;
             }
         } else {
@@ -5474,7 +5474,7 @@ int main(int argc, char **argv)
         // if `-z`, honor it, if not, make `-x` implicit unless, in both cases, `-[xX]` was used:
         if ( true == force_index_without_lines ) {
             if ( extend_index_with_lines > 0 ) { // unless `-[xX]` was used
-                printToStderr( VERBOSITY_NORMAL, "ERROR: `-[xX]` and `-z` cannot be mixed.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[xX]` and `-z` cannot be mixed.\n" );
                 return EXIT_INVALID_OPTION;
             }
             extend_index_with_lines = 0;
@@ -5486,7 +5486,7 @@ int main(int argc, char **argv)
         }
     } else {
         if ( true == force_index_without_lines || true == adjust_index_points_to_byte_boundary ) {
-            printToStderr( VERBOSITY_NORMAL, "ERROR: `-[zZ]` is not applicable to these options.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[zZ]` is not applicable to these options.\n" );
             return EXIT_INVALID_OPTION;
         }
     }
@@ -5494,21 +5494,21 @@ int main(int argc, char **argv)
     if ( expected_first_byte != 1 &&
          ( action != ACT_EXTRACT_FROM_BYTE && action != ACT_EXTRACT_FROM_LINE &&
             action != ACT_CREATE_INDEX ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-n` parameter can only be used with `-[biL]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-n` parameter can only be used with `-[biL]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( ( range_number_of_bytes > 0LLU || range_number_of_lines > 0LLU ) &&
          ( action != ACT_EXTRACT_FROM_BYTE && action != ACT_EXTRACT_FROM_LINE )
     ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-[rR]` parameter can only be used with `-[bL]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-[rR]` parameter can only be used with `-[bL]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( true == indicate_range_in_absolute_value ) {
         if ( range_number_of_bytes == 0LLU &&
              range_number_of_lines == 0LLU ) {
-            printToStderr( VERBOSITY_NORMAL, "ERROR: `-A` parameter can only be used with `-[rR]`.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-A` parameter can only be used with `-[rR]`.\n" );
             return EXIT_INVALID_OPTION;
         }
         // ( yes, `-r` AND `-R` can be simultaneosuly indicated: the 1st reached is the one applied. )
@@ -5519,11 +5519,11 @@ int main(int argc, char **argv)
                 if ( range_number_of_bytes > extract_from_byte ) {
                     range_number_of_bytes -= extract_from_byte;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-Ar` implies a value greater than `-b`.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-Ar` implies a value greater than `-b`.\n" );
                     return EXIT_INVALID_OPTION;
                 }
             } else {
-                printToStderr( VERBOSITY_NORMAL, "ERROR: `-Ar` (bytes) cannot be used with `-L` (lines).\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-Ar` (bytes) cannot be used with `-L` (lines).\n" );
                 return EXIT_INVALID_OPTION;
             }
         }
@@ -5534,11 +5534,11 @@ int main(int argc, char **argv)
                 if ( range_number_of_lines > extract_from_line ) {
                     range_number_of_lines -= extract_from_line;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-AR` implies a value greater than `-L`.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-AR` implies a value greater than `-L`.\n" );
                     return EXIT_INVALID_OPTION;
                 }
             } else {
-                printToStderr( VERBOSITY_NORMAL, "ERROR: `-AR` (lines) cannot be used with `-b` (bytes).\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-AR` (lines) cannot be used with `-b` (bytes).\n" );
                 return EXIT_INVALID_OPTION;
             }
         }
@@ -5551,12 +5551,12 @@ int main(int argc, char **argv)
           action == ACT_COMPRESS_CHUNK ||
           action == ACT_DECOMPRESS_CHUNK ||
           action == ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-F` with `-[dlSTu]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-F` with `-[dlSTu]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( 1 == force_strict_order && action == ACT_COMPRESS_AND_CREATE_INDEX ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: `-F` not implemented with `-c`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-F` not implemented with `-c`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5564,7 +5564,7 @@ int main(int argc, char **argv)
         ( action != ACT_SUPERVISE &&
           action != ACT_EXTRACT_TAIL_AND_CONTINUE ) &&
         false == continue_tailing_on_eof ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: without `-[ST]`, use `-p` instead of `-P`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: without `-[ST]`, use `-p` instead of `-P`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5575,14 +5575,14 @@ int main(int argc, char **argv)
            action == ACT_SUPERVISE ||
            action == ACT_EXTRACT_TAIL_AND_CONTINUE ||
            action == ACT_DECOMPRESS ) ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-p` without `-[bdiLST]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-p` without `-[bdiLST]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
     if ( true == continue_tailing_on_eof &&
         action != ACT_EXTRACT_FROM_LINE &&
         action != ACT_EXTRACT_FROM_BYTE ) {
-        printToStderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-q` without `-[bL]`.\n" );
+        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Cannot use `-q` without `-[bL]`.\n" );
         return EXIT_INVALID_OPTION;
     }
 
@@ -5634,56 +5634,56 @@ int main(int argc, char **argv)
                 action_string = "Extract from line = ";
                 break;
             default:
-                printToStderr( VERBOSITY_NORMAL, "ERROR: Unexpected error! No action specified.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: Unexpected error! No action specified.\n" );
                 return EXIT_GENERIC_ERROR;
         }
         switch( action ) {
             case ACT_EXTRACT_FROM_BYTE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu", action_string, extract_from_byte );
+                print_to_stderr( VERBOSITY_NORMAL, "ACTION: %s%llu", action_string, extract_from_byte );
                 if ( expected_first_byte > 1 ) {
-                    printToStderr( VERBOSITY_NORMAL, " (input - %llu bytes)", expected_first_byte - 1 );
+                    print_to_stderr( VERBOSITY_NORMAL, " (input - %llu bytes)", expected_first_byte - 1 );
                 }
-                printToStderr( VERBOSITY_NORMAL, "\n\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n\n" );
                 break;
             case ACT_EXTRACT_FROM_LINE:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_line );
+                print_to_stderr( VERBOSITY_NORMAL, "ACTION: %s%llu\n\n", action_string, extract_from_line );
                 break;
             default:
-                printToStderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
+                print_to_stderr( VERBOSITY_NORMAL, "ACTION: %s\n\n", action_string );
         }
     }
 
 
     // inform parameters with verbosity_level > VERBOSITY_NORMAL
     if ( verbosity_level > VERBOSITY_NORMAL ) {
-        printToStderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-A: %d, \t-b: %llu, \t-c: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -a: %d, \t-A: %d, \t-b: %llu, \t-c: %d\n",
             waiting_time, indicate_range_in_absolute_value,
             extract_from_byte, ( (action==ACT_COMPRESS_AND_CREATE_INDEX)? 1: 0 ) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -C: %d, \t-d: %d, \t-D: %d, \t-e: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -C: %d, \t-d: %d, \t-D: %d, \t-e: %d\n",
             always_create_a_complete_index, ( (action==ACT_DECOMPRESS)? 1: 0 ),
             do_not_delete_original_file, continue_on_error );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -E: %d, \t-f: %d, \t-F: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -E: %d, \t-f: %d, \t-F: %d\n",
             end_on_first_proper_gzip_eof, force_action, force_strict_order );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -i: %d, \t-I: %s\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -i: %d, \t-I: %s\n",
             ( (action==ACT_CREATE_INDEX)? 1: 0 ),
             ( (index_filename_indicated>0)? index_filename: NULL ));
-        printToStderr( VERBOSITY_EXCESSIVE, "  -l: %d, \t-L: %llu, \t-n: %llu\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -l: %d, \t-L: %llu, \t-n: %llu\n",
             ( (action==ACT_LIST_INFO)? list_verbosity: 0 ),
             extract_from_line, expected_first_byte );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -p: %d, \t-P: %d, \t-q: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -p: %d, \t-P: %d, \t-q: %d\n",
             gzip_stream_may_be_damaged, lazy_gzip_stream_patching_at_eof, continue_tailing_on_eof );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -r: %d, \t-R: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -r: %d, \t-R: %d\n",
             range_number_of_bytes, range_number_of_lines );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -s: %llu, \t-S: %d, \t-t: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -s: %llu, \t-S: %d, \t-t: %d\n",
             span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d\n",
             ( (action==ACT_EXTRACT_TAIL_AND_CONTINUE)? 1: 0 ), utility_option,
               verbosity_level, wait_for_file_creation );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %s, \t-X: %d\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -W: %d, \t-x: %s, \t-X: %d\n",
             ( (write_index_to_disk==0)? 1: 0 ),
             ( (3 == extend_index_with_lines)? "[1]": ( (1 == extend_index_with_lines)? "1": "0" ) ),
             ( (2 == extend_index_with_lines)? 1: 0) );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -z: %d, \t-Z: %d, \t-[0-9]: %d\n\n",
+        print_to_stderr( VERBOSITY_EXCESSIVE, "  -z: %d, \t-Z: %d, \t-[0-9]: %d\n\n",
             force_index_without_lines, adjust_index_points_to_byte_boundary, compression_factor  );
     }
 
@@ -5696,13 +5696,13 @@ int main(int argc, char **argv)
              0 == index_filename_indicated
             ) {
             // if no index filename is set (`-I`), compression cannot proceed
-            printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename must be provided with `-I` when compressing STDIN.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Index filename must be provided with `-I` when compressing STDIN.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
         // `-p` cannot operate with STDIN input
         if ( gzip_stream_may_be_damaged > 0 ) {
-            printToStderr( VERBOSITY_NORMAL, "ERROR: `-p` cannot proceed with STDIN.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-p` cannot proceed with STDIN.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
@@ -5718,31 +5718,31 @@ int main(int argc, char **argv)
 
             /*if ( ( extend_index_with_lines > 0 && action != ACT_EXTRACT_FROM_LINE ) &&
                  ( force_action == 0 || ( force_action == 1 && write_index_to_disk == 0 ) ) )
-                    printToStderr( VERBOSITY_NORMAL, "WARNING: `-[Xx]` will be ignored because index already exists.\n" );*/
+                    print_to_stderr( VERBOSITY_NORMAL, "WARNING: `-[Xx]` will be ignored because index already exists.\n" );*/
 
             if ( force_action == 0 ) {
                 if ( action == ACT_COMPRESS_AND_CREATE_INDEX ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index file '%s' already exists.\n\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Index file '%s' already exists.\n\n", index_filename );
                     return EXIT_GENERIC_ERROR;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
                     if ( write_index_to_disk == 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                        print_to_stderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
                     } else {
-                        ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                        ; //print_to_stderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                     }
                 }
             } else {
                 if ( write_index_to_disk == 1 ) {
                     // force_action == 1 => delete index file
-                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
                     // delete it
                     if ( remove( index_filename ) != 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\n\n", index_filename );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\n\n", index_filename );
                         return EXIT_GENERIC_ERROR;
                     }
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
                 }
             }
 
@@ -5750,7 +5750,7 @@ int main(int argc, char **argv)
 
         // `-F` has no sense with stdin
         if ( force_strict_order == 1 ) {
-            printToStderr( VERBOSITY_NORMAL, "WARNING: There is no sense in using `-F` with STDIN input: ignoring `F`.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "WARNING: There is no sense in using `-F` with STDIN input: ignoring `F`.\n" );
             force_strict_order = 0;
         }
 
@@ -5776,10 +5776,10 @@ int main(int argc, char **argv)
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
-                    printToStderr( VERBOSITY_NORMAL, "\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-I INDEX` must be used when extracting from STDIN.\nAborted.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-I INDEX` must be used when extracting from STDIN.\nAborted.\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -5797,10 +5797,10 @@ int main(int argc, char **argv)
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
-                    printToStderr( VERBOSITY_NORMAL, "\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: `-I INDEX` must be used when extracting from STDIN.\nAborted.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: `-I INDEX` must be used when extracting from STDIN.\nAborted.\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -5811,7 +5811,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != compress_file( stdin, stdout, compression_factor, raw_method ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR while compressing STDIN.\nAborted.\n\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR while compressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -5824,7 +5824,7 @@ int main(int argc, char **argv)
                 SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                 SET_BINARY_MODE(STDIN); // sets binary mode for stdout in Windows
                 if ( Z_OK != decompress_file( stdin, stdout, raw_method ) ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR while decompressing STDIN.\nAborted.\n\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR while decompressing STDIN.\nAborted.\n\n" );
                     ret_value = EXIT_GENERIC_ERROR;
                     break;
                 }
@@ -5856,7 +5856,7 @@ int main(int argc, char **argv)
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
                 }
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_LIST_INFO:
@@ -5867,7 +5867,7 @@ int main(int argc, char **argv)
                     // stdin is an index file that must be checked
                     ret_value = action_list_info( "", NULL, list_verbosity );
                 }
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_SUPERVISE:
@@ -5895,7 +5895,7 @@ int main(int argc, char **argv)
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
                 }
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_EXTRACT_TAIL:
@@ -5914,7 +5914,7 @@ int main(int argc, char **argv)
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Index filename is needed if STDIN is used as gzip input.\nAborted.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Index filename is needed if STDIN is used as gzip input.\nAborted.\n" );
                     ret_value = EXIT_INVALID_OPTION;
                 }
                 break;
@@ -5943,7 +5943,7 @@ int main(int argc, char **argv)
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
                 }
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
                 break;
 
             case ACT_COMPRESS_AND_CREATE_INDEX:
@@ -5962,7 +5962,7 @@ int main(int argc, char **argv)
                 break;
 
             default:
-                printToStderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
                 ret_value = EXIT_GENERIC_ERROR;
 
         }
@@ -5972,8 +5972,8 @@ int main(int argc, char **argv)
         if ( action == ACT_SUPERVISE &&
              ( argc - optind > 1 ) ) {
             // supervise only accepts one input gz file
-            printToStderr( VERBOSITY_NORMAL, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
-            printToStderr( VERBOSITY_NORMAL, "Aborted.\n" );
+            print_to_stderr( VERBOSITY_NORMAL, "`-S` option only accepts one gzip file parameter: %d indicated.\n", argc - optind );
+            print_to_stderr( VERBOSITY_NORMAL, "Aborted.\n" );
             return EXIT_GENERIC_ERROR;
         }
 
@@ -6029,26 +6029,26 @@ int main(int argc, char **argv)
 
                 /*if ( ( extend_index_with_lines > 0 && action != ACT_EXTRACT_FROM_LINE ) &&
                      ( force_action == 0 || ( force_action == 1 && write_index_to_disk == 0 ) ) )
-                        printToStderr( VERBOSITY_NORMAL, "WARNING: `-[Xx]` will be ignored because index already exists.\n" );*/
+                        print_to_stderr( VERBOSITY_NORMAL, "WARNING: `-[Xx]` will be ignored because index already exists.\n" );*/
 
                 if ( force_action == 0 ) {
-                    printToStderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "Index file '%s' already exists and will be used.\n", index_filename );
                     if ( write_index_to_disk == 0 ) {
-                        printToStderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
+                        print_to_stderr( VERBOSITY_NORMAL, "Index file will NOT be modified.\n" );
                     } else {
-                        ; //printToStderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
+                        ; //print_to_stderr( VERBOSITY_NORMAL, "(Use `-f` to force overwriting.)\n" );
                     }
                 } else {
                     // force_action == 1
                     if ( write_index_to_disk == 1 ) {
                         // delete index file
-                        printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
+                        print_to_stderr( VERBOSITY_NORMAL, "Using `-f` force option: Deleting '%s' ...\n", index_filename );
                         if ( remove( index_filename ) != 0 ) {
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
                             ret_value = EXIT_GENERIC_ERROR;
                         }
                     } else {
-                        printToStderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
+                        print_to_stderr( VERBOSITY_NORMAL, "Ignoring `-f` force option with `W` on '%s' ...\n", index_filename );
                     }
                 }
 
@@ -6079,7 +6079,7 @@ int main(int argc, char **argv)
                     adjust_index_points_to_byte_boundary,
                     compression_factor, continue_tailing_on_eof );
                 if ( ret_value != EXIT_OK ) {
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: Could not create index '%s'.\nAborted.\n", index_filename );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: Could not create index '%s'.\nAborted.\n", index_filename );
                     break; // breaks for() loop
                 }
             }
@@ -6118,13 +6118,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != compress_file( in, stdout, compression_factor, raw_method ) ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR while compressing '%s'\n", file_name );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR while compressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
@@ -6133,13 +6133,13 @@ int main(int argc, char **argv)
                     // compress chunk reads stdin or indicated file, and deflates in raw to stdout
                     // If we're here it's because there's an input file_name (at least one)
                     if ( NULL == (in = fopen( file_name, "rb" )) ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR while opening file '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                         break;
                     }
                     SET_BINARY_MODE(STDOUT); // sets binary mode for stdout in Windows
                     if ( Z_OK != decompress_file( in, stdout, raw_method ) ) {
-                        printToStderr( VERBOSITY_NORMAL, "ERROR while decompressing '%s'\n", file_name );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR while decompressing '%s'\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
@@ -6176,19 +6176,19 @@ int main(int argc, char **argv)
                              ||
                             strlen( file_name ) <= 4 )
                         ) {
-                            printToStderr( VERBOSITY_EXCESSIVE,
+                            print_to_stderr( VERBOSITY_EXCESSIVE,
                                 "Provided file '%s' has not '.gzi' extension ...\n", file_name );
                             // file_name is not named "*.gzi"
                             // so let's see if there's a filename with the corresponding index name:
                             // fortunately, this index name has already been calculated: index_filename
                             if ( access( index_filename, F_OK ) != -1 ) {
                                 // index_filename exists, so let's use it:
-                                printToStderr( VERBOSITY_EXCESSIVE,
+                                print_to_stderr( VERBOSITY_EXCESSIVE,
                                     "Detected '%s': using it as index file ...\n", index_filename );
                                 ret_value = action_list_info( index_filename, file_name, list_verbosity );
                             } else {
                                 // provided file_name must be used, as there's no '.gzi' companion
-                                printToStderr( VERBOSITY_EXCESSIVE,
+                                print_to_stderr( VERBOSITY_EXCESSIVE,
                                     "Not detected '%s' file ...\n", file_name );
                                 ret_value = action_list_info( file_name, NULL, list_verbosity );
                             }
@@ -6211,7 +6211,7 @@ int main(int argc, char **argv)
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
                         compression_factor, continue_tailing_on_eof );
-                    printToStderr( VERBOSITY_NORMAL, "\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_EXTRACT_TAIL:
@@ -6244,7 +6244,7 @@ int main(int argc, char **argv)
                                    ( 1 == force_action &&
                                      1 == write_index_to_disk ) )
                             ) {
-                                printToStderr( VERBOSITY_NORMAL, "File overwriting detected and restarting decompression...\n" );
+                                print_to_stderr( VERBOSITY_NORMAL, "File overwriting detected and restarting decompression...\n" );
                                 // delete index file
                                 if ( NULL != index ) {
                                     free_index( index );
@@ -6256,9 +6256,9 @@ int main(int argc, char **argv)
 
                                 } else { // ( 1 == force_action && 1 == write_index_to_disk )
 
-                                    printToStderr( VERBOSITY_NORMAL, "Using `-f` force option: Overwriting '%s' ...\n", index_filename );
+                                    print_to_stderr( VERBOSITY_NORMAL, "Using `-f` force option: Overwriting '%s' ...\n", index_filename );
                                     if ( remove( index_filename ) != 0 ) {
-                                        printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
+                                        print_to_stderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\nAborted.\n", index_filename );
                                         ret_value = EXIT_GENERIC_ERROR;
                                         break;
                                     }
@@ -6272,7 +6272,7 @@ int main(int argc, char **argv)
                             // this do-while loop mimics `tail -F`:
                             // this has the side efect that `-[fW]T` may get stuck here forever
                             // unless end_on_first_proper_gzip_eof == 1
-                    printToStderr( VERBOSITY_NORMAL, "\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
                 case ACT_COMPRESS_AND_CREATE_INDEX:
@@ -6289,10 +6289,10 @@ int main(int argc, char **argv)
                         compression_factor, continue_tailing_on_eof );
                     if ( ret_value == EXIT_OK &&
                          do_not_delete_original_file == 0 ) {
-                        printToStderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
+                        print_to_stderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
                         // a file_name + ".gz" has been created, but now the original file must be deleted
                         if ( remove( file_name ) != 0 ) {
-                            printToStderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\n", file_name );
+                            print_to_stderr( VERBOSITY_NORMAL, "ERROR: Could not delete '%s'.\n", file_name );
                             ret_value = EXIT_GENERIC_ERROR;
                         }
                     }
@@ -6322,10 +6322,10 @@ int main(int argc, char **argv)
                             sprintf(output_filename, "%s", file_name);
                             output_filename[strlen(file_name) - 3] = '\0';
                             if ( do_not_delete_original_file == 0 ) {
-                                printToStderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
+                                print_to_stderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
                                 // delete the original file
                                 if ( remove( file_name ) != 0 ) {
-                                    printToStderr( VERBOSITY_NORMAL,
+                                    print_to_stderr( VERBOSITY_NORMAL,
                                         "WARNING: Decompression finished, but could not delete '%s'.\n", file_name );
                                     ret_value = EXIT_GENERIC_ERROR;
                                 }
@@ -6334,13 +6334,13 @@ int main(int argc, char **argv)
                         }
                     } else {
                         // decompression wasn't successful
-                        printToStderr( VERBOSITY_NORMAL, "ERROR: decompressing '%s' file.\n", file_name );
+                        print_to_stderr( VERBOSITY_NORMAL, "ERROR: decompressing '%s' file.\n", file_name );
                         ret_value = EXIT_GENERIC_ERROR;
                     }
                     break;
 
                 default:
-                    printToStderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
+                    print_to_stderr( VERBOSITY_NORMAL, "ERROR: action not specified.\n" );
                     ret_value = EXIT_GENERIC_ERROR;
 
             }
@@ -6351,17 +6351,17 @@ int main(int argc, char **argv)
                 if ( verbosity_level >= VERBOSITY_NORMAL )
                     fprintf( stdout, "\n" );
             } else {
-                printToStderr( VERBOSITY_NORMAL, "\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "\n" );
             }
 
-            printToStderr( VERBOSITY_MANIAC, "ERROR code = %d\n", ret_value );
+            print_to_stderr( VERBOSITY_MANIAC, "ERROR code = %d\n", ret_value );
 
             if ( ret_value != EXIT_OK )
                 count_errors++;
 
             if ( continue_on_error == 0 &&
                  ret_value != EXIT_OK ) {
-                printToStderr( VERBOSITY_NORMAL, "Aborted.\n" );
+                print_to_stderr( VERBOSITY_NORMAL, "Aborted.\n" );
                 // break the for loop
                 break;
             }
@@ -6371,12 +6371,12 @@ int main(int argc, char **argv)
     }
 
     if ( i > (uint64_t)optind )
-        printToStderr( VERBOSITY_NORMAL, "%llu files processed\n",
+        print_to_stderr( VERBOSITY_NORMAL, "%llu files processed\n",
             ( i -optind + ( (count_errors>0 && continue_on_error == 0)?1:0 ) ) );
     if ( count_errors > 0 )
-        printToStderr( VERBOSITY_NORMAL, "%llu files processed with errors!\n", count_errors );
+        print_to_stderr( VERBOSITY_NORMAL, "%llu files processed with errors!\n", count_errors );
 
-    printToStderr( VERBOSITY_NORMAL, "\n" );
+    print_to_stderr( VERBOSITY_NORMAL, "\n" );
 
     // final freeing of resources
     if ( NULL != in ) {
