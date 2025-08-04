@@ -1759,11 +1759,11 @@ local struct returned_output decompress_in_advance(
 // int *there_are_more_chars: totlines may need to be decremented at the end depending on last stream char;
 //                            "passed by reference", may be NULL, in which case it is not treated.
 // OUTPUT:
-// int giveMeNumberOfLinesInChars: index position in 'buffer' at which ends line number number_of_lines. This
+// int give_me_number_of_lines_in_chars: index position in 'buffer' at which ends line number number_of_lines. This
 //                                 coincides with number of bytes in buffer before next line 'number_of_lines + 1'.
 //                                 OR if number_of_lines == 0, number of lines seen in
 //                                 passed 'buffer' of size 'size_of_buffer'
-int giveMeNumberOfLinesInChars(
+int give_me_number_of_lines_in_chars(
     const unsigned char *buffer,
     int size_of_buffer,
     int number_of_lines,
@@ -1838,7 +1838,7 @@ bool limitBufferOutput(
             *output_data_counter -= ( (*have - offset) - *range_number_of_bytes );
             *have -= ( (*have - offset) - *range_number_of_bytes );
             *output_lines_counter += - *have_lines +
-                                    giveMeNumberOfLinesInChars(
+                                    give_me_number_of_lines_in_chars(
                                         WINDOW,
                                         *have - offset, 0,
                                         line_number_format, NULL );
@@ -1853,13 +1853,13 @@ bool limitBufferOutput(
             // decrement counters to take *range_number_of_lines into account:
             *output_lines_counter += *range_number_of_lines - *have_lines;
             *have_lines = *range_number_of_lines;
-            // giveMeNumberOfLinesInChars() won't be never greater than (*have - offset):
-            int numberOfLinesInChars = giveMeNumberOfLinesInChars(
+            // give_me_number_of_lines_in_chars() won't be never greater than (*have - offset):
+            int number_of_lines_in_chars = give_me_number_of_lines_in_chars(
                                             WINDOW,
                                             *have - offset, *range_number_of_lines,
                                             line_number_format, NULL );
-            *output_data_counter -= ( (*have - offset) - numberOfLinesInChars );
-            *have -= ( (*have - offset) - numberOfLinesInChars );
+            *output_data_counter -= ( (*have - offset) - number_of_lines_in_chars );
+            *have -= ( (*have - offset) - number_of_lines_in_chars );
             // process will end after this last fwrite!
             end_processing_because_of_range = true;
         }
@@ -2388,7 +2388,7 @@ local struct returned_output decompress_and_build_index(
         // previously I trusted that "index" will be allocated on first add_point(),
         // but subsequently more added code depended on an allocated index
         // ( see block "// if required by passed indx_n_extraction_opts option, extract to stdout:",
-        // calls to giveMeNumberOfLinesInChars() and limitBufferOutput() )
+        // calls to give_me_number_of_lines_in_chars() and limitBufferOutput() )
         // so the easiest patch is to create an index right now,
         // independently of extend_index_with_lines values:
         index = create_empty_index();
@@ -2732,7 +2732,7 @@ local struct returned_output decompress_and_build_index(
                                   // to mark index->index_version == 1
                  index->index_version == 1 ) {
 
-                have_lines = giveMeNumberOfLinesInChars(
+                have_lines = give_me_number_of_lines_in_chars(
                     // output data is in window + an offset
                     window + (WINSIZE - avail_out_0),
                     avail_out_0 - strm.avail_out,
@@ -2888,7 +2888,7 @@ local struct returned_output decompress_and_build_index(
                                                   // to mark index->index_version == 1
                                                   // and use index->line_number_format
                                  index->index_version == 1 ) {
-                                have_lines = giveMeNumberOfLinesInChars(
+                                have_lines = give_me_number_of_lines_in_chars(
                                     // output data is in window + an offset
                                     window + offset + (WINSIZE - avail_out_0), have - offset,
                                     0, index->line_number_format,
@@ -2935,17 +2935,17 @@ local struct returned_output decompress_and_build_index(
                             // If line_number_offset==0 (from line_number_offset byte on) this prints always all bytes:
                             if ( line_number_offset != 0 ) {
                                 // calculate at which byte to start fwrite output:
-                                offset = giveMeNumberOfLinesInChars(
+                                offset = give_me_number_of_lines_in_chars(
                                     window + (WINSIZE - avail_out_0), avail_out_0 - strm.avail_out,
                                     line_number_offset, index->line_number_format,
                                     NULL
                                 );
-                                if ( // giveMeNumberOfLinesInChars() only if range_number_of_* > 0
+                                if ( // give_me_number_of_lines_in_chars() only if range_number_of_* > 0
                                      // just to spare some CPU cycles (as limitBufferOutput() doesn't
                                      // change anything if ! range_number_of_* > 0)
                                      range_number_of_bytes > 0 ||
                                      range_number_of_lines > 0 ) {
-                                    have_lines = giveMeNumberOfLinesInChars(
+                                    have_lines = give_me_number_of_lines_in_chars(
                                                     window + offset + (WINSIZE - avail_out_0),
                                                     have - offset, 0,
                                                     index->line_number_format, NULL );
@@ -3929,7 +3929,7 @@ local struct returned_output compress_and_build_index(
         totin += strm.avail_in;
         // count lines in this source chunk
         if ( extend_index_with_lines > 0 ) {
-            totlines += giveMeNumberOfLinesInChars(
+            totlines += give_me_number_of_lines_in_chars(
                 input, strm.avail_in,
                 0, extend_index_with_lines - 1,
                 &there_are_more_chars
