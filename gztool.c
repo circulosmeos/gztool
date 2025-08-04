@@ -693,7 +693,7 @@ local struct access *create_empty_index()
 //                        1: compress passed window of size window_size
 // OUTPUT:
 // pointer to (new) index (NULL on error)
-local struct access *addpoint( struct access *index, uint32_t bits,
+local struct access *add_point( struct access *index, uint32_t bits,
     uint64_t in, uint64_t out, unsigned left, unsigned char *window, uint32_t window_size,
     uint64_t line_number, int compress_window )
 {
@@ -2383,9 +2383,9 @@ local struct returned_output decompress_and_build_index(
             goto decompress_and_build_index_error;
         totin = totout = last = 0;
         totlines = 1;
-        index = NULL;               /* will be allocated on first addpoint() */
+        index = NULL;               /* will be allocated on first add_point() */
 
-        // previously I trusted that "index" will be allocated on first addpoint(),
+        // previously I trusted that "index" will be allocated on first add_point(),
         // but subsequently more added code depended on an allocated index
         // ( see block "// if required by passed indx_n_extraction_opts option, extract to stdout:",
         // calls to giveMeNumberOfLinesInChars() and limitBufferOutput() )
@@ -3115,7 +3115,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
                 // check actual_index_point to see if we've passed
                 // the end of the passed previous index, and so
-                // we must addpoint() from now on :
+                // we must add_point() from now on :
                 printToStderr( VERBOSITY_MANIAC, "actual_index_point = %llu,", actual_index_point+1 );
                 printToStderr( VERBOSITY_MANIAC, "(%llu, %llu)\n", totout, last );
                 if ( actual_index_point > 0 )
@@ -3125,7 +3125,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
                     actual_index_point = 0; // 0: actual_index_point won't be incremented or checked anymore
                 }
                 if ( actual_index_point == 0 &&
-                    // addpoint() only if index doesn't yet exist or it is incomplete
+                    // add_point() only if index doesn't yet exist or it is incomplete
                     ( NULL == index || index->index_complete == 0 ) &&
                     // do not add points if position is lower than the last index point available:
                     // (this can happen if -s is less now, than when the index was created!)
@@ -3139,12 +3139,12 @@ decompress_and_build_index_Set_next_good_decompression_point:
                     if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
 
                         if ( NULL != index )
-                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %llu, index_last_written_point = %llu\n",
+                            printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
                                 index->have, index_last_written_point );
                         else
-                            printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %llu\n",
+                            printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
                                 index_last_written_point );
-                        index = addpoint(index, strm.data_type & 7, totin,
+                        index = add_point(index, strm.data_type & 7, totin,
                                          totout, strm.avail_out, window, window_size, totlines, 1);
                         if ( NULL == index ) {
                             ret.error = Z_MEM_ERROR;
@@ -3525,9 +3525,9 @@ struct access *deserialize_index_from_file(
             index, here.bits, here.in, here.out, here.window_size, here.window_beginning, here.line_number );
         // increase index structure with a new point
         // (here.window can be NULL if load_windows==0)
-        index = addpoint( index, here.bits, here.in, here.out, 0, here.window, here.window_size, here.line_number, 0 );
+        index = add_point( index, here.bits, here.in, here.out, 0, here.window, here.window_size, here.line_number, 0 );
 
-        // after increasing index, copy values which were not passed to addpoint():
+        // after increasing index, copy values which were not passed to add_point():
         index->list[index->have - 1].window_beginning = here.window_beginning;
         // note that even if (here.window != NULL) it MUST NOT be free() here, because
         // the pointer has been copied in a point of the index structure.
@@ -3901,12 +3901,12 @@ local struct returned_output compress_and_build_index(
             // write index point
             if ( write_index_to_disk == 1 ) { // if `-W`, index is not written to disk, and it will also not be created/updated (!)
                 if ( NULL != index )
-                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = %llu, index_last_written_point = %llu\n",
+                    printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = %llu, index_last_written_point = %llu\n",
                         index->have, index_last_written_point );
                 else
-                    printToStderr( VERBOSITY_EXCESSIVE, "addpoint index->have = 0, index_last_written_point = %llu\n",
+                    printToStderr( VERBOSITY_EXCESSIVE, "add_point index->have = 0, index_last_written_point = %llu\n",
                         index_last_written_point );
-                index = addpoint(index, 0,
+                index = add_point(index, 0,
                                  ( ( 0==totout )? GZIP_HEADER_SIZE_BY_ZLIB: totout ), // compressed byte after header <=> uncompressed byte 0
                                  totin, 0, NULL, 0, totlines, 0);
 
