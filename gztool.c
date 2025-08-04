@@ -192,7 +192,7 @@ struct point {
 struct access {
     uint64_t have;      /* number of list entries filled in */
     uint64_t size;      /* number of list entries allocated */
-    uint64_t file_size; /* size of uncompressed file (useful for bgzip files) */
+    uint64_t uncompressed_file_size; /* size of uncompressed file (useful for bgzip files) */
     struct point *list; /* allocated list */
     char *file_name;    /* path to index file */
     int index_complete; /* 1: index is complete; 0: index is (still) incomplete */
@@ -657,7 +657,7 @@ local struct access *create_empty_index()
     }
     index->index_version = 0;
     index->line_number_format = 0;
-    index->file_size = 0;
+    index->uncompressed_file_size = 0;
     index->number_of_lines = 0;
     index->list = NULL;
     index->file_name = NULL;
@@ -887,7 +887,7 @@ int serialize_index_to_file( FILE *output_file, struct access *index, uint64_t i
         // Last write operation:
         // tail must be written:
         /* write size of uncompressed file (useful for bgzip files) */
-        fwrite_endian(&(index->file_size), sizeof(index->file_size), output_file);
+        fwrite_endian(&(index->uncompressed_file_size), sizeof(index->uncompressed_file_size), output_file);
         if ( index->index_version == 1 ) {
             // there's an additional register on v1: number_of_lines
             fwrite_endian(&(index->number_of_lines), sizeof(index->number_of_lines), output_file);
@@ -999,7 +999,7 @@ ssize_t PREAD(
 //                           AND it MUST be set ONLY on first call with initialize_function == DECOMPRESS_IN_ADVANCE_RESET.
 // enum INDEX_AND_EXTRACTION_OPTIONS indx_n_extraction_opts0: value of indx_n_extraction_opts on caller.
 //                                            only set on first call, with initialize_function == DECOMPRESS_IN_ADVANCE_RESET.
-// int decompressing_with_gzip_headers0: 1 if inflateInit2(&strm, 47) on actual state on first 
+// int decompressing_with_gzip_headers0: 1 if inflateInit2(&strm, 47) on actual state on first
 //                                       call with initialize_function == DECOMPRESS_IN_ADVANCE_RESET. 0 otherwise.
 // int end_on_first_proper_gzip_eof0   : end file processing on first proper (at feof()) GZIP EOF.
 //                                       Set with initialize_function == DECOMPRESS_IN_ADVANCE_RESET. 0 otherwise.
@@ -2087,7 +2087,7 @@ local struct returned_output decompress_and_build_index(
 
         index = *built;
         index_points_0 = index->have;   // marker to detect index updates (and to not write if index isn't updated)
-        index_file_size_0 = index->file_size;// marker to detect index updates (and to not write if index isn't updated)
+        index_file_size_0 = index->uncompressed_file_size;// marker to detect index updates (and to not write if index isn't updated)
 
         /* initialize file and inflate state to start there */
         strm.zalloc = Z_NULL;
@@ -2123,7 +2123,7 @@ local struct returned_output decompress_and_build_index(
         if ( index->index_complete == 1 ) {
             if ( indx_n_extraction_opts == SUPERVISE_DO_AND_EXTRACT_FROM_TAIL ||
                  indx_n_extraction_opts == EXTRACT_TAIL ) {
-                offset = ( index->file_size - totout ) /4*3;
+                offset = ( index->uncompressed_file_size - totout ) /4*3;
                 indx_n_extraction_opts = EXTRACT_FROM_BYTE;
             }
         }
@@ -3216,7 +3216,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
         }
         index->list = next;
         index->size = index->have;
-        index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
+        index->uncompressed_file_size = totout; /* size of uncompressed file (useful for bgzip files) */
         if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
         }
@@ -3230,10 +3230,10 @@ decompress_and_build_index_Set_next_good_decompression_point:
          write_index_to_disk == 1 ) {
         // use markers to detect index updates and to not write if index isn't updated
         if ( index_points_0 != index->have ||
-             index_file_size_0 != index->file_size ) {
+             index_file_size_0 != index->uncompressed_file_size ) {
             print_to_stderr( VERBOSITY_EXCESSIVE,
                 "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
-                index->have, index->file_size );
+                index->have, index->uncompressed_file_size );
             if ( ! serialize_index_to_file( index_file, index, index->have ) )
                 goto decompress_and_build_index_error;
             if ( strlen(index_filename) > 0 )
@@ -3309,7 +3309,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     if ( always_create_a_complete_index == 1 &&
          NULL != index ) {
-        index->file_size = totout; /* size of uncompressed file (useful for bgzip files) */
+        index->uncompressed_file_size = totout; /* size of uncompressed file (useful for bgzip files) */
         if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
         }
@@ -3546,12 +3546,12 @@ struct access *deserialize_index_from_file(
         );
 
 
-    index->file_size = 0;
+    index->uncompressed_file_size = 0;
 
     if ( index_complete == 1 ){
         /* read size of uncompressed file (useful for bgzip files) */
         /* this field may not exist (maybe useful for growing gzip files?) */
-        fread_endian(&(index->file_size), sizeof(index->file_size), input_file);
+        fread_endian(&(index->uncompressed_file_size), sizeof(index->uncompressed_file_size), input_file);
         /* read number of lines in uncompressed file */
         /* this field does not exist with v0 of index file */
         fread_endian(&(index->number_of_lines), sizeof(index->number_of_lines), input_file);
@@ -4040,7 +4040,7 @@ local struct returned_output compress_and_build_index(
         }
         index->list = next;
         index->size = index->have;
-        index->file_size = totin; /* size of uncompressed file */
+        index->uncompressed_file_size = totin; /* size of uncompressed file */
         if ( 0 == there_are_more_chars && totlines > 1 ) {
             totlines --;
         }
@@ -4053,7 +4053,7 @@ local struct returned_output compress_and_build_index(
          index->index_complete == 0 &&
          write_index_to_disk == 1 ) {
         print_to_stderr( VERBOSITY_EXCESSIVE, "Closing index file with %llu points and uncompressed file size of %llu bytes.\n",
-            index->have, index->file_size );
+            index->have, index->uncompressed_file_size );
         if ( ! serialize_index_to_file( index_file, index, index->have ) )
             goto compress_and_build_index_error;
         if ( strlen(index_filename) > 0 )
@@ -4124,7 +4124,7 @@ local struct returned_output compress_and_build_index(
 
     if ( always_create_a_complete_index == 1 ) {
         if ( NULL != index ) {
-            index->file_size = totin; /* size of uncompressed file */
+            index->uncompressed_file_size = totin; /* size of uncompressed file */
             if ( 0 == there_are_more_chars && totlines > 1 ) {
                 totlines --;
             }
@@ -4641,9 +4641,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                          verbosity_level > VERBOSITY_NONE) {
                         fprintf( stdout, " (%.2f%%/gzip)\n", (double)st.st_size / (double)st_gzip.st_size * 100.0 );
                         fprintf( stdout, "\tGuessed gzip file name   : '%s'", gzip_filename );
-                        if ( index->file_size > 0 ) {
+                        if ( index->uncompressed_file_size > 0 ) {
                             fprintf( stdout, " (%.2f%%)",
-                                100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
+                                100.0 - (double)st_gzip.st_size / (double)index->uncompressed_file_size * 100.0 );
                         }
                         fprintf( stdout, " %s (%llu Bytes)",
                             give_me_si_units(st_gzip.st_size, 1), (long long unsigned)st_gzip.st_size );
@@ -4685,9 +4685,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
         if ( verbosity_level > VERBOSITY_NONE ) {
 
             // print uncompressed file size
-            if ( index->file_size != 0 ) {
+            if ( index->uncompressed_file_size != 0 ) {
                 fprintf( stdout, "\tSize of uncompressed file: %s (%llu Bytes)\n",
-                    give_me_si_units(index->file_size, 1), (long long unsigned)index->file_size );
+                    give_me_si_units(index->uncompressed_file_size, 1), (long long unsigned)index->uncompressed_file_size );
             } else {
                 if ( index->have > 1 ) {
                     fprintf( stdout, "\tSize of uncompressed file > %s (%llu Bytes)\n",
@@ -4723,9 +4723,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 ) {
                 // index is complete
                 if ( st_gzip.st_size > 0 &&
-                     index->file_size > 0 ) {
+                     index->uncompressed_file_size > 0 ) {
                     fprintf( stdout, "%.2f%%\n",
-                        100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
+                        100.0 - (double)st_gzip.st_size/(double)index->uncompressed_file_size*100.0 );
                 }
             } else {
                 // index is incomplete (or gzip file is not available):
@@ -4822,9 +4822,9 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 100.0 - (double)comp_win_counter/(double)uncomp_win_counter*100.0 );
             if ( NULL != gzip_filename &&
                  st_gzip.st_size > 0 &&
-                 index->file_size > 0 ) {
+                 index->uncompressed_file_size > 0 ) {
                 fprintf( stdout, "\n\tReal gzip data compression factor     : %.2f%%",
-                    100.0 - (double)st_gzip.st_size/(double)index->file_size*100.0 );
+                    100.0 - (double)st_gzip.st_size/(double)index->uncompressed_file_size*100.0 );
             }
         }
 
