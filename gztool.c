@@ -264,8 +264,8 @@ enum DECOMPRESS_IN_ADVANCE_INITIALIZERS {
 
 // shared string for printing unit conversions without dealing with pointers:
 // Always %.2f : "1234.67 Bytes\0" = 14 chars maximum
-#define MAX_giveMeSIUnits_RETURNED_LENGTH 14
-char number_output[MAX_giveMeSIUnits_RETURNED_LENGTH];
+#define MAX_GIVEMESIUNITS_RETURNED_LENGTH 14
+char number_output[MAX_GIVEMESIUNITS_RETURNED_LENGTH];
 
 // `fprintf` substitute for printing with VERBOSITY_LEVEL
 void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) {
@@ -288,7 +288,7 @@ void printToStderr ( enum VERBOSITY_LEVEL verbosity, const char * format, ... ) 
 // OUTPUT:
 // pointer to buffer where string will be written:
 // It is ALWAYS the "number_output" global variable.
-char *giveMeSIUnits ( uint64_t input_number, int binary ) {
+char *give_me_si_units ( uint64_t input_number, int binary ) {
 
     int i;
     double number = (double)input_number;
@@ -301,13 +301,13 @@ char *giveMeSIUnits ( uint64_t input_number, int binary ) {
 
     // totally empty string so that
     // end-of-string char is always correctly set no matter the number
-    for ( i = 0; i < MAX_giveMeSIUnits_RETURNED_LENGTH; i++ )
+    for ( i = 0; i < MAX_GIVEMESIUNITS_RETURNED_LENGTH; i++ )
         number_output[i] = '\0';
 
     for ( i = 0; number >= BASE; i++ )
         number /= BASE;
 
-    snprintf( number_output, MAX_giveMeSIUnits_RETURNED_LENGTH,
+    snprintf( number_output, MAX_GIVEMESIUNITS_RETURNED_LENGTH,
         "%.2f %s", number, ( (binary==1)? SI_BINARY_UNITS[i]: SI_UNITS[i] ) );
 
     return number_output;
@@ -3250,7 +3250,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
-            giveMeSIUnits(output_data_counter, 1), output_data_counter );
+            give_me_si_units(output_data_counter, 1), output_data_counter );
     }
 
     // print output_lines_counter info
@@ -3259,7 +3259,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
         output_lines_counter > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
         if ( output_lines_counter > 1000 ) {
-            printToStderr( VERBOSITY_NORMAL, " (%s).\n", giveMeSIUnits(output_lines_counter, 0) );
+            printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
         } else {
             printToStderr( VERBOSITY_NORMAL, ".\n" );
         }
@@ -3290,7 +3290,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data extracted.\n",
-            giveMeSIUnits(output_data_counter, 1), output_data_counter );
+            give_me_si_units(output_data_counter, 1), output_data_counter );
     }
 
     // print output_lines_counter info
@@ -3299,7 +3299,7 @@ decompress_and_build_index_Set_next_good_decompression_point:
         output_lines_counter > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%llu lines extracted", output_lines_counter );
         if ( output_lines_counter > 1000 ) {
-            printToStderr( VERBOSITY_NORMAL, " (%s).\n", giveMeSIUnits(output_lines_counter, 0) );
+            printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(output_lines_counter, 0) );
         } else {
             printToStderr( VERBOSITY_NORMAL, ".\n" );
         }
@@ -4069,12 +4069,12 @@ local struct returned_output compress_and_build_index(
     // print totin info
     if ( totin > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
-            giveMeSIUnits(totin, 1), totin );
+            give_me_si_units(totin, 1), totin );
         if ( extend_index_with_lines > 0 &&
             totlines > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "%llu lines compressed.\n", totlines );
             if ( totlines > 1000 ) {
-                printToStderr( VERBOSITY_NORMAL, " (%s).\n", giveMeSIUnits(totlines, 0) );
+                printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
             } else {
                 printToStderr( VERBOSITY_NORMAL, ".\n" );
             }
@@ -4105,19 +4105,19 @@ local struct returned_output compress_and_build_index(
     // print totin info
     if ( totin > 0 ) {
         printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of data compressed.\n",
-            giveMeSIUnits(totin, 1), totin );
+            give_me_si_units(totin, 1), totin );
         if ( extend_index_with_lines > 0 &&
             totlines > 0 ) {
             printToStderr( VERBOSITY_NORMAL, "%llu lines compressed", ( (0 == there_are_more_chars)? totlines-1: totlines ) );
             if ( totlines > 1000 ) {
-                printToStderr( VERBOSITY_NORMAL, " (%s).\n", giveMeSIUnits(totlines, 0) );
+                printToStderr( VERBOSITY_NORMAL, " (%s).\n", give_me_si_units(totlines, 0) );
             } else {
                 printToStderr( VERBOSITY_NORMAL, ".\n" );
             }
         }
         if ( totout > 0 )
             printToStderr( VERBOSITY_NORMAL, "%s (%llu Bytes) of gzip data (%.2f%%).\n",
-                giveMeSIUnits(totout, 1), totout, 100.0 - (double)totout / (double)totin * 100.0 );
+                give_me_si_units(totout, 1), totout, 100.0 - (double)totout / (double)totin * 100.0 );
     }
 
     (void)deflateEnd(&strm);
@@ -4592,7 +4592,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 fprintf( stdout, ")  :" );
             }
             fprintf( stdout, " %s (%llu Bytes)",
-                giveMeSIUnits(st.st_size, 1), (long long unsigned)st.st_size );
+                give_me_si_units(st.st_size, 1), (long long unsigned)st.st_size );
         }
 
         if ( st.st_size > 0 &&
@@ -4646,7 +4646,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                                 100.0 - (double)st_gzip.st_size / (double)index->file_size * 100.0 );
                         }
                         fprintf( stdout, " %s (%llu Bytes)",
-                            giveMeSIUnits(st_gzip.st_size, 1), (long long unsigned)st_gzip.st_size );
+                            give_me_si_units(st_gzip.st_size, 1), (long long unsigned)st_gzip.st_size );
                     }
                 } else {
                     if ( verbosity_level > VERBOSITY_NONE )
@@ -4676,7 +4676,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
         if ( verbosity_level > VERBOSITY_NONE ) {
             fprintf( stdout, "\tNumber of index points   : %llu", (long long unsigned)index->have );
             if ( index->have > 1000 ) {
-                fprintf( stdout, " (%s)\n", giveMeSIUnits(index->have, 0) );
+                fprintf( stdout, " (%s)\n", give_me_si_units(index->have, 0) );
             } else {
                 fprintf( stdout, "\n" );
             }
@@ -4687,11 +4687,11 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
             // print uncompressed file size
             if ( index->file_size != 0 ) {
                 fprintf( stdout, "\tSize of uncompressed file: %s (%llu Bytes)\n",
-                    giveMeSIUnits(index->file_size, 1), (long long unsigned)index->file_size );
+                    give_me_si_units(index->file_size, 1), (long long unsigned)index->file_size );
             } else {
                 if ( index->have > 1 ) {
                     fprintf( stdout, "\tSize of uncompressed file > %s (%llu Bytes)\n",
-                        giveMeSIUnits(index->list[index->have -1].out, 1),
+                        give_me_si_units(index->list[index->have -1].out, 1),
                         (long long unsigned)index->list[index->have -1].out );
                 }
             }
@@ -4711,7 +4711,7 @@ local int action_list_info( char *file_name, char *input_gzip_filename, enum VER
                 }
                 fprintf( stdout, " %llu", (long long unsigned)local_number_of_lines );
                 if ( local_number_of_lines > 1000 ) {
-                    fprintf( stdout, " (%s)", giveMeSIUnits(local_number_of_lines, 0) );
+                    fprintf( stdout, " (%s)", give_me_si_units(local_number_of_lines, 0) );
                 }
                 fprintf( stdout, "\n" );
             }
