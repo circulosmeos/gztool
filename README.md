@@ -76,7 +76,7 @@ Compilation
 If you wish you can use autoconf to check the dependencies, build and
 test `gztool`:
 
-    $ autoreconf && ./configure && make check
+    $ autoreconf -fi && ./configure && make check
 
 This will produce a binary in `gztool`.
 
