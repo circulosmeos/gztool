@@ -13,7 +13,7 @@
 //
 // LICENSE:
 //
-// v0.1 to v1.8* by Roberto S. Galende, 2019, 2020, 2021, 2022, 2023, 2024
+// v0.1 to v1.8* by Roberto S. Galende, 2019, 2020, 2021, 2022, 2023, 2024, 2026
 // //github.com/circulosmeos/gztool
 // A work by Roberto S. Galende 
 // distributed under the same License terms covering
@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.8.0"
+    #define PACKAGE_VERSION "1.8.1"
 #endif
 
 #define _XOPEN_SOURCE 500 // expose <unistd.h>'s pread()
@@ -1019,6 +1019,7 @@ ssize_t PREAD(
 //                          if DECOMPRESS_IN_ADVANCE_RESET, internal value strm_initialized is set to false
 //                          marking this way the beginning of a new file processing.
 //                          See DECOMPRESS_IN_ADVANCE_INITIALIZERS.
+// bool gzip_do_not_check_for_file_overwriting: to not check for gzip file overwriting.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: one of GZIP_MARK_FOUND_TYPE:
@@ -1037,8 +1038,9 @@ local struct returned_output decompress_in_advance(
     const int waiting_time0,
     const bool lazy_gzip_stream_patching_at_eof0,
     const uint64_t expected_first_byte0,
-    const enum DECOMPRESS_IN_ADVANCE_INITIALIZERS initialize_function
-) {
+    const enum DECOMPRESS_IN_ADVANCE_INITIALIZERS initialize_function,
+    const bool gzip_do_not_check_for_file_overwriting )
+{
     struct returned_output returned_value; // returned structure
     returned_value.value = 0LLU;
     returned_value.error = GZIP_MARK_NONE;
@@ -1256,7 +1258,9 @@ local struct returned_output decompress_in_advance(
                 strm.avail_in += strm_avail_in0;
             }
         }
-        if ( feof( file_in ) ) {
+        if ( feof( file_in ) &&
+             !gzip_do_not_check_for_file_overwriting
+            ) {
             // generic check for growing files (not related to bgzip-compatible-streams code):
             // check that file hasn't shrunk, what would mean that the file
             // has been overwritten from the beginning (possible with rsyslog logs, for example)
@@ -1950,6 +1954,7 @@ bool limitBufferOutput(
 //                                and so, may be, less points in the index. But this is completely safe and sound.
 // bool continue_tailing_on_eof: indicates that `-[bL]` options are processed and tailing and supervising
 //                                will continue once end-of-file is reached.
+// bool gzip_do_not_check_for_file_overwriting: to not check for gzip file overwriting.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -1962,7 +1967,8 @@ local struct returned_output decompress_and_build_index(
     int waiting_time, int extend_index_with_lines, uint64_t expected_first_byte,
     int gzip_stream_may_be_damaged, bool lazy_gzip_stream_patching_at_eof,
     uint64_t range_number_of_bytes, uint64_t range_number_of_lines,
-    bool adjust_index_points_to_byte_boundary, bool continue_tailing_on_eof )
+    bool adjust_index_points_to_byte_boundary, bool continue_tailing_on_eof,
+    bool gzip_do_not_check_for_file_overwriting )
 {
     struct returned_output ret;
     uint64_t totin  = 0;           /* our own total counters to avoid 4GB limit */
@@ -2426,7 +2432,8 @@ local struct returned_output decompress_and_build_index(
             waiting_time,
             lazy_gzip_stream_patching_at_eof,
             expected_first_byte,
-            DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+            DECOMPRESS_IN_ADVANCE_RESET, // returned value is always ok when called with this value
+            gzip_do_not_check_for_file_overwriting );
     }
 
     // initialize output window
@@ -2451,7 +2458,9 @@ local struct returned_output decompress_and_build_index(
             printToStderr( VERBOSITY_MANIAC, "[read %d B]", strm.avail_in );
             strm.avail_in += strm_avail_in0;
         }
-        if ( feof( file_in ) ) {
+        if ( feof( file_in ) &&
+             !gzip_do_not_check_for_file_overwriting
+            ) {
             // generic check for growing files (not related to bgzip-compatible-streams code):
             // check that file hasn't shrunk, what would mean that the file
             // has been overwritten from the beginning (possible with rsyslog logs, for example)
@@ -2628,7 +2637,8 @@ local struct returned_output decompress_and_build_index(
             struct returned_output ret;
             ret = decompress_in_advance( (z_streamp)&strm, file_in, file_name, totin, 0, 0, 0, 0, 0,
                     output_data_counter, totout, 0, false, 0LLU,
-                    DECOMPRESS_IN_ADVANCE_CONTINUE );
+                    DECOMPRESS_IN_ADVANCE_CONTINUE,
+                    gzip_do_not_check_for_file_overwriting );
             switch ( ret.error ) {
                 case GZIP_MARK_NONE:
                     // no error was found in advance: proceed as usual
@@ -2646,7 +2656,8 @@ local struct returned_output decompress_and_build_index(
                     // as it won't be called again because an error will rise eventually on caller:
                     decompress_in_advance( NULL, NULL, NULL,
                         0LLU, CHUNKS_TO_DECOMPRESS_IN_ADVANCE, CHUNKS_TO_LOOK_BACKWARDS,
-                        0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+                        0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET, // returned value is always ok when called with this value
+                        gzip_do_not_check_for_file_overwriting );
                     break;
                 case GZIP_MARK_FATAL_ERROR:
                     // an internal and compulsory fseeko() failed, so process
@@ -3088,7 +3099,8 @@ decompress_and_build_index_Set_next_good_decompression_point:
                     0,
                     false,
                     0LLU,
-                    DECOMPRESS_IN_ADVANCE_SOFT_RESET ); // returned value is always ok when called with this value
+                    DECOMPRESS_IN_ADVANCE_SOFT_RESET, // returned value is always ok when called with this value
+                    gzip_do_not_check_for_file_overwriting );
                 //
                 // all done!
                 //
@@ -3267,7 +3279,8 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // free strm structure from internal state of decompress_in_advance():
     decompress_in_advance( NULL, NULL, NULL,
-        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET, // returned value is always ok when called with this value
+        gzip_do_not_check_for_file_overwriting );
 
     *built = index;
     if ( NULL != index ) {
@@ -3285,7 +3298,8 @@ decompress_and_build_index_Set_next_good_decompression_point:
 
     // free strm structure from internal state of decompress_in_advance():
     decompress_in_advance( NULL, NULL, NULL,
-        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET ); // returned value is always ok when called with this value
+        0LLU, 0, 0, 0, 0, 0, 0LLU, 0LLU, 0, false, 0LLU, DECOMPRESS_IN_ADVANCE_RESET, // returned value is always ok when called with this value
+        gzip_do_not_check_for_file_overwriting );
 
     // print output_data_counter info
     if ( output_data_counter > 0 ) {
@@ -3801,6 +3815,7 @@ local int decompress_file( FILE *source, FILE *dest, int raw_method )
 // int extend_index_with_lines  : 0: create index without line numbers (v0 index)
 //                                1: create index WITH line numbers (v1 index) using Unix format (\n)
 //                                2: create index WITH line numbers (v1 index) using old Mac format (\r) (compatible with Windows \n\r)
+// bool gzip_do_not_check_for_file_overwriting: to not check for gzip file overwriting.
 // OUTPUT:
 // struct returned_output: contains two values:
 //      .error: Z_* error code or Z_OK if everything was ok
@@ -3809,7 +3824,8 @@ local struct returned_output compress_and_build_index(
     FILE *file_in, FILE *file_out, int level, char *file_name, uint64_t span,
     struct access **built, char *index_filename, int write_index_to_disk,
     int end_on_first_eof, int always_create_a_complete_index,
-    int waiting_time, int extend_index_with_lines )
+    int waiting_time, int extend_index_with_lines,
+    bool gzip_do_not_check_for_file_overwriting )
 {
     struct returned_output ret;
     uint64_t last   = 0;           /* uncompressed byte position of last access point */
@@ -3991,7 +4007,8 @@ local struct returned_output compress_and_build_index(
         // check that file hasn't shrunk, what would mean that the file
         // has been overwritten from the beginning (possible with logs, for example)
         if ( feof( file_in ) &&
-             end_on_first_eof == 0 ) { // if end_on_first_eof == 1, ret.error == Z_STREAM_END already
+             end_on_first_eof == 0 && // if end_on_first_eof == 1, ret.error == Z_STREAM_END already
+             !gzip_do_not_check_for_file_overwriting ) {
             if ( strlen( file_name ) > 0 ) {    // this check cannot be done on STDIN
                 struct stat st;
                 stat(file_name, &st);
@@ -4207,6 +4224,7 @@ local struct returned_output compress_and_build_index(
 //                                 Used here only when calling compress_and_build_index().
 // bool continue_tailing_on_eof: indicates that `-[bL]` options are processed and tailing and supervising
 //                                will continue once end-of-file is reached.
+// bool gzip_do_not_check_for_file_overwriting: to not check for gzip file overwriting.
 // OUTPUT:
 // EXIT_* error code or EXIT_OK on success
 local int action_create_index(
@@ -4219,7 +4237,8 @@ local int action_create_index(
     bool lazy_gzip_stream_patching_at_eof,
     uint64_t range_number_of_bytes, uint64_t range_number_of_lines,
     bool adjust_index_points_to_byte_boundary,
-    int compression_factor, bool continue_tailing_on_eof )
+    int compression_factor, bool continue_tailing_on_eof,
+    bool gzip_do_not_check_for_file_overwriting )
 {
 
     FILE *file_in  = NULL;
@@ -4317,7 +4336,8 @@ action_create_index_wait_for_file_creation:
                 write_index_to_disk,
                 ((end_on_first_proper_gzip_eof==0)?1:0), // `-E` behaviour is inverted with `-c` for ease of use
                 always_create_a_complete_index, waiting_time,
-                extend_index_with_lines );
+                extend_index_with_lines,
+                gzip_do_not_check_for_file_overwriting );
 
         if ( NULL != index && NULL != *index ) {
             // it is important to set (*index)->file_name, if the index is to be reused,
@@ -4448,7 +4468,8 @@ action_create_index_wait_for_file_creation:
                     waiting_time, extend_index_with_lines, 1, // expected_first_byte not used, so 1
                     gzip_stream_may_be_damaged, lazy_gzip_stream_patching_at_eof,
                     range_number_of_bytes, range_number_of_lines,
-                    adjust_index_points_to_byte_boundary, continue_tailing_on_eof );
+                    adjust_index_points_to_byte_boundary, continue_tailing_on_eof,
+                    gzip_do_not_check_for_file_overwriting );
 
         } else {
             file_out = stdout;
@@ -4459,7 +4480,8 @@ action_create_index_wait_for_file_creation:
                     waiting_time, extend_index_with_lines, expected_first_byte,
                     gzip_stream_may_be_damaged, lazy_gzip_stream_patching_at_eof,
                     range_number_of_bytes, range_number_of_lines,
-                    adjust_index_points_to_byte_boundary, continue_tailing_on_eof );
+                    adjust_index_points_to_byte_boundary, continue_tailing_on_eof,
+                    gzip_do_not_check_for_file_overwriting );
         }
 
         if ( NULL != index && NULL != *index ) {
@@ -4934,7 +4956,7 @@ local void print_brief_help() {
     fprintf( stderr, "  Create small indexes for gzipped files and use them\n" );
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPqrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilOpPqrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  `gztool -hh` for more help\n" );
     fprintf( stderr, "\n" );
 
@@ -4951,7 +4973,7 @@ local void print_help() {
     fprintf( stderr, "  for quick and random-positioned data extraction.\n" );
     fprintf( stderr, "  No more waiting when the end of a 10 GiB gzip is needed!\n" );
     fprintf( stderr, "  //github.com/circulosmeos/gztool (by Roberto S. Galende)\n\n" );
-    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilpPqrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
+    fprintf( stderr, "  $ gztool [-[abLnsv] #] [-[1..9]AcCdDeEfFhilOpPqrRStTwWxXzZ|u[cCdD]] [-I <INDEX>] <FILE>...\n\n" );
     fprintf( stderr, "  Note that actions `-bcStT` proceed to an index file creation (if\n" );
     fprintf( stderr, "  none exists) INTERLEAVED with data flow. As data flow and\n" );
     fprintf( stderr, "  index creation occur at the same time there's no waste of time.\n" );
@@ -4987,6 +5009,7 @@ local void print_help() {
     fprintf( stderr, "     Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).\n" );
     fprintf( stderr, " -n #: indicates that the first byte on compressed input is #, not 1,\n" );
     fprintf( stderr, "     and so truncated compressed inputs can be used if an index exists.\n" );
+    fprintf( stderr, " -O: do not check for file Overwriting. Necessary only in Windows.\n" );
     fprintf( stderr, " -p: indicates that the gzip input stream may be composed of various\n" );
     fprintf( stderr, "     incorrectly terminated GZIP streams, and so then a careful\n" );
     fprintf( stderr, "     Patching of the input may be needed to extract correct data.\n" );
@@ -5066,6 +5089,7 @@ int main(int argc, char **argv)
     bool indicate_range_in_absolute_value = false;
     bool adjust_index_points_to_byte_boundary = false;
     bool continue_tailing_on_eof = false;
+    bool gzip_do_not_check_for_file_overwriting = false;
     char utility_option = ' ';
     uint64_t count_errors = 0;
 
@@ -5081,7 +5105,7 @@ int main(int argc, char **argv)
 
     action = ACT_NOT_SET;
     ret_value = EXIT_OK;
-    while ((opt = getopt(argc, argv, "123456789a:Ab:cCdDeEfFhiI:lL:n:pPqr:R:s:StTu:v:wWxXzZ")) != -1)
+    while ((opt = getopt(argc, argv, "123456789a:Ab:cCdDeEfFhiI:lL:n:OpPqr:R:s:StTu:v:wWxXzZ")) != -1)
         switch (opt) {
             // help
             case 'h':
@@ -5196,6 +5220,11 @@ int main(int argc, char **argv)
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Option `-n 0` invalid: must be >= 1.\n" );
                     return EXIT_INVALID_OPTION;
                 }
+                break;
+            // `-O` to not check for source file Overwriting. Useful in Windows, as stat()
+            // in Windows can provide erroneous file sizes when the file is being updated.
+            case 'O':
+                gzip_do_not_check_for_file_overwriting = true;
                 break;
             // `-p` indicates that the gzip input stream may be composed of various
             // incorrectly terminated GZIP streams, and so then a careful
@@ -5338,7 +5367,7 @@ int main(int argc, char **argv)
             case '?':
                 if ( isprint (optopt) ) {
                     // print warning only if char option is unknown
-                    if ( NULL == strchr("123456789aAbcCdDeEfFhiIlLnpPrRSstTuvwWxXzZ", optopt) ) {
+                    if ( NULL == strchr("123456789aAbcCdDeEfFhiIlLnOpPrRSstTuvwWxXzZ", optopt) ) {
                         printToStderr( VERBOSITY_NORMAL, "ERROR: Unknown option `-%c'.\n", optopt);
                         print_help();
                     }
@@ -5670,10 +5699,10 @@ int main(int argc, char **argv)
         printToStderr( VERBOSITY_EXCESSIVE, "  -l: %d, \t-L: %llu, \t-n: %llu\n",
             ( (action==ACT_LIST_INFO)? list_verbosity: 0 ),
             extract_from_line, expected_first_byte );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -p: %d, \t-P: %d, \t-q: %d\n",
-            gzip_stream_may_be_damaged, lazy_gzip_stream_patching_at_eof, continue_tailing_on_eof );
-        printToStderr( VERBOSITY_EXCESSIVE, "  -r: %d, \t-R: %d\n",
-            range_number_of_bytes, range_number_of_lines );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -O: %d, \t-p: %d, \t-P: %d\n",
+            gzip_do_not_check_for_file_overwriting, gzip_stream_may_be_damaged, lazy_gzip_stream_patching_at_eof );
+        printToStderr( VERBOSITY_EXCESSIVE, "  -q: %d, \t-r: %d, \t-R: %d\n",
+            continue_tailing_on_eof, range_number_of_bytes, range_number_of_lines );
         printToStderr( VERBOSITY_EXCESSIVE, "  -s: %llu, \t-S: %d, \t-t: %d\n",
             span_between_points, ( (action==ACT_SUPERVISE)? 1: 0 ), ( (action==ACT_EXTRACT_TAIL)? 1: 0 ) );
         printToStderr( VERBOSITY_EXCESSIVE, "  -T: %d, \t-u: %c, \t-v: %d, \t-w: %d\n",
@@ -5775,7 +5804,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -5796,7 +5826,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
                 } else {
@@ -5843,7 +5874,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         JUST_CREATE_INDEX, 0, 0, span_between_points,
@@ -5854,7 +5886,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5882,7 +5915,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO, 0, 0, span_between_points,
@@ -5893,7 +5927,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5910,7 +5945,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 } else {
                     // if an index filename is not indicated, index will not be output
                     // as stdout is already used for data extraction
@@ -5930,7 +5966,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 } else {
                     ret_value = action_create_index( "", &index, "",
                         SUPERVISE_DO_AND_EXTRACT_FROM_TAIL, 0, 0, span_between_points,
@@ -5941,7 +5978,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 }
                 printToStderr( VERBOSITY_NORMAL, "\n" );
                 break;
@@ -5958,7 +5996,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                 break;
 
             default:
@@ -6077,7 +6116,8 @@ int main(int argc, char **argv)
                     lazy_gzip_stream_patching_at_eof,
                     range_number_of_bytes, range_number_of_lines,
                     adjust_index_points_to_byte_boundary,
-                    compression_factor, continue_tailing_on_eof );
+                    compression_factor, continue_tailing_on_eof,
+                    gzip_do_not_check_for_file_overwriting );
                 if ( ret_value != EXIT_OK ) {
                     printToStderr( VERBOSITY_NORMAL, "ERROR: Could not create index '%s'.\nAborted.\n", index_filename );
                     break; // breaks for() loop
@@ -6098,7 +6138,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     break;
 
                 case ACT_EXTRACT_FROM_LINE:
@@ -6111,7 +6152,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     break;
 
                 case ACT_COMPRESS_CHUNK:
@@ -6156,7 +6198,8 @@ int main(int argc, char **argv)
                             lazy_gzip_stream_patching_at_eof,
                             range_number_of_bytes, range_number_of_lines,
                             adjust_index_points_to_byte_boundary,
-                            compression_factor, continue_tailing_on_eof );
+                            compression_factor, continue_tailing_on_eof,
+                            gzip_do_not_check_for_file_overwriting );
                     break;
 
                 case ACT_LIST_INFO:
@@ -6210,7 +6253,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     printToStderr( VERBOSITY_NORMAL, "\n" );
                     break;
 
@@ -6224,7 +6268,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     break;
 
                 case ACT_EXTRACT_TAIL_AND_CONTINUE:
@@ -6238,7 +6283,8 @@ int main(int argc, char **argv)
                             lazy_gzip_stream_patching_at_eof,
                             range_number_of_bytes, range_number_of_lines,
                             adjust_index_points_to_byte_boundary,
-                            compression_factor, continue_tailing_on_eof );
+                            compression_factor, continue_tailing_on_eof,
+                            gzip_do_not_check_for_file_overwriting );
                             if ( EXIT_FILE_OVERWRITTEN == ret_value &&
                                  ( 0 == write_index_to_disk ||
                                    ( 1 == force_action &&
@@ -6286,7 +6332,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     if ( ret_value == EXIT_OK &&
                          do_not_delete_original_file == 0 ) {
                         printToStderr( VERBOSITY_EXCESSIVE, "Deleting file '%s'\n", file_name );
@@ -6310,7 +6357,8 @@ int main(int argc, char **argv)
                         lazy_gzip_stream_patching_at_eof,
                         range_number_of_bytes, range_number_of_lines,
                         adjust_index_points_to_byte_boundary,
-                        compression_factor, continue_tailing_on_eof );
+                        compression_factor, continue_tailing_on_eof,
+                        gzip_do_not_check_for_file_overwriting );
                     if ( ret_value == EXIT_OK ) {
                         // delete original file, as with gzip
                         if ( strlen( file_name ) > 3 && // avoid out-of-bounds
