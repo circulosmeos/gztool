@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Nov 21 2024" "gztool v1.8.0"
+.TH gztool 1 "Jun  5 2026" "gztool v1.8.1"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -21,7 +21,7 @@
 gztool \- extract random-positioned data from gzip files, even like `tail -f`
 .SH SYNOPSIS
 .B gztool
-.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilpPqrRStTwWxXzZ|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
+.RI \ [\ [-[abLnsv]\ #]\ [-[1..9]AcCdDeEfFhilOpPqrRStTwWxXzZ|u[cCdD]]\ [-I\ <INDEX>]\ ]\ "files"\ ...
 .br
 
 Note that actions `-bcStT` proceed to an index file creation (if
@@ -119,6 +119,9 @@ Accepts '0', '0x', and suffixes 'kmgtpe' (^10) or 'KMGTPE' (^2).
 .BR \-n\ #
 indicates that the first byte on compressed input is #, not 1,
 and so truncated compressed inputs can be used if an index exists.
+.TP
+.BR \-O
+do not check for file Overwriting. Necessary only in Windows.
 .TP
 .BR \-p
 indicates that the gzip input stream may be composed of various
@@ -384,6 +387,9 @@ Please, note that index point positions at index file \fBmay require also the pr
 .br
 .BR \ \ \ \ Processing\ 'log_filename.gz' ...
 .br
+
+* In version v1.8.1 modifier `-O` was introduced to be used in \fBWindows\fP, because in this platform stat() can provide erroneous file sizes when the file is being updated. This can occur for example with growing gzip files processed using `-[ST]`. Also with `-c` if the source uncompressed file is for example a log file that can be rotated amid the compression process.
+
 
 .SH INTERNALS
 By default gzip-compressed files cannot be accessed in random mode: any byte required at position N requires the complete gzip file to be decompressed from the beginning to the N byte.   
