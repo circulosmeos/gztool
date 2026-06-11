@@ -98,7 +98,7 @@ Copy gztool.c to the directory where you compiled zlib, and do:
 Usage
 =====
 
-      gztool (v1.8.1)
+      gztool (v1.8.2)
       GZIP files indexer, compressor and data retriever.
       Create small indexes for gzipped files and use them
       for quick and random-positioned data extraction.
@@ -362,7 +362,7 @@ Please, note that index point positions at index file **may require also the pre
         File overwriting detected and restarting decompression...
         Processing 'log_filename.gz' ...
 
-* In version v1.8.1 modifier `-O` was introduced to be used in **Windows**, because in this platform stat() can provide erroneous file sizes when the file is being updated. This can occur for example with growing gzip files processed using `-[ST]`. Also with `-c` if the source uncompressed file is for example a log file that can be rotated amid the compression process.
+* In version v1.8.1 modifier `-O` was introduced to be used in **Windows**, because in this platform the POSIX function used to obtain file sizes (stat()) can provide erroneous results when the file is being updated. This can occur for example with growing gzip files processed using `-[ST]`. Also with `-cED` if the source uncompressed file is for example a log file that is growing (`-E` waits for more data even if the end-of-file is reached; `-D` is used to not delete the uncompressed file when finished! (because `gztool -c` mimics `gzip` behaviour)).
 
 Index file format
 =================
@@ -455,7 +455,7 @@ Other interesting links
 Version
 =======
 
-This version is **v1.8.1**.
+This version is **v1.8.2**.
 
 Please, read the *Disclaimer*. In case of any errors, please open an [issue](https://github.com/circulosmeos/gztool/issues).
 

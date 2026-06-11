@@ -4,7 +4,7 @@
 .\" First parameter, NAME, should be all caps
 .\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
 .\" other parameters are allowed: see man(7), man(1)
-.TH gztool 1 "Jun  5 2026" "gztool v1.8.1"
+.TH gztool 1 "Jun 12 2026" "gztool v1.8.2"
 .\" Please adjust this date whenever revising the manpage.
 .\"
 .\" Some roff macros, for reference:
@@ -388,7 +388,7 @@ Please, note that index point positions at index file \fBmay require also the pr
 .BR \ \ \ \ Processing\ 'log_filename.gz' ...
 .br
 
-* In version v1.8.1 modifier `-O` was introduced to be used in \fBWindows\fP, because in this platform stat() can provide erroneous file sizes when the file is being updated. This can occur for example with growing gzip files processed using `-[ST]`. Also with `-c` if the source uncompressed file is for example a log file that can be rotated amid the compression process.
+* In version v1.8.1 modifier `-O` was introduced to be used in \fBWindows\fP, because in this platform the POSIX function used to obtain file sizes (stat()) can provide erroneous results when the file is being updated. This can occur for example with growing gzip files processed using `-[ST]`. Also with `-cED` if the source uncompressed file is for example a log file that is growing (`-E` waits for more data even if the end-of-file is reached; `-D` is used to not delete the uncompressed file when finished! (because `gztool -c` mimics `gzip` behaviour)).
 
 
 .SH INTERNALS

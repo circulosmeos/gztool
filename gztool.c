@@ -123,7 +123,7 @@
     #include <config.h>
 #else
     #define PACKAGE_NAME "gztool"
-    #define PACKAGE_VERSION "1.8.1"
+    #define PACKAGE_VERSION "1.8.2"
 #endif
 
 #define _XOPEN_SOURCE 500 // expose <unistd.h>'s pread()
