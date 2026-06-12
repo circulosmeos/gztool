@@ -143,10 +143,10 @@ Usage
          Accepts '0', '0x', and suffixes 'kmgtpe' (^10) 'KMGTPE' (^2).
      -n #: indicates that the first byte on compressed input is #, not 1,
          and so truncated compressed inputs can be used if an index exists.
+     -O: do not check for file Overwriting. Necessary only in Windows.
      -p: indicates that the gzip input stream may be composed of various
          incorrectly terminated GZIP streams, and so then a careful
          Patching of the input may be needed to extract correct data.
-     -O: do not check for file Overwriting. Necessary only in Windows.
      -P: like `-p`, but when used with `-[ST]` implies that checking
          for errors in stream is made as quick as possible as the gzip file
          grows. Warning: this may lead to some errors not being patched.
